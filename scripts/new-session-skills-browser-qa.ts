@@ -457,7 +457,7 @@ try {
         assert.ok(launcherId);
         await dialog.locator(".agent-picker-trigger").focus();
         const order: string[] = [];
-        for (let step = 0; step < 11; step += 1) {
+        for (let step = 0; step < 12; step += 1) {
           await page.keyboard.press("Tab");
           order.push(await page.evaluate(() => {
             const active = document.activeElement as HTMLElement | null;
