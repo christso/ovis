@@ -68,7 +68,7 @@ import { readHerdrUi } from "./herdr-ui.ts";
 import { closeCodexDaemonSources } from "./codex-daemon.ts";
 import { holdOpenCodeNative } from "./opencode-native.ts";
 import { holdFilePool } from "./file-pool.ts";
-import { MachineRelay } from "./machine-relay.ts";
+import { MachineRelay, RelayReceiptIds } from "./machine-relay.ts";
 import { sameOrigin } from "./machine-security.ts";
 import { handlePluginRequest } from "./plugin-routes.ts";
 
@@ -229,6 +229,7 @@ export function createServer(
    */
   const bootId = process.env["OVIS_BOOT_ID"] || randomUUID();
   const orderSequence = new OrderSequence(bootId);
+  const relayReceiptIds = new RelayReceiptIds();
   const hostname = options.hostname ?? process.env["HOST"] ?? "127.0.0.1";
   /** Empty token = gate disabled; every route then behaves exactly as it did before auth existed. */
   const token = options.token ?? process.env["OVIS_TOKEN"] ?? "";
@@ -485,7 +486,8 @@ export function createServer(
           if (!machines?.endpoint(machineId)) return jsonResponse({ error: { code: "machine_offline", message: "This PC is disconnected" } }, 503);
           let relay: MachineRelay | undefined;
           try {
-            relay = new MachineRelay(machines, machineId, readOnly, browserSnapshot);
+            relay = new MachineRelay(machines, machineId, readOnly, browserSnapshot,
+              (browser) => relayReceiptIds.scope(machineId, deviceId, browser));
             await relay.ready;
             const upgraded = bunServer.upgrade(request, { headers, data: connectionData({ relay, deviceId, readOnly }) });
             if (upgraded) return undefined;
