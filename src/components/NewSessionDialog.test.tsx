@@ -29,6 +29,8 @@ describe("NewSessionDialog", () => {
       matchMedia,
       innerWidth: 1280,
       setTimeout, clearTimeout,
+      requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0),
+      cancelAnimationFrame: clearTimeout,
       addEventListener: events.addEventListener.bind(events),
       removeEventListener: events.removeEventListener.bind(events),
     } });
