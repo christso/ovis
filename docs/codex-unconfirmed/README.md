@@ -75,3 +75,9 @@ isolation, read-only and revoked clients, retention bounds, and uncertain-row ex
 110-case pending contract suite passed before the final ordering adjustment; all three targeted
 receipt contracts and 64 store/history/core tests passed after it. Fork browser checks also passed
 for saved launchers, new-session fields, worktree selection and deep-link navigation.
+
+Final verification on implementation commit `d61b552e214593d02a04209f2da7792015c7c317` passed
+`bun run check fast` (workflow syntax, generated types/themes, typecheck, build and the full unit
+suite), all three receipt contracts, and the screenshot replay above. Independent review's one
+ordering finding was fixed and its closure verified. Full integration/browser lanes and native
+Windows checks were not run; the targeted Linux checks are the evidence for this fork change.
