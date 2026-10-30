@@ -14,6 +14,7 @@ import { UsageService } from "../../server/usage.ts";
 const root = mkdtempSync(join(tmpdir(), "ovis-unconfirmed-"));
 const output = resolve(process.env.UI_EVIDENCE_DIR ?? "evidence/codex-unconfirmed");
 mkdirSync(output, { recursive: true });
+const recovery = process.env.EXPECT_RECEIPT_RECOVERY === "1";
 const codexHome = join(root, "home");
 const rollout = join(codexHome, "sessions", "rollout.jsonl");
 mkdirSync(join(codexHome, "sessions"), { recursive: true });
@@ -56,7 +57,6 @@ try {
     upstream.onMessage(data => {
       const frame = JSON.parse(String(data));
       if (frame.type === "input-ready" && frame.pane_id === pane) inputReady = frame.ready !== false;
-      if (frame.type === "submit-result") console.log("submit result", frame);
       if (frame.type === "pending-messages") events.push(frame);
       if (loseReceipt && !dropped && frame.type === "pending-messages" && frame.removed?.some((x: { outcome: string }) => x.outcome === "sent")) {
         dropped = true;
@@ -96,18 +96,20 @@ try {
   const text = "Follow-up: confirm the receipt-loss reproduction.";
   const answer = await run(text, true);
   await until(() => dropped && connections >= 2, "page reconnects after losing the delivery receipt");
-  await until(async () => await rows.filter({ hasText: text }).getAttribute("data-state") === "uncertain", "delivered message remains Not confirmed");
+  if (recovery) await until(async () => await rows.count() === 0, "the resumed exact receipt settles the recovery copy");
+  else await until(async () => await rows.filter({ hasText: text }).getAttribute("data-state") === "uncertain", "delivered message remains Not confirmed");
   await page.reload();
   await page.locator(".conn-live").waitFor();
   await panel.getByText(answer, { exact: true }).waitFor();
   const transcript = await (await page.request.get(`http://127.0.0.1:${server.port}/api/pane/conversation?pane_id=${encodeURIComponent(pane)}`)).json();
   assert.equal(transcript.source, "codex-transcript");
   assert.ok(JSON.stringify(transcript.turns).includes(answer));
-  await until(async () => await rows.filter({ hasText: text }).getAttribute("data-state") === "uncertain", "Not confirmed survives reload despite completed native transcript");
+  if (recovery) assert.equal(await rows.count(), 0, "the settled copy stays gone after reload");
+  else await until(async () => await rows.filter({ hasText: text }).getAttribute("data-state") === "uncertain", "Not confirmed survives reload despite completed native transcript");
   assert.equal(bytes(), expected, "reconnect and reload never resend either message");
-  await panel.screenshot({ path: join(output, "codex-not-confirmed.png") });
-  const summary = { upstream: Bun.spawnSync(["git", "rev-parse", "HEAD"]).stdout.toString().trim(), agent: "byte-recording stand-in, fictional Codex-format transcript; no native Codex/model run", control: "one delivery, row removed", receiptLoss: "one delivery; sent receipt lost before browser; reconnect and reload leave uncertain row", nativeTranscript: "completed user and assistant turns visible in Chat", replayed: false, connections, pendingEvents: events };
-  writeFileSync(join(output, "result.json"), JSON.stringify(summary, null, 2) + "\n");
+  await panel.screenshot({ path: join(output, recovery ? "codex-confirmed.png" : "codex-not-confirmed.png") });
+  const summary = { revision: Bun.spawnSync(["git", "rev-parse", "HEAD"]).stdout.toString().trim(), recovery, agent: "byte-recording stand-in, fictional Codex-format transcript; no native Codex/model run", control: "one delivery, row removed", receiptLoss: recovery ? "one delivery; lost sent receipt replayed after reconnect; no recovery row after reconnect or reload" : "one delivery; sent receipt lost before browser; reconnect and reload leave uncertain row", nativeTranscript: "completed user and assistant turns visible in Chat", replayed: false, connections, pendingEvents: events };
+  writeFileSync(join(output, recovery ? "result-fixed.json" : "result.json"), JSON.stringify(summary, null, 2) + "\n");
   console.log(JSON.stringify(summary, null, 2));
 } catch (error) {
   if (page) console.error("UI at failure", (await page.locator("body").innerText()).slice(-4500));

@@ -27,6 +27,7 @@ const sendKeys = herdrClient.paneSendKeys;
 const processInfo = herdrClient.paneProcessInfo;
 const failedPiIdentityLookups = new Set<string>();
 let connectHold: { rpc: "text" | "keys"; reached: () => void; release: Promise<void> } | null = null;
+let keyReplyHold: { pane: string; reached: () => void; release: Promise<void> } | null = null;
 const holding = async (rpc: "text" | "keys"): Promise<void> => {
   const hold = connectHold;
   if (hold?.rpc !== rpc) return;
@@ -39,7 +40,15 @@ mock.module("./herdr/client.ts", () => ({
   ...herdrClient,
   agentPrompt: async (...args: Parameters<typeof agentPrompt>) => { herdrWrites.push(`prompt ${args[0]}`); return agentPrompt(...args); },
   paneSendText: async (...args: Parameters<typeof sendText>) => { herdrWrites.push(`text ${args[0]}`); if (args[1].startsWith("\u001b[200~")) await holding("text"); return sendText(...args); },
-  paneSendKeys: async (...args: Parameters<typeof sendKeys>) => { herdrWrites.push(`keys ${args[0]}`); await holding("keys"); return sendKeys(...args); },
+  paneSendKeys: async (...args: Parameters<typeof sendKeys>) => {
+    herdrWrites.push(`keys ${args[0]}`); await holding("keys");
+    const result = await sendKeys(...args);
+    const held = keyReplyHold;
+    if (held?.pane === args[0] && args[1].includes("Enter")) {
+      keyReplyHold = null; held.reached(); await held.release;
+    }
+    return result;
+  },
   paneProcessInfo: async (...args: Parameters<typeof processInfo>) => {
     if (failedPiIdentityLookups.has(args[0])) throw new Error("transient process lookup failure");
     return processInfo(...args);
@@ -215,6 +224,53 @@ async function setup(label: string, agent = "claude", screen = "› Message\n", 
   const another = async (attach = true, chat = false) => { const reader = new Socket(server.port); entry.sockets.push(reader); if (attach) await reader.attach(pane, chat); else await reader.wait((frame) => frame.type === "snapshot"); return reader; };
   return { screenFile, pane, port: server.port, server, socket, bytes, waitBytes, state, showScreen, queue, removed, another, replacementLog };
 }
+
+describe("resumable pending dispositions", () => {
+  it("forwards a late delivery receipt to a successor that already reattached after Enter committed", async () => {
+    const f = await setup("codex-late-receipt", "codex"), token = crypto.randomUUID();
+    const from = f.socket.seen.length;
+    f.socket.send({ type: "attach", pane_id: f.pane, cols: 100, rows: 30, receipt_resume_id: token });
+    await f.socket.wait(frame => frame.type === "input-ready" && frame.pane_id === f.pane, from);
+    const row = await f.queue(982, "late follow-up");
+    const reached = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    keyReplyHold = { pane: f.pane, reached: reached.resolve, release: release.promise };
+    try {
+      await f.state("idle");
+      await reached.promise;
+      await f.waitBytes(`${paste(row.text)}\r`);
+      const bytes = f.bytes();
+      await f.socket.disconnect();
+      const resumed = await f.another(false);
+      await resumed.attach(f.pane, false, token);
+      expect(resumed.seen.some(frame => frame.type === "pending-messages" && frame.removed?.some((item: { id: string }) => item.id === row.id))).toBe(false);
+      release.resolve();
+      const replay = await f.removed(row.id, "sent", resumed);
+      expect(replay.removed).toContainEqual({ id: row.id, outcome: "sent", resumed: true });
+      expect(f.bytes()).toBe(bytes);
+    } finally { keyReplyHold = null; release.resolve(); }
+  }, 20_000);
+
+  it.each(["sent", "discarded"] as const)("replays a Codex message's exact %s receipt to its returning browser without typing again", async (outcome) => {
+    const f = await setup(`codex-resume-${outcome}`, "codex");
+    const token = crypto.randomUUID(), from = f.socket.seen.length;
+    f.socket.send({ type: "attach", pane_id: f.pane, cols: 100, rows: 30, receipt_resume_id: token });
+    await f.socket.wait(frame => frame.type === "input-ready" && frame.pane_id === f.pane, from);
+    const row = await f.queue(980, "follow-up");
+    if (outcome === "sent") { await f.state("idle"); await f.waitBytes(`${paste(row.text)}\r`); }
+    else {
+      f.socket.send({ type: "pending-action", id: 981, pane_id: f.pane, pending_id: row.id, action: "discard" });
+      expect((await f.socket.action(981)).ok).toBe(true);
+    }
+    await f.removed(row.id, outcome);
+    const bytes = f.bytes();
+    await f.socket.disconnect();
+    const resumed = await f.another(false);
+    await resumed.attach(f.pane, false, token);
+    const replay = await f.removed(row.id, outcome, resumed);
+    expect(replay.removed).toContainEqual({ id: row.id, outcome, resumed: true });
+    expect(f.bytes()).toBe(bytes);
+  }, 20_000);
+});
 
 describe("Ovis-origin Pi transcript receipts", () => {
   const piLine = (id: string, parentId: string | null, role: string, text: string, stamp = Date.now()) => JSON.stringify({

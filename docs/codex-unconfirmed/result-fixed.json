@@ -1,0 +1,120 @@
+{
+  "revision": "27ab8cab23be3d8c4033c677ee967f441109a46e",
+  "recovery": true,
+  "agent": "byte-recording stand-in, fictional Codex-format transcript; no native Codex/model run",
+  "control": "one delivery, row removed",
+  "receiptLoss": "one delivery; lost sent receipt replayed after reconnect; no recovery row after reconnect or reload",
+  "nativeTranscript": "completed user and assistant turns visible in Chat",
+  "replayed": false,
+  "connections": 3,
+  "pendingEvents": [
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "7648988e-f827-4350-81a4-c7d6755629b5",
+          "request_id": 1,
+          "text": "Control: acknowledge this message.",
+          "state": "queued",
+          "created_at": "2026-10-30T03:24:34.903Z"
+        }
+      ]
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "7648988e-f827-4350-81a4-c7d6755629b5",
+          "request_id": 1,
+          "text": "Control: acknowledge this message.",
+          "state": "sending",
+          "created_at": "2026-10-30T03:24:34.903Z"
+        }
+      ]
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [],
+      "removed": [
+        {
+          "id": "7648988e-f827-4350-81a4-c7d6755629b5",
+          "outcome": "sent"
+        }
+      ]
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "de395a23-af26-4196-8677-6f37e21d8e46",
+          "request_id": 2,
+          "text": "Follow-up: confirm the receipt-loss reproduction.",
+          "state": "queued",
+          "created_at": "2026-10-30T03:24:35.439Z"
+        }
+      ]
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "de395a23-af26-4196-8677-6f37e21d8e46",
+          "request_id": 2,
+          "text": "Follow-up: confirm the receipt-loss reproduction.",
+          "state": "sending",
+          "created_at": "2026-10-30T03:24:35.439Z"
+        }
+      ]
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [],
+      "removed": [
+        {
+          "id": "de395a23-af26-4196-8677-6f37e21d8e46",
+          "outcome": "sent"
+        }
+      ]
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [],
+      "removed": [
+        {
+          "id": "7648988e-f827-4350-81a4-c7d6755629b5",
+          "outcome": "sent",
+          "resumed": true
+        },
+        {
+          "id": "de395a23-af26-4196-8677-6f37e21d8e46",
+          "outcome": "sent",
+          "resumed": true
+        }
+      ]
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [],
+      "removed": [
+        {
+          "id": "7648988e-f827-4350-81a4-c7d6755629b5",
+          "outcome": "sent",
+          "resumed": true
+        },
+        {
+          "id": "de395a23-af26-4196-8677-6f37e21d8e46",
+          "outcome": "sent",
+          "resumed": true
+        }
+      ]
+    }
+  ]
+}

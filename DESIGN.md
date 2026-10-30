@@ -2603,6 +2603,14 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   a stale copy that missed the removal remains explicitly resendable to preserve offline recovery.
   Actions keep a
   `--touch-target` touch target on phones.
+  Ordinary pending-message dispositions also recover across a lost socket: the bridge keeps up
+  to 1024 exact outcomes for ten minutes, bound to the original pane, browser resume ID and
+  authenticated device. Reattach replays only those outcomes, so a delivered message's saved
+  **Not confirmed** copy disappears without another paste or Enter. A live row owned by another
+  connection, a missing or expired receipt, and an ambiguous send stay unchanged. This extends
+  Ovis's Pi receipt-recovery pattern and follows OpenClaw's separation of request identity,
+  acceptance and outcome recovery ([source research](docs/codex-unconfirmed/openclaw-research.md));
+  it keeps Ovis's terminal send path and does not infer delivery from matching transcript text.
   Sending disables that item's actions; errors stay inline. Uncertain messages offer Copy and
   Discard saved copy, with no retry action. Desktop and phones share this flow.
 - Accepted pending messages clear only the draft prefix acknowledged by the bridge. For agents

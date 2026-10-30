@@ -62,6 +62,48 @@ afterAll(() => {
   mock.module("../pi.ts", () => ({ ...pi, piTranscriptPath: originalTranscriptPath }));
 });
 
+it.each(["same browser", "no device", "wrong browser", "wrong device", "read-only", "revoked", "no resume id", "changed resume id", "expired uncertainty", "settled after reattach"] as const)(
+  "recovers ordinary dispositions only for their original authorized browser: %s", (scenario) => {
+    let now = Date.now();
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const token = crypto.randomUUID(), frames = new Map<Client, ServerMessage[]>(), clients = new Set<Client>();
+      const client = (deviceId: string | undefined, receiptResumeId: string | undefined, readOnly = false): Client => {
+        const output: ServerMessage[] = [];
+        const owner = { data: connectionData({ deviceId, readOnly }), getBufferedAmount: () => 0,
+          send: (value: string) => { output.push(JSON.parse(value)); return 1; } } as Client;
+        owner.data.attached.set("p", { keepSize: false, receiptResumeId });
+        clients.add(owner); frames.set(owner, output); return owner;
+      };
+      const device = scenario === "no device" ? undefined : "device";
+      const first = client(device, scenario === "no resume id" ? undefined : token), revoked = new Set<Client>();
+      const delivery = createPendingDelivery({
+        options: {}, clients, attachments: new Map(), serialize: async (_pane, task) => task(), lastTyped: new Map(),
+        sight: () => { throw new Error("receipt recovery takes no input lease"); },
+        submitText: async () => { throw new Error("receipt recovery never submits input"); },
+        authorizeSocket: owner => { if (revoked.has(owner)) throw new Error("revoked"); },
+        clientSnapshot: async () => ({ panes: [] }) as unknown as SessionSnapshot,
+        omo: { sessionOf: () => null }, SUBMIT_DEADLINE_MS: 45_000, SUBMIT_DELAY_MS: 0, TYPED_SETTLE_MS: 0,
+      });
+      const item = delivery.pending.enqueue(first, "p", 1, "follow-up", null, { agent: "codex", terminalId: "p", session: null });
+      if (scenario === "changed resume id") first.data.attached.get("p")!.receiptResumeId = crypto.randomUUID();
+      expect(delivery.pending.claim(item, false)).toBe(true);
+      if (scenario !== "settled after reattach") delivery.pending.settle(item,
+        scenario === "expired uncertainty" ? { code: "submit_changed", message: "Enter was not confirmed" } : undefined,
+        scenario === "expired uncertainty");
+      clients.delete(first); delivery.closeConnection(first);
+      if (scenario === "expired uncertainty") { now += 60_001; delivery.pending.expire(); }
+      const resumed = client(scenario === "wrong device" ? "other" : device,
+        scenario === "wrong browser" ? crypto.randomUUID() : token, scenario === "read-only");
+      if (scenario === "revoked") revoked.add(resumed);
+      delivery.attached(resumed, "p");
+      if (scenario === "settled after reattach") delivery.pending.settle(item);
+      const removed = frames.get(resumed)!.flatMap(frame => frame.type === "pending-messages" ? frame.removed ?? [] : []);
+      const expected = ["same browser", "no device", "changed resume id", "settled after reattach"].includes(scenario);
+      expect(removed).toEqual(expected ? [{ id: item.message.id, outcome: "sent", resumed: true }] : []);
+    } finally { clock.mockRestore(); }
+  });
+
 it.each(["delivery first", "withdrawal first", "ambiguous delivery first", "ambiguous plain discard"] as const)("serializes held-copy resend and Edit against one disposition: %s", async (order) => {
   const ambiguous = order.startsWith("ambiguous");
   const frames = new Map<Client, ServerMessage[]>(), clients = new Set<Client>();

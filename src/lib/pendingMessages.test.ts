@@ -9,6 +9,28 @@ const storage = () => {
 const message = (id: string, state: PendingMessage["state"] = "queued", text = "check the tests"): PendingMessage => ({ id, request_id: 1, text, state, created_at: "2026-10-06T00:00:00Z" });
 
 describe("pending message ownership", () => {
+  it("settles an exact resumed disposition after reload without settling a same-text or live-owned message", () => {
+    const port = storage(), before = new PendingMessageStore(() => port);
+    before.accept("p", message("delivered", "sending", "same"), "old");
+    before.accept("p", message("unproved", "sending", "same"), "old");
+    before.suspendScope("old");
+    const store = new PendingMessageStore(() => port);
+    store.accept("p", message("live", "sending", "same"), "other");
+    store.publish("p", [], [{ id: "unproved", outcome: "sent" }], "new");
+    expect(store.read("p").map(row => row.id)).toEqual(["delivered", "unproved", "live"]);
+    store.publish("p", [], [
+      { id: "delivered", outcome: "sent", resumed: true },
+      { id: "live", outcome: "sent", resumed: true },
+    ], "new");
+    expect(store.read("p").map(row => row.id)).toEqual(["unproved", "live"]);
+    // An old tab's storage write and late acceptance cannot resurrect the settled ID.
+    port.setItem("ovis:pending:p", JSON.stringify({ messages: [message("delivered", "sending", "same")] }));
+    store.refresh("p");
+    store.accept("p", message("delivered", "sending", "same"), "late");
+    expect(store.read("p").map(row => row.id)).toEqual(["live"]);
+    store.publish("other", [], [{ id: "live", outcome: "sent", resumed: true }], "new");
+    expect(store.read("p").map(row => row.id)).toEqual(["live"]);
+  });
   it("settles only the exact resumed Pi ID after reload, never same-text or unrelated rows", () => {
     const port = storage(), first = new PendingMessageStore(() => port);
     const receipt = { ...message("pi:one", "uncertain", "same"), error: { code: "pi_transcript_pending", message: "waiting" } };

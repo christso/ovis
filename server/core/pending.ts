@@ -21,7 +21,7 @@ import { closeBackslash, closeMention, type createSubmitText, freeClaudeBox, fre
 import { type Client, connectionOf, send } from "./connections.ts";
 import { ATTACH_HELD_MESSAGE } from "./terminal-process.ts";
 import type { AttachmentView, TerminalSighting } from "./terminals.ts";
-import type { ClientMessage, HerdrPane, PendingMessage, SessionSnapshot } from "../../shared/protocol.ts";
+import type { ClientMessage, HerdrPane, PendingMessage, PendingRemoval, SessionSnapshot } from "../../shared/protocol.ts";
 import { typingGuards } from "../input-guard.ts";
 import { claudeForegroundSession, isClaudeProcess } from "../claude-store.ts";
 import { HerdrError, paneProcessInfo, paneRead, paneSendKeys, paneSendText, type ProcessInfo } from "../herdr/client.ts";
@@ -29,6 +29,7 @@ import { bindCommandProcess, claudeHeldIsGrey, codexQuestionsCollapsed, isClaude
 import { registry } from "../dialogs/registry.ts";
 import { secretPrompt } from "../../shared/secret-prompt.ts";
 import { PendingInputs, samePendingIdentity, type PendingIdentity, type PendingRecord } from "../pending-input.ts";
+import { PendingReceipts } from "../pending-receipts.ts";
 import { NO_AGENT_MESSAGE, PASTED_NOT_SENT_MESSAGE } from "../../shared/submit-outcome.ts";
 import { processStartedAtAsync } from "../process-start.ts";
 import { agentProcessInFront } from "../agent-process.ts";
@@ -105,6 +106,8 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
 }) {
   const pendingAuthorities = new WeakMap<Client, Map<string, object>>();
   const firstReceipts = new Map<string, Array<{ id: string; outcome: "sent" | "discarded" | "dismissed" }>>();
+  const completed = new PendingReceipts();
+  const receiptOwners = new WeakMap<Client, Map<string, string | null>>();
   /** the connections that could type into the pane now: attached, allowed to type, and with a ready lease */
   const typists = (paneId: string): Client[] => [...clients].filter((client) => {
     if (!client.data.attached.has(paneId)) return false;
@@ -112,7 +115,25 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
     return typingGuards.pendingLease(sight(client, paneId).facts());
   });
   const pending = new PendingInputs<PendingOwner, PendingLease | null>((owner, paneId, messages, removed) => {
-    if (isClient(owner)) { send(owner, { type: "pending-messages", pane_id: paneId, messages, ...(removed ? { removed } : {}) }); return; }
+    if (isClient(owner)) {
+      const owners = receiptOwners.get(owner) ?? new Map<string, string | null>();
+      receiptOwners.set(owner, owners);
+      for (const message of messages) if (!owners.has(message.id)) owners.set(message.id, resumeKey(owner, paneId) ?? null);
+      for (const receipt of removed ?? []) {
+        const key = owners.get(receipt.id);
+        owners.delete(receipt.id);
+        // Expiry also emits "dismissed"; that cannot settle an ambiguous send's saved copy.
+        if (key && (receipt.outcome === "sent" || receipt.outcome === "discarded")) {
+          completed.remember(paneId, key, [{ id: receipt.id, outcome: receipt.outcome }]);
+          // A reload can attach its successor while the committed Enter's reply is still pending.
+          for (const successor of clients) if (successor !== owner) {
+            sendResumed(successor, paneId, key, [{ ...receipt, resumed: true }]);
+          }
+        }
+      }
+      send(owner, { type: "pending-messages", pane_id: paneId, messages, ...(removed ? { removed } : {}) });
+      return;
+    }
     // a first message: every connection attached to the pane sees it, and keeps the receipt once it went
     if (removed) firstReceipts.set(paneId, [...(firstReceipts.get(paneId) ?? []), ...removed].slice(-FIRST_MESSAGE_RECEIPTS));
     for (const client of clients) {
@@ -364,6 +385,7 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
         if (item) pending.discard(item);
       }
       firstReceipts.delete(paneId);
+      completed.forget(paneId);
     }
   }
   function authorizePending(owner: Client, paneId: string, lease: PendingLease): void {
@@ -890,10 +912,19 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
     }
     return rebound;
   }
+  function sendResumed(client: Client, paneId: string, key: string, removed: PendingRemoval[]): void {
+    if (connectionOf(client).mode === "observe" || resumeKey(client, paneId) !== key) return;
+    try {
+      authorizeSocket(client);
+      if (removed.length) send(client, { type: "pending-messages", pane_id: paneId, messages: [], removed });
+    } catch {}
+  }
   /** A connection that attached the pane: it sees the pane's first messages and their receipts, and may be the one to type them. */
   function attached(client: Client, paneId: string): void {
     prunePi();
     resumePi(client, paneId);
+    const key = resumeKey(client, paneId);
+    if (key) sendResumed(client, paneId, key, completed.read(paneId, key));
     const messages = [...pending.list(FIRST_MESSAGE_OWNER, paneId), ...piMessages(paneId, client)];
     const removed = firstReceipts.get(paneId) ?? [];
     if ((messages.length > 0 || removed.length > 0) && connectionOf(client).mode !== "observe") {
