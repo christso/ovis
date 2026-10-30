@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { registry, type ReaderContext } from "./registry.ts";
-import { executeInteractionPlan } from "./interaction-plan.ts";
+import { executeInteractionPlan, pickerPlan } from "./interaction-plan.ts";
 import type { AnswerStep } from "./shared.ts";
 
 const context: ReaderContext = {
@@ -32,6 +33,13 @@ function claudeEffort(width: number, at: number): string {
     "low   medium   high", "", "",
     wrap("←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel", width),
   ].join("\n");
+}
+
+/** Claude Code 2.1.311's slider with Ultracode's switch beside it, as recorded, ▲ moved over level `at` */
+function claudeEffortSwitch(at: number, on: boolean): string {
+  const arrow = [0, 10, 20, 30, 41][at]!;
+  return readFileSync(new URL(`../fixtures/claude-effort-2.1.311-${on ? "on" : "off"}-120.txt`, import.meta.url), "utf8")
+    .replace(/─*▲─*/, `${"─".repeat(arrow)}▲${"─".repeat(41 - arrow)}`);
 }
 
 function codexModel(width: number, at: number, footer = "enter select · esc back", title = "Select Model and Effort"): string {
@@ -105,7 +113,7 @@ describe("picker interaction plans", () => {
       expect(result).toBe("answered");
       expect(sent).toEqual([{ keys: [fixture.move] }, fixture.commit]);
       expect(plan.cursor).toBe(1);
-      expect(plan.terminalFallback).toBe(false);
+      expect(plan.terminalFallback(1)).toBe(false);
     });
   }
 
@@ -122,6 +130,64 @@ describe("picker interaction plans", () => {
     });
     expect(sent, "a changed highlight must not receive the session commit s").toEqual([{ keys: ["down"] }]);
     expect(result).toBe("prompt_changed");
+  });
+
+  test("Tab flips Claude's Ultracode switch without moving the cursor, and s waits for the switch to show it", async () => {
+    const plan = planFor("claude-effort", claudeEffortSwitch(3, false));
+    const sent: AnswerStep[] = [];
+    let on = false;
+    const result = await executeInteractionPlan(plan, 5, {
+      rereadMoves: true,
+      active: () => true,
+      cancelled: () => false,
+      read: async () => claudeEffortSwitch(3, on),
+      send: async (step, commit) => { sent.push(step); if (!commit) on = !on; },
+    });
+    expect(result).toBe("answered");
+    expect(sent).toEqual([{ keys: ["tab"] }, { text: "s" }]);
+    expect(plan.cursor, "a Tab is no step back").toBe(3);
+    expect(plan.toggles).toBe(1);
+  });
+
+  test("sends no s for Claude's switch when the slider still shows it as before, or shows it at another level", async () => {
+    for (const shown of [claudeEffortSwitch(3, false), claudeEffortSwitch(2, true)]) {
+      const plan = planFor("claude-effort", claudeEffortSwitch(3, false));
+      const sent: AnswerStep[] = [];
+      const result = await executeInteractionPlan(plan, 5, {
+        rereadMoves: true,
+        active: () => true,
+        cancelled: () => false,
+        read: async () => shown,
+        send: async (step) => { sent.push(step); },
+      });
+      expect(result).toBe("prompt_changed");
+      expect(sent).toEqual([{ keys: ["tab"] }]);
+    }
+  });
+
+  test("a level's s waits for Claude's switch as it was drawn", () => {
+    const plan = planFor("claude-effort", claudeEffortSwitch(3, true));
+    expect(plan.matches(claudeEffortSwitch(3, true))).toBe(true);
+    expect(plan.matches(claudeEffortSwitch(3, false)), "a Tab pressed in the terminal").toBe(false);
+  });
+
+  test("moves the cursor for the arrows alone", async () => {
+    const parsed = registry.readerFor("codex-model")!.parse(codexModel(120, 1), context)!;
+    const plan = pickerPlan(parsed, () => null, [[{ keys: ["down"] }, { keys: ["esc"] }, { keys: ["right"] }, { keys: ["tab"] }, { keys: ["up"] }, { keys: ["left"] }, { keys: ["left"] }, { keys: ["left"] }, { text: "s" }]],
+      (shown, cursor) => shown.menuLabels[cursor]);
+    const cursors: number[] = [];
+    await executeInteractionPlan(plan, 0, {
+      rereadMoves: false,
+      active: () => true,
+      cancelled: () => false,
+      read: async () => null,
+      send: async () => { cursors.push(plan.cursor); },
+    });
+    // each move sees where the ones before it left the cursor: another key leaves it, and ↑ and ←
+    // stop at the first row. The commit never goes out: the screen read shows no list
+    expect(cursors).toEqual([1, 2, 2, 3, 3, 2, 1, 0]);
+    expect(plan.cursor).toBe(0);
+    expect(plan.toggles).toBe(1);
   });
 
   test("Codex reads the session key from the nested reasoning row after moving", async () => {
@@ -168,6 +234,41 @@ describe("picker interaction plans", () => {
     });
     expect(result).toBe("prompt_changed");
     expect(sent).toEqual([{ keys: ["down"] }]);
-    expect(plan.terminalFallback).toBe(true);
+    expect(plan.terminalFallback(1)).toBe(true);
+  });
+
+  test("stops after a move when the asking ends under it, sending no further key", async () => {
+    const plan = planFor("codex-model", codexModel(120, 0));
+    const sent: AnswerStep[] = [];
+    let active = true;
+    let cursor = 0;
+    const result = await executeInteractionPlan(plan, 2, {
+      rereadMoves: true,
+      active: () => active,
+      cancelled: () => false,
+      read: async () => codexModel(120, cursor),
+      send: async (step, commit) => { sent.push(step); if (!commit) cursor += 1; active = false; },
+    });
+    expect(result).toBe("prompt_changed");
+    expect(sent, "one move went out before the asking ended; nothing after it").toEqual([{ keys: ["down"] }]);
+  });
+
+  test("commits with the chosen answer's own last key, not the first answer's", async () => {
+    const screen = codexModel(120, 0);
+    const parsed = registry.readerFor("codex-model")!.parse(screen, context)!;
+    const plan = pickerPlan(parsed, (shown) => registry.readerFor("codex-model")!.parse(shown, context),
+      [[{ keys: ["enter"] }], [{ keys: ["down"] }, { text: "s" }]], (shown, cursor) => shown.menuLabels[cursor]);
+    const sent: AnswerStep[] = [];
+    let cursor = 0;
+    const result = await executeInteractionPlan(plan, 1, {
+      rereadMoves: true,
+      active: () => true,
+      cancelled: () => false,
+      read: async () => codexModel(120, cursor),
+      send: async (step, commit) => { sent.push(step); if (!commit) cursor += 1; },
+    });
+    expect(result).toBe("answered");
+    expect(sent).toEqual([{ keys: ["down"] }, { text: "s" }]);
+    expect(plan.commit(0)).toEqual({ keys: ["enter"] });
   });
 });

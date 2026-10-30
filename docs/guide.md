@@ -53,7 +53,7 @@ curl -fsSL https://ovis.sh/install.sh | sh
 
 It does, in order, only what is not done yet:
 
-- **What it runs on.** [herdr](https://github.com/herdrdev/herdr) 0.9.0+, [Bun](https://bun.sh) 1.4+ and Node 18+ (Node runs the terminal sidecar). A missing one is installed for your user only, without sudo: herdr and Bun by their own installers, into `~/.local/bin` and `~/.bun`, and Node 22 from nodejs.org, checked against its published SHA-256, into `~/.local/share/herdr-web-ui/node`. Nothing is compiled.
+- **What it runs on.** [herdr](https://github.com/herdrdev/herdr) 0.9.0+, [Bun](https://bun.sh) 1.4+. A missing one is installed for your user only, without sudo, by its own installer, into `~/.local/bin` and `~/.bun`. Node is not needed: on Linux and macOS, terminals run on the Rust PTY host each release ships (`bin/ovis-pty-sidecar`), checked against the release's SHA-256 and once more when the server starts. A Node 18+ already on the PC is only its fallback, and the installer adds Node 22 from nodejs.org (checked against its published SHA-256, into `~/.local/share/ovis/node`) only when the host cannot be installed and there is no Node. Nothing is compiled.
 - **The app**, as a herdr plugin at the latest release (set `OVIS_REF` to install another branch or tag): herdr builds it and starts it along with itself, on `127.0.0.1:7317`, following the socket of the current herdr session. When herdr is already running, the app starts now.
 - **The phone address.** When Tailscale runs on this PC, it serves the app to your tailnet (`tailscale serve`, see [On your phone](#on-your-phone)), tells you the command that undoes it, and prints the address as a QR code. Without Tailscale, it says what to set up.
 
@@ -88,11 +88,11 @@ bun install
 bun run start
 ```
 
-You need herdr 0.9.0+, Bun 1.4+ and Node 18+, and herdr must be installed and running first: start it with `herdr`. `start` builds the client and runs the server under the update supervisor. It talks to `~/.config/herdr/herdr.sock` unless `HERDR_SOCKET` says otherwise. If herdr isn't running there, the app still opens, but its header shows **Status unknown** after the first failed health check and **herdr unavailable** after the second, and the page says it cannot reach herdr at that socket.
+You need herdr 0.9.0+ and Bun 1.4+, and for attached terminals either the Rust PTY host (`cargo build --release --manifest-path crates/pty-sidecar/Cargo.toml`, or `bun scripts/pty-sidecar.ts install` on a release tag) or Node 18+; with neither, panes are mirrored. herdr must be installed and running first: start it with `herdr`. `start` builds the client and runs the server under the update supervisor. It talks to `~/.config/herdr/herdr.sock` unless `HERDR_SOCKET` says otherwise. If herdr isn't running there, the app still opens, but its header shows **Status unknown** after the first failed health check and **herdr unavailable** after the second, and the page says it cannot reach herdr at that socket.
 
 </details>
 
-**2. Open it** at **http://127.0.0.1:7317**, the address the installer opened. The installed app belongs to that exact address: `localhost:7317` is another address to the browser, so a tab there still offers **Install**. Every workspace of your herdr session is a row in the sidebar, as in herdr's own, led by its project's icon when its folder keeps one (a favicon in the folder, `public/` or `static/`; else an app icon such as Next.js's `app/icon.*` or Electron's `build/icon.png`; else a logo such as `logo.svg` or `assets/logo.png`; the folder is the worktree checkout, or else the pane's working folder, so a pane that has `cd`'d into `src/` looks there) and a folder glyph otherwise (a repository row with worktrees under it is also its fold button: the folder opens and closes with it, and an icon turns into that folder under the pointer; the worktree rows nested under it have no mark); its tabs are always shown in a strip, and the active tab shows all its split panes together. Pick one, start a new agent with **New workspace**, or add a tab to a workspace with **New tab** (the strip's `+`, a tab's right-click menu, or the command palette on a wider screen or with a keyboard). Right-click a tab to rename or close it; on a phone, tap the selected tab’s **⋯** for a trimmed menu with pane actions, Rename tab and Close tab. A focused tab also opens its menu with Shift+F10, and double-click still renames it.
+**2. Open it** at **http://127.0.0.1:7317**, the address the installer opened. On a slow link, such as a phone on mobile data, a spinner shows while the app downloads. The installed app belongs to that exact address: `localhost:7317` is another address to the browser, so a tab there is not the installed app, and Settings → Phone & devices → Install there still offers to install it (an **Install app** button when the browser can, its steps otherwise). Every workspace of your herdr session is a row in the sidebar, as in herdr's own, led by its project's icon when its folder keeps one (a favicon in the folder, `public/` or `static/`; else an app icon such as Next.js's `app/icon.*` or Electron's `build/icon.png`; else a logo such as `logo.svg` or `assets/logo.png`; the folder is the worktree checkout, or else the pane's working folder, so a pane that has `cd`'d into `src/` looks there) and a folder glyph otherwise (a repository row with worktrees under it is also its fold button: the folder opens and closes with it, and an icon turns into that folder under the pointer; the worktree rows nested under it have no mark); its tabs are always shown in a strip, and the active tab shows all its split panes together. Pick one, start a new agent with **New workspace**, or add a tab to a workspace with **New tab** (the strip's `+`, a tab's right-click menu, or the command palette on a wider screen or with a keyboard). Right-click a tab to rename or close it; on a phone, tap the selected tab’s **⋯** for a trimmed menu with pane actions, Rename tab and Close tab. A focused tab also opens its menu with Shift+F10, and double-click still renames it.
 
 Drag a tab to change its order within the workspace, or choose **Move tab left / right** from
 its menu (also on a phone). Alt+Shift+Left/Right moves a focused tab. Reordering keeps the
@@ -110,6 +110,8 @@ To see two panes side by side, drag a workspace row, an **Agents** row, a tab, a
 a half's bar onto the left or right half of the pane area. A pick in the sidebar or the **Agents**
 list then opens in the active half only, and the focus stays there. Both halves can show the same
 tab, and you type in whichever half is active; the other half shows that tab at the active half's size.
+To rearrange a split tab instead, drop a pane's title on another pane's title in the same tab: the
+two panes trade places.
 
 
 **3. Take it with you.** Scan the installer's QR code with a phone signed in to the same Tailscale account, then install the app from the browser. See [On your phone](#on-your-phone).
@@ -146,7 +148,7 @@ herdr plugin uninstall devswha.ovis || herdr plugin uninstall devswha.herdr-web-
 tailscale serve --https=<port> off    # the port the installer printed, if it served the app
 ```
 
-The installer's herdr, Bun and Node stay, since other tools may use them: `~/.local/bin/herdr`, `~/.bun`, and `~/.local/share/ovis/node` (`~/.local/share/herdr-web-ui/node` for an install from before the rename) with its link `~/.local/bin/node`. Push keys, paired devices and the identity file that owns the app's Portal address are in `~/.config/ovis`.
+The installer's herdr, Bun and Node stay, since other tools may use them: `~/.local/bin/herdr`, `~/.bun`, and `~/.local/share/ovis/node` (`~/.local/share/herdr-web-ui/node` for an install from before the rename); an older installer also linked it as `~/.local/bin/node`. Running the installer again removes that link once the installed release finds its Node itself; a release from before that still needs the link, so it stays until the installer runs again after Ovis is updated. Push keys, paired devices and the identity file that owns the app's Portal address are in `~/.config/ovis`.
 
 ## Supported agents
 
@@ -154,18 +156,21 @@ Every agent herdr runs shows up with its live status, terminal and alerts. The c
 
 | Agent | Chat | Answer prompts from chat |
 | --- | --- | --- |
-| **Claude Code** | Native transcript, resolved through herdr | ✓ approvals, questions, plan and menu picks, and the `/model` list (picked for the session) |
+| **Claude Code** | Native transcript, resolved through herdr | ✓ approvals, questions, plan and menu picks, the `/model` list, and the `/effort` levels with Ultracode's switch (each picked for the session) |
 | **Codex** | Native rollout, with tool results and commentary/final phases | ✓ approvals and questions, including queued ones, and the `/model` lists (picked for the session) |
-| **omp** | Native session file | ✓ approvals, questions, and the model picker of `/model` and `/switch` (picked for the session: the chat sends `/model` as `/switch`, since omp's own `/model` opens its role hub) |
+| **omp** | Native session file, in the store the pane's omp process writes to: `~/.omp/agent`, a profile's, or where its `--session-dir`, or the `PI_CODING_AGENT_SESSION_DIR`, `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR` or XDG data and state directories it was started with, put it (absolute paths only, not values from omp's `.env` files; on Windows only `~/.omp` and its profiles) | ✓ approvals, questions, and the model picker of `/model` and `/switch` (picked for the session: the chat sends `/model` as `/switch`, since omp's own `/model` opens its role hub) |
 | **omo** | Native session file, found through the pane's process tree | ✓ the `/model` list (picked for the session); other menus — use Terminal |
 | **gjc** | Native session file reported by the web UI's GJC extension, verified against the pane's process | — use Terminal |
 | **pi** | Native session file, resolved through herdr; after `/tree`, the branch in play | ✓ its dialogs: a question, a confirmation, an answer typed in |
-| **Command Code** (`cmd`) | Native session file under `~/.commandcode/projects/`, resolved through herdr; after `/tree`, the branch in play | ✓ its permission prompts: Yes / Yes, don't ask again / No |
+| **Command Code** (`cmd`) | Native session file under `~/.commandcode/projects/`, named by the session herdr reports for the pane (see below); after `/tree`, the branch in play | ✓ its permission prompts: Yes / Yes, don't ask again / No |
 | **OpenCode** | Native session in OpenCode 2's own database, resolved through herdr: `~/.local/share/opencode/opencode.db` (`%USERPROFILE%\.local\share\opencode\opencode.db` on Windows), or where the server's `XDG_DATA_HOME` or `OPENCODE_DB` puts it | ✓ its questions on OpenCode 2.0 or later, answered through its background service (`~/.local/state/opencode/service.json`, or under the server's `XDG_STATE_HOME`) one question at a time, with Back to change an earlier one; other prompts, and OpenCode 1 — use Terminal |
 | **Devin CLI** | Native SQLite session, showing the active branch when herdr or the live process explicitly identifies the session; otherwise terminal text | — use Terminal |
-| **Grok** | Linux native update log. Any Grok executable named `grok` or `grok-…` that holds the `events.jsonl` for the session Herdr reported in exactly one directory, with a newer write time than every other held session. Older open files do not hide it; ambiguous IDs, tied times, and an unreported `/resume` use Terminal until Herdr names the confirmed session. macOS and Windows use Terminal. See [Grok setup and limits](grok-chat.md). | — use Terminal |
+| **Grok** | Native update log on Linux and macOS. Any Grok executable named `grok` or `grok-…` that holds the `events.jsonl` for the session Herdr reported in exactly one directory, with a newer write time than every other held session. Linux reads `/proc`; macOS reads that process's held files through `lsof` and its environment through `sysctl KERN_PROCARGS2`, not the bridge's home. It verifies the kernel's microsecond process start time through `sysctl kern.proc.pid` around those reads and a fresh pane foreground lookup. Older open files do not hide it; ambiguous IDs, tied times, and a held file that may be a renamed events file use Terminal. After a `/resume` Herdr does not hear about, Chat can keep showing the previous conversation until the resumed session writes; it then uses Terminal until Herdr names that session. Windows uses Terminal. See [Grok setup and limits](grok-chat.md). | — use Terminal |
 | **Hermes** | Native SQLite session store | — use Terminal |
+| **Muse Code** | **Linux untested with real Muse.** Native session log, bound to the pane by the session lock Muse writes for its process; panes in one folder each show their own session. macOS and Linux; Windows uses Terminal. See [Muse chat](muse-chat.md). | — use Terminal |
 | **Antigravity (agy)** | **Experimental; macOS untested.** Native ledger, selected by the running process’s held conversation lock. Linux native-tested; Windows uses terminal text. See [Agy behavior and limits](agy-chat.md). | — use Terminal |
+| **Letta Code** | **Experimental; Linux and macOS.** Read-only native transcript, once herdr's Letta integration is installed (`herdr integration install letta`, experimental). A turn shows when it ends; meanwhile Chat says **Working…**. Windows uses Terminal. See [Letta Code](#letta-code) below. | — use Terminal |
+| **GitHub Copilot CLI** | Linux native transcript when the foreground session is verified. See [Copilot setup and limits](copilot-chat.md). | — recorded choices are read-only; answer questions and approvals in Terminal |
 | **Anything else** | The terminal's text | — use Terminal |
 
 GJC chat and GJC done alerts use a native extension rather than SDK session queries. From
@@ -196,6 +201,43 @@ which follows GJC's provider child: a finished turn can stay on working, so no d
 comes and no INPUT shows for an open question. Install the extension and restart GJC to
 get both chat and done alerts back.
 
+The `ask_user` form of the [`@eko24ive/pi-ask`](https://www.npmjs.com/package/@eko24ive/pi-ask)
+pi package draws its own widget, which the chat cannot read off the screen, and pi-ask answers
+only through its own events inside the pi process, never typed keys. To answer it from the chat,
+explicitly install the web UI's pi extension on each PC that runs pi, from this checkout:
+
+```sh
+bun scripts/install-pi-integration.ts
+```
+
+Nothing installs it for you: the web UI never adds or changes pi's settings, hooks or extensions
+on its own. Restart running pi sessions to load it. The installer writes only its own file,
+`~/.pi/agent/extensions/herdr-web-ui.js` (or under `PI_CODING_AGENT_DIR`), and refuses to replace
+a file it did not write; it does not replace pi settings or other extensions, and no running
+session is modified by it. To remove it, run the same command with `--remove` and restart pi.
+Without the extension the form stays in Terminal, exactly as before. On a remote PC with only the
+runtime bundle, run it with the bundle's Bun as for GJC above. The extension listens on a socket
+only your user can open, `herdr-web-ui-ask/<pid>.sock` in the same directory, and relays the
+card's answer to pi-ask as its submit event: the form then shows as a card with one question per
+step, its options and **Type your own answer**. The card shows only when the pane's pi process
+answers on that socket, writes the session herdr reports for the pane, has one form open and
+that form's `ask_user` call is still unanswered on pi's current branch (after a `/tree` move
+too); anything else, a form opened by `/answer` or `/ask:replay`, Windows, and pi without the
+extension use Terminal. pi-ask is never answered with typed keys: a pi pane never gets the
+generic card of guessed keys that other agents get for a prompt no reader knows, and where the
+extension serves the pane's pi, pi's own dialogs (select, confirm, input) show no card either, since
+a pi-ask form can open there at any moment. The terminal answers those; without the extension,
+pi's own dialogs keep their cards as before. Notes and
+**Elaborate** stay in Terminal. Checked with pi 1.4.0 and pi-ask 1.2.0.
+
+Command Code chat needs the session herdr reports for the pane. Command Code sends that report
+and herdr keeps only the sessions of the agents it knows natively, so no released herdr accepts
+it yet: the pane's status, title and model arrive, its conversation does not. Without it the
+bridge cannot tell which file under `~/.commandcode/projects/` a pane is showing, and two `cmd`
+panes in one folder are indistinguishable, so Command Code opens in Terminal. Its permission
+prompt cards are read off the screen, not from the session file, so they answer from the chat
+either way.
+
 Devin sessions are never selected by directory or recency alone. A plain `devin` shows the
 terminal text, since herdr does not report its session without its Devin integration; a session
 started with `devin --resume <id>` (or `-r <id>`, as Devin suggests when it exits) is a chat.
@@ -219,18 +261,53 @@ model's window, which is the file pi reads its own providers from; a model it st
 for shows no ring rather than a guessed one, because pi answers those from a catalogue or a
 running llama.cpp server that this app cannot ask. The model and reasoning effort come from what the session recorded, never from answer text. A todo list shows where the agent recorded it, in the turn's work block: Claude Code's `TodoWrite`, Codex's `update_plan`, or omp, omo and gjc todo calls. Plain-text plans are not reconstructed, and Claude Code `TaskCreate` / `TaskUpdate` calls are not drawn in the work block: the task list they build is the pane's plan, below. Details and verification are in the [chat-mode audit](chat-mode-audit.md).
 
-Background tasks have a button by the message box, with a count while some run: an OmO pane's `task` children, and a Claude Code pane's subagents (the `Agent` tool), read from the session's own files. A Claude Code pane's background commands (`run_in_background`, Ctrl+B, or one moved there by its timeout) are listed with them. It lists what runs and the newest ten that ended in the last day, and the sidebar badge shows the running count. A Claude Code turn that ends while work it started still runs reads **BG**, not DONE: that work's notice starts the next turn by itself, and the finish is alerted once, when that turn ends (a turn is held at most 30 minutes). A subagent that ends leaves a card in the chat with its answer, and a Claude Code subagent whose pane no longer runs that session reads as lost.
+Background tasks have a button by the message box, with a count while some run: an OmO pane's `task` children, a Claude Code pane's subagents (the `Agent` tool), read from the session's own files, and an OpenCode 2 pane's subagents, the child sessions OpenCode keeps of the session in its store (one whose OpenCode service went away mid-run, without ending it, reads as lost once another service starts or the pane leaves that session; on Windows, where a service's start cannot be read, only once the pane leaves that session). A Claude Code pane's background commands (`run_in_background`, Ctrl+B, or one moved there by its timeout) are listed with them. It lists what runs and the newest ten that ended in the last day, and the sidebar badge shows the running count. A Claude Code or OpenCode turn that ends while work it started still runs reads **BG**, not DONE: that work's notice starts the next turn by itself, and the finish is alerted once, when that turn ends (a turn is held at most 30 minutes). A subagent that ends leaves a card in the chat with its answer (for OpenCode, one run in the background; a foreground one's answer is its call's output), and a Claude Code or OpenCode subagent whose pane no longer runs that session reads as lost.
 
 A pane's plan is the task list a Claude Code agent keeps (`TaskCreate` / `TaskUpdate`) or the checklist Codex keeps (`update_plan`), read back from the session's transcript. While there is one, the background-task button by the message box starts with **Plan** and how many of its steps are done (`2/5`); the same button opens one list with the plan's steps first and the background tasks below. Steps are listed so a step comes after the steps it waits on (Claude Code's `blockedBy`; a Codex step waits on the one before it). The running step says what it does now, and each step shows how long it took. The sidebar row carries the same count. Claude Code empties its task list once every task is done, and so does this: the first task after that starts a new plan. A teammate of an agent team that changes a task writes that in its own transcript, which is not read.
+
+### Letta Code
+
+Letta Code's chat reads the transcript the pane's own `letta` process keeps
+(`~/.letta/transcripts`, or its `LETTA_CONFIG_DIR` / `LETTA_TRANSCRIPT_ROOT`), when three facts
+agree: herdr's Letta integration (`herdr integration install letta`, experimental; start `letta`
+once before installing it, since it needs `~/.letta`) names a
+conversation for the pane; Letta's own record in the project folder (`.letta/settings.local.json`)
+names the same one, was last written more than two seconds before that `letta` process started and
+is writable by it; and `letta` is still
+in the folder it started in (for a local-backend conversation, Letta's local store must also name
+that agent for it). That holds when `letta` resumes the conversation it last had in that folder
+(`letta`, or `letta --conversation <id>` on that one). After `/new` or `/resume`, a start on another
+conversation (`--new` included), once `letta` has moved to another folder (its SetWorkingDirectory
+or EnterWorktree tools), or another `letta` writing that record, Chat uses the terminal's text
+until `letta` starts again on that conversation. In the home folder it always does. It also does
+while another pane runs `letta` in the same folder or reports the same conversation, and until the conversation's
+first turn on this PC has ended; Chat comes back by itself once that is no longer so.
+
+Letta writes a turn only when it ends, so a turn appears once it is done, and a cancelled one
+never does. While it runs, Chat shows the turns written so far and **Working…**, and a message you
+sent stays a faded bubble for a minute at most; the Terminal shows the turn as it happens. Only
+turns Letta Code wrote on this PC show. Choose **Letta Code** in **New workspace**, **New tab with
+agent…** or **New worktree** where `letta` is installed, or run `letta` in a herdr pane's
+**Terminal**.
+
+Known limits ([#2314](https://github.com/devswha/ovis/issues/2314)): nothing herdr or Letta
+reports says which conversation a running `letta` is on now (herdr 0.9.5 keeps the first report of
+a `letta` process, and Letta records its conversation per folder, not per process), so the binding
+rests on the checks above. Each of three rare cases needs a folder move by Letta's own tools plus
+a `/new` or `/resume` Ovis did not see, and then Chat can show the conversation the pane left: a
+`letta` whose `PWD` names another folder (one started with `env -C`, say) that later moves into
+exactly that folder before Ovis first looks at it; a `letta` that leaves its start folder,
+switches conversation there and comes back before Ovis looks again; and that same round trip
+across an Ovis restart, which forgets where it saw each `letta` before. Check the Terminal when Chat looks behind.
 
 ## Features
 
 | | |
 | --- | --- |
-| **Read the conversation** | Prompts and Markdown answers (links, code blocks, tables). Each turn's commands, edits and progress are folded into one "Worked for …" block. Copy an answer as Markdown or plain text. In a pi pane, a picture the agent's own tool opened shows inside that tool's row. A picture opens in a full-screen viewer: zoom at the pointer, pan, step through the message's other pictures, **Copy image** and **Download**. Skill names an answer writes (`/name`, or `$name` for Codex) show as chips when the pane's own command list names that skill. Once you have sent four or more messages, a rail of dashes at the left, one per message you sent, jumps between them (not on a phone, or when the chat column leaves less than 32 px of margin at each side). |
+| **Read the conversation** | Prompts and Markdown answers (links, code blocks, tables). Each turn's commands, edits and progress are folded into one "Worked for …" block. Copy an answer as Markdown or plain text. A Claude Code bash-mode command (`!`) shows as one card: the command, then what it printed, with what it wrote to stderr in red. In a pi, omp, Claude Code or Codex pane, a picture the agent's own tool opened shows inside that tool's row. A picture opens in a full-screen viewer: zoom at the pointer, pan, step through the message's other pictures, **Copy image** and **Download**. Skill names an answer writes (`/name`, or `$name` for Codex) show as chips when the pane's own command list names that skill. Once you have sent four or more messages, a rail of dashes at the left, one per message you sent, jumps between them (not on a phone, or when the chat column leaves less than 32 px of margin at each side). |
 | **Follow the plan** | A supported todo-tool call folds into the turn's work block like any tool: it reads as the done count or the step it took, and opened, as the whole list by phase. |
 | **Rewind in terminal** | Claude Code, grok and Antigravity messages offer **Rewind in terminal** beside Copy. It sends nothing, preserves your draft and opens the same pane with a hint to run `/rewind`. Choose and confirm there. Chat follows the native conversation once the agent records its new branch; Claude Code does so on the next prompt or command. |
-| **Drop into the real terminal** | xterm.js on the live pane: full-screen TUIs, raw keys and herdr's scrollback, shared with your own herdr TUI. Drag to select and it is copied on release; the wheel or the screen's edge scrolls further back while you drag. Ctrl+C copies a selection instead of interrupting. **Quote in message**, shown while text is selected, adds the selection to that pane's chat draft in a code block headed by the pane name, and its line numbers when herdr reports them; nothing is sent. |
+| **Drop into the real terminal** | xterm.js 6 on the live pane: full-screen TUIs, raw keys and herdr's scrollback, shared with your own herdr TUI. When a program marks its redraws as synchronized output, as herdr does, xterm.js 6 waits for the whole frame (up to a second) before drawing it, so a fast-redrawing agent does not show half of its new screen over its old one. In a program that reads the mouse, hold Alt to scroll it faster with a trackpad. Drag to select and it is copied on release, unless herdr's `[ui] copy_on_select` is off on the PC serving Ovis: then it is only selected, and stays selected under the pointer until Ctrl+C or Copy copies it. The wheel or the screen's edge scrolls further back while you drag. In an OpenCode pane a drag goes to OpenCode, which selects inside its own panel and copies it itself, as in a native terminal; hold Shift (Option on a Mac) to select and copy in Ovis instead, which is also the way when OpenCode's own copy does not reach this device's clipboard. Ctrl+C copies a selection instead of interrupting. **Quote in message**, shown while text is selected, adds the selection to that pane's chat draft in a code block headed by the pane name, and its line numbers when herdr reports them; nothing is sent. |
 | **Find in terminal** | **More → Find in terminal** or Mod+Shift+F searches literal text in herdr's history, with a match count, previous/next navigation and visible match highlights. Search jumps and scrolling move the same viewport in every attached client, including the TUI. Older bridges retain search navigation without automatic highlights. |
 | **Jump across PCs** | The command palette (Mod+Shift+K) searches all connected PCs at once by PC, workspace, branch, tab, pane title or agent kind. PC names distinguish results, and Recent remembers each pane's PC. Picking a result opens that PC and pane directly. Disconnected PCs are omitted; app and plugin actions remain on the currently selected PC. It also finds Settings pages and actions by related words (try `theme` or `font`), and browses folders: type a path such as `~/`, or pick **Browse folders**, and the folder you reach opens in Files. |
 | **Answer prompts** | Approval, question and plan menus become cards. Tap an option, or type its number in the composer. The server checks that the menu is still current before answering. |
@@ -238,10 +315,15 @@ A pane's plan is the task list a Claude Code agent keeps (`TaskCreate` / `TaskUp
 | **Follow every agent** | Live RUN / INPUT / DONE / READY status for all panes, and alerts when an agent needs input, finishes or its terminal ends. |
 | **Open what agents make** | A file path in an answer opens in a viewer (images, video, audio, PDF, text), or find it with **Browse files**, and download it to your phone. A source file opens whole up to 8 MB and 200,000 lines; past 2,000 lines it scrolls as a window of rows, colored up to 256 KB and 5,000 lines and plain beyond. A link with `:line` or `#L12` opens at that line. |
 | **See what changed** | **Browse files → Changes** lists what changed in the git repository the pane sits in: the **Working tree**, what is **Staged**, or two **Commits** you name, as a folder tree with git's status letter and the added and removed lines. A row opens its diff, **Unified** or **Split** (Settings → Chat → File viewer → Diff layout; a phone shows one column), with **Copy path**, **Copy patch** and **Open file**. The files a turn's edit tools changed, listed in its work block, open the same diff. It only reads; a remote PC's repository is read on that PC. |
-| **Manage sessions** | Start an agent in a folder you type or pick with **Browse**. In New workspace, Browse filters the currently loaded folders as you type (case-insensitive); opening a folder updates Directory, so **Start** uses that path even without **Use this folder** (which closes Browse), and a folder under home stays written as `~/…`. **New folder** (the folder-plus button in Browse's bar) makes a folder inside the one shown and opens it. It does not search subfolders or folders beyond the displayed 500. Add a tab to a workspace (as herdr's prefix+c), switch tabs from the strip over the pane, rename workspaces from their ⋯/right-click menu and panes from their own menu, reorder workspaces (drag a row, or on a phone long-press it and drag; Alt+Up/Down moves a focused row one step), and jump anywhere from the command palette. |
-| **Speak instead of typing** | A mic beside Attach in the composer and beside Send in the terminal input line. Hold to talk or tap twice; the words land at the caret and are never sent by themselves. See [Voice input](#voice-input). |
+| **Manage sessions** | Start an agent in a folder you type or pick with **Browse**. In New workspace, Browse filters the currently loaded folders as you type (case-insensitive); opening a folder updates Directory, so **Start** uses that path even without **Use this folder** (which closes Browse), and a folder under home stays written as `~/…`. **New folder** (the folder-plus button in Browse's bar) makes a folder inside the one shown and opens it. It does not search subfolders or folders beyond the displayed 500. Add a tab to a workspace (as herdr's prefix+c), switch tabs from the strip over the pane, rename workspaces from their ⋯/right-click menu and panes from their own menu, reorder workspaces (drag a row, or on a phone long-press it and drag; Alt+Up/Down moves a focused row one step), and jump anywhere from the command palette. For Claude Code, New workspace and New tab have an **Ultracode** switch under Model and Effort, which asks Claude Code to start the session with Ultracode on at the chosen effort level. It needs Claude Code 2.1.284 or later, a model with xhigh and dynamic workflows on; otherwise Claude Code ignores it without a word (see [Starting an agent with a first message](agent-commands.md#starting-an-agent-with-a-first-message)). |
+| **Speak instead of typing** | A mic beside Attach in the composer and beside Send in the terminal input line. Tap to start and again to finish, or hold it while you talk (not on a touch screen without an API key); the words land at the caret and are never sent by themselves. See [Voice input](#voice-input). |
 | **Watch your plan limits** | Beside the Settings gear, how much of each AI subscription signed in on the PC is left, or used: the session's or the week's limit per account, and every limit with its reset time on a tap. See [Subscription usage](#subscription-usage). |
-| **Make it yours** | English, Korean, Japanese or Simplified Chinese, following the browser or chosen in Settings. Dark, light or system mode, with a dark theme and a light theme picked from Amber, Charcoal, Catppuccin and herdr's built-in themes, compact density, interface size, terminal and chat fonts and sizes (Chromium lists the installed fonts to pick from), a resizable composer, Enter behavior and thinking visibility. |
+| **Make it yours** | English, Korean, Japanese or Simplified Chinese, following the browser or chosen in Settings. Dark, light or system mode, with a dark theme and a light theme picked from Amber, Charcoal, Catppuccin and herdr's built-in themes, compact density, interface font and size, terminal and chat fonts and sizes (Chromium lists the installed fonts to pick from), a resizable composer, Enter behavior and thinking visibility. |
+
+In a chat read from the agent's own session, a message you send shows at once as your own bubble, faded, until the agent writes it as a turn,
+so the chat is never blank between Send and the agent's turn. A small clock joins it when that turn
+has not been written after 5 seconds (the agent may well be working on it already), and a bubble whose turn has not come within a minute goes. A
+command (`/cost`, `! ls`) gets no bubble, since it never comes back as that message.
 
 Every agent has the same chat controls on desktop and phones: Stop while it works with an empty
 draft, Send when you type, and Send at rest. With a draft in the box, Escape stops the agent. Sending during work adds a message bubble above the
@@ -279,24 +361,40 @@ The strip beside the **Settings** gear shows the plan limits of the AI tools sig
 
 Only providers with a sign-in are shown; a GitHub account without Copilot is left out. One PC signed in to two accounts of a provider shows both, each named by its email (a login for Copilot) and told apart by its account id, so the same account found in two places counts once. A credential file, a command's output or a provider's answer over 1 MiB is treated as unreadable. Where each sign-in lives and which endpoint states its limits follows [OpenUsage](https://github.com/robinebers/openusage).
 
-- **Read only.** The server never refreshes a token: Claude, Codex, Cursor and Grok rotate refresh tokens, and a refresh the tool did not make would sign it out. An expired sign-in says so; using the tool once renews it.
+- **Read only.** The server never refreshes a token: Claude, Codex, Cursor and Grok rotate refresh tokens, and a refresh the tool did not make would sign it out. An expired or refused sign-in says so; using the tool once may renew it, and otherwise sign in again. An expired Claude or Codex account (not a hub's) also has **Sign in again**, in Settings and in the usage popover: it opens the official sign-in in a terminal tab for that same account, replacing its expired sign-in instead of adding a new account.
 - **Asked only while someone looks.** Nothing runs in the background. The server asks a provider at most every five minutes, a refresh from the popover at most every 30 seconds, and a provider that answered 429 not before it said to.
 - **Yours to arrange.** Settings → Subscription usage groups accounts by provider, orders accounts within each provider, picks the limit the strip shows (**Weekly** or **Session**), hides any (from the strip and its popover alike), and switches the meters between what is used and what is left. Each account shows whether it comes from **This PC** or **Hub**.
 - **Add an account.** The single **Add account** button lists Claude, Codex, Cursor, GitHub Copilot, Grok, Antigravity and OpenCode, then Hub. Installed CLIs sign in in a new terminal tab; missing ones show an installation hint. Only Claude and Codex offer hub sign-in and a separate `~/.claude-<name>` or `~/.codex-<name>` credential home. Other providers keep their existing home and require **Continue** before replacing a discovered sign-in. Account names use lowercase letters, numbers and hyphens. Codex and Grok use a device code only if their installed help lists it; Cursor prints its URL without opening a server browser. Claude may need a localhost callback. Antigravity gives interactive sign-in guidance rather than guessing a login command. OpenCode plan limits require OpenCode Go/Zen, not an arbitrary provider selected in its CLI. Hub sign-in provides a waiting state and a redirect-paste field.
 - **Connect a hub.** Choose **Hub** (**Import accounts from CLIProxyAPI**) in the same picker to enter its URL and server-saved management key. The connected hub appears as one compact row after the accounts, with **Edit** and **Remove**. Account rows show their source, plan and sign-in status inline.
 - **The server's PC only.** Remote PCs are not included.
+- **Claude's limits from its own status line.** Where Anthropic's usage endpoint is refused (it
+  answers 403 from some networks, which shows as a sign-in that expired when it has not), Claude Code's
+  status line is still handed the five-hour and weekly limits. Turn on **Read Claude's limits from its
+  status line** in Settings → Subscription usage, or **Read from Claude's status line instead** under
+  such a refused Claude account in the usage popover; nothing turns it on for you. The server's PC then
+  adds only `herdr-statusline/` in Claude's config directory (`CLAUDE_CONFIG_DIR`, else `~/.claude`)
+  and points `statusLine` in that directory's `settings.json` at a wrapper there (creating the file
+  when Claude has none yet). The wrapper runs your status line command unchanged (none where none was
+  set) and keeps only the two windows and the account in `~/.herdr/statusline-last.json`, readable only
+  by you. A reading counts only for the account that drew it and only until its window resets, and an
+  answer from the endpoint newer than it wins. Turning it off puts `settings.json` back as it was and
+  deletes what was added; a file there that it did not write is never replaced or deleted. If you have
+  since changed the status line yourself and it still runs the wrapper, turning it off changes nothing
+  and says so: set the status line yourself first. A watching device sees the switch and cannot turn it. It is not available on
+  Windows.
 - On macOS, a server started outside the logged-in desktop session (over SSH, or by a multiplexer started there) reads the keychain item through a one-shot job in that desktop session. A keychain that still cannot be opened shows as such instead of the numbers.
 
 ## Voice input
 
-Turn it on in **Settings → Voice input**, then hold the mic beside Attach (chat) or Send (the terminal input line) and speak, or tap it once to start and again to finish. A pill above the box shows that it is recording, with the level of your voice and a timer; Esc or ✕ cancels. On a desktop, hold Ctrl+Shift+Space (Cmd+Shift+Space on a Mac). The text goes in at the caret and is never sent by itself, so you can read it first.
+Turn it on in **Settings → Voice input**, then tap the mic beside Attach (chat) or Send (the terminal input line), speak, and tap it again to finish; with a mouse, or with an OpenAI API key, you can also hold it while you speak. A pill above the box shows that it is recording, with a timer (and, when the server transcribes, the level of your voice); Esc or ✕ cancels. On a desktop, hold Ctrl+Shift+Space (Cmd+Shift+Space on a Mac). The text goes in at the caret and is never sent by itself, so you can read it first.
 
 - **With an OpenAI API key** (recommended for Korean, Japanese and Chinese mixed with code terms): paste it under **OpenAI API key** in the same section, or set `OVIS_OPENAI_API_KEY` for the server. The server sends each recording to `gpt-transcribe` with the dictation language and English, and the pane's slash commands as hints. In chat, a second call tidies the text (fillers, spacing) and leaves code, paths and flags as you said them; the terminal keeps the words as transcribed unless you turn tidying on there.
+- **In an iPhone home-screen app**, turning Voice input on does not ask for the microphone; the first tap of the mic does.
 - **Dictation language** (same section) is the language you speak. Auto listens for the app's language. While the app's language follows the browser and the browser's first language is one the app is not translated into (Hungarian, German, …), Auto listens for that one instead, so you are not heard as English. Pick another from the list when you dictate in a language your browser does not put first.
   Auto uses browser language tags with a two-letter primary code, which both recognition paths accept. Other tags use the app's language, shown in the Auto label.
-- **Without a key**, the browser recognizes the speech itself. Chrome and Edge send the audio to Google or Microsoft for that; Safari uses Apple's.
+- **Without a key**, the browser recognizes the speech itself. Chrome and Edge send the audio to Google or Microsoft for that; Safari uses Apple's. On a touch screen it starts and finishes with a tap, never a hold: an iPhone starts the browser's recognition only from a tap. When the device's own recognition is off (on an iPhone, Siri & Dictation), the mic says so.
 - **The key stays on the server.** It is kept in `voice.json` under `OVIS_STATE_DIR` (readable by your user only) and never sent to a browser. Every device that can type into your terminals (your own Tailscale login, a paired device, the token) dictates with it, and the use is billed to that key. A device paired to watch only can neither dictate nor change the key.
-- **Silence is not sent.** The recorder runs only while it hears speech, so the pauses before, between and after your words are neither uploaded nor billed. A recording with no speech is not sent at all.
+- **Silence is mostly not sent.** Where the browser lets the recorder pause, it runs only while it hears speech, so the pauses before, between and after your words are neither uploaded nor billed (keeping about a third of a second on either side of each word), and a recording with no speech is not sent at all. A browser that cannot sends the whole recording.
 - Recording needs HTTPS (or `localhost`): the mic is turned off on a plain `http://` LAN address. To use another OpenAI-compatible server, set `OVIS_OPENAI_BASE_URL`; a key from `OVIS_OPENAI_API_KEY` is only ever sent there or to OpenAI.
 
 ## On your phone
@@ -316,7 +414,7 @@ Only devices in your tailnet can open that address. Your own devices get in with
 **Settings → Phone & devices** in the app does this step for you as far as it can: it shows the address Tailscale already serves for this PC as a QR code, or the exact command still to run, and the address it will give.
 
 1. Open the address.
-2. Install the app: in Safari, choose **Share → Add to Home Screen**; in Chrome, choose **Install app**. Each PC installs as an app of its own: set `OVIS_APP_NAME` on each to tell them apart (see [Configuration](#configuration)).
+2. Install the app: in Safari, choose **Share → Add to Home Screen**; in Chrome, open **Settings → Phone & devices** and choose **Install app**; when it shows steps instead of the button, follow them (Chrome's menu has **Install app** or **Add to Home screen**). Each PC installs as an app of its own: set `OVIS_APP_NAME` on each to tell them apart (see [Configuration](#configuration)).
 3. Open the **⋯** menu at the top right and tap **Alerts** to turn on alerts for that device. iPhone needs iOS 16.4+ and the home-screen app.
 
 To check alerts later, choose **Settings → Alerts → Send test**. The result tells you
@@ -345,6 +443,12 @@ On a phone:
   pane is open. It is off by default, releases when the app is hidden, and resumes when
   you return. It needs HTTPS or localhost and browser support; power-saving mode may refuse it.
 
+On an iPad with a hardware keyboard (a Magic Keyboard, say), the small bar that rises from the
+bottom when a field gets the focus (language, arrows, dictation) is iPadOS's shortcuts bar for
+hardware keyboards. It covers the composer, and iPadOS then scrolls the whole page to reveal the
+field on every tap and keystroke. Turn it off with **Settings → General → Keyboard → Shortcuts**;
+the keyboard's globe key still switches languages.
+
 On a computer, install the app from `http://127.0.0.1:7317`. When the app runs on a PC you reach over SSH, tunnel to it first with `ssh -L 7317:127.0.0.1:7317 <this-pc>` and open that address on your own computer; the installer prints this line when you install over SSH.
 
 A plain HTTP LAN address also works in the browser, but it can't install the app or receive push.
@@ -363,6 +467,39 @@ Open Settings → Remote PCs and choose **Add PC** (the command palette has it t
 - **Bridge updates:** when an app update needs a newer bridge, PCs that connect with their saved key are updated in the background.
 
 More in [remote PCs](remote-pcs.md).
+
+### One always-on PC for all your PCs
+
+With several PCs, you don't need Ovis on each of them. Install it on one PC that stays on, such as a desktop or a home server, and add the others to it as remote PCs. That one app reaches them over SSH and sets up its own bridge on each, so the other PCs need only an SSH server (setup brings herdr where it is missing).
+
+1. **Install Ovis on the always-on PC** as in [Quick start](#quick-start), with its [phone address](#on-your-phone).
+2. **On each other PC, stop its own Ovis** if it has one, and keep herdr from starting it again:
+
+   ```sh
+   # an install from before the rename has the old id
+   herdr plugin action invoke devswha.ovis.stop || herdr plugin action invoke devswha.herdr-web-ui.stop
+   herdr plugin disable devswha.ovis || herdr plugin disable devswha.herdr-web-ui
+   ```
+
+   On Windows:
+
+   ```powershell
+   herdr plugin action invoke devswha.ovis.stop-windows
+   herdr plugin disable devswha.ovis
+   # an install from before the rename: devswha.herdr-web-ui.stop-windows, then disable devswha.herdr-web-ui
+   ```
+
+   From a checkout, stop `bun run start` instead, and whatever starts it again.
+
+   An Ovis left running there still works with the always-on app, but it stays a second app: it sends its own alerts and updates only through its own updater, which the always-on app can at most ask to run. Once it is stopped, the always-on app runs its own bridge there and keeps that bridge on its own version.
+3. **Add each PC in the always-on app:** Settings → Remote PCs → **Add PC**, then approve the install once. A PC already saved in herdr (`herdr machine`) is listed there already: choose **Connect**. The always-on PC must reach it over SSH as the account Ovis runs under, so try `ssh <pc>` there first. A PC the app already had, connected while that PC's own Ovis ran, keeps waiting for that Ovis to come back: open its **Manage PC** control in the sidebar, choose **Reconnect / setup** and approve the install.
+4. **Open the always-on PC's address everywhere**, in the other PCs' browsers and on your phone, install the app from there, and turn on **Alerts** in it on each device. Pairings and alerts set up with a PC's own Ovis stay with that Ovis, so pair a device again if the new address asks.
+
+Then there is one app to update: each release is downloaded and built once, the bridges on the other PCs follow it in the background (when SSH gets in with the saved key, without a password; otherwise the PC's card offers the update), push alerts come from one place, and no versions have to be kept in step.
+
+- **While the always-on PC is off or asleep**, the other PCs have no Ovis. herdr keeps running on each of them, and its own terminal app works as before.
+- **A laptop's sessions go through the always-on PC**, so a laptop that cannot reach it, offline for example, has no Ovis for them.
+- **With no PC that stays on**, install Ovis on each PC and keep them on the same version. An app that finds an older Ovis on a PC it adds offers to update it when that Ovis can update itself, and otherwise says why not ([Disconnects and updates](remote-pcs.md#disconnects-and-updates)).
 
 ## Access and safety
 
@@ -441,7 +578,7 @@ The `map` block goes in the `http` section. `proxy_read_timeout` keeps an idle t
 
 Both examples drop a `Tailscale-User-Login` header a visitor sends. That header is how `tailscale serve` names your own login, and on a PC that runs Tailscale the server trusts it from any proxy on this PC, so a public proxy must not pass a visitor's copy on. With a token set the server asks for the token whatever that header says, so a proxy that does pass it on gives a visitor nothing.
 
-**If the proxy already signs people in** (basic auth, Authelia, oauth2-proxy, Cloudflare Access and the like), let it hand the app the token, so nobody signs in twice and Settings stops warning that this address is open. Set `OVIS_TOKEN`, then have the proxy send it on every request it lets through, the terminal's `/ws` connection included. In Caddy, inside `reverse_proxy`:
+**If the proxy already signs people in** (basic auth, Authelia, oauth2-proxy and the like), let it hand the app the token, so nobody signs in twice and Settings stops warning that this address is open. Set `OVIS_TOKEN`, then have the proxy send it on every request it lets through, the terminal's `/ws` connection included. In Caddy, inside `reverse_proxy`:
 
 ```caddyfile
 		header_up Authorization "Bearer {env.OVIS_TOKEN}"
@@ -458,6 +595,25 @@ The proxy's own sign-in is then the only one: anyone it lets through gets in, an
 To check the app's gate, request its `/api/session` directly without a token: it must answer 401.
 If the proxy signs people in, also check that a signed-out visitor cannot reach the app through
 the public address.
+
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/) gives this PC a public HTTPS address on a domain in your Cloudflare account, with no port open on this PC. `cloudflared` does all four things with no settings: Cloudflare keeps the public `Host`, sends `X-Forwarded-For` and `X-Forwarded-Proto: https`, and passes the `/ws` upgrade. Keep `HOST=127.0.0.1` and set `OVIS_TOKEN` first, then [create the tunnel and route its hostname](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/create-local-tunnel/) (`cloudflared tunnel login`, `cloudflared tunnel create ovis`, `cloudflared tunnel route dns ovis herdr.example.com`) and point that hostname at the app in `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: <tunnel ID>
+credentials-file: /home/<you>/.cloudflared/<tunnel ID>.json
+ingress:
+  - hostname: herdr.example.com
+    service: http://127.0.0.1:7317
+  - service: http_status:404
+```
+
+`cloudflared tunnel run ovis` then starts it. A tunnel made in the Cloudflare dashboard ignores this file: set its public hostname's service to `http://127.0.0.1:7317` there.
+
+To try it without an account, `cloudflared tunnel --url http://127.0.0.1:7317` prints a random `https://<words>.trycloudflare.com` address. It changes on every run, and cookies and the installed app are tied to the address, so it suits a test, not a phone you keep using. A quick tunnel also carries no [Server-Sent Events](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/), which the sidebar and the PC list update by, so the terminal works through it but those may not update by themselves.
+
+Unlike the Caddy and nginx examples, Cloudflare passes on a `Tailscale-User-Login` header a visitor sends. On a PC that runs Tailscale, the server still does not take it for your login, because Cloudflare adds the visitor's own address to `X-Forwarded-For`, but do not rely on that: with a token set the header gives a visitor nothing. To drop it as well, add a [Request Header Transform Rule](https://developers.cloudflare.com/rules/transform/request-header-modification/) for that hostname that removes it. Do not set `OVIS_TAILSCALE_SERVE_ONLY=1` on a PC a tunnel reaches.
+
+Cloudflare Access can put its sign-in in front of that hostname, but it cannot hand the app the token as Caddy or nginx can: Access adds no `Authorization` header to the requests it lets through. Keep the app's own gate on behind it. Each device signs in to Access, then enters the token once or is paired from **Settings → Phone & devices**, and stays signed in to the app; Access still asks it to sign in again when its own session runs out. A script reaches the app through Access with an Access [service token](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/), allowed by a **Service Auth** policy on that application, in its `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers, plus `Authorization: Bearer <your token>` for the app. The Android app cannot get past the Access sign-in yet ([#2008](https://github.com/devswha/ovis/issues/2008)): open the address in the phone's browser instead.
 
 [Portal](https://github.com/gosuda/portal-tunnel) gives this PC a public HTTPS address with no account and no domain of your own. From v2.6.1, its `--http-route` does all four things and can drop a header a visitor sends; the plain `portal expose 7317` sends no `X-Forwarded-Proto`, so the app's own requests are refused (`invalid_origin`).
 
@@ -517,9 +673,10 @@ Each `OVIS_*` variable was called `HERDR_WEB_*` before Ovis took its name (`OVIS
 | `OVIS_PUSH_SUBJECT` | this repository's URL | VAPID contact URL or `mailto:` address |
 | `OVIS_BUNDLE_MANIFEST` | unset | Remote-PC bundle manifest (path or URL) that overrides local and published bundles |
 | `OVIS_HERDR_BIN` | `herdr` | herdr executable used for terminal attach |
+| `OVIS_SSH` | `ssh` (Git for Windows' on Windows) | OpenSSH client for [remote PCs](#remote-pcs-over-ssh); the `sftp` and `ssh-keygen` beside it are used too |
 | `OVIS_APP_NAME` | unset (`Ovis`) | The name the installed app has on a phone or computer, for example the PC's name. Each PC installs as an app of its own, and without it they are all called `Ovis`. An app already installed takes the new name when the browser next updates it, usually within a day or two, without a reinstall. Keep it short: a home screen cuts a long label |
 | `OVIS_PASTE_DIR` | `<pane cwd>/.ovis` | Where pasted and attached files are saved: an absolute path or `~/…`. Set it to keep them out of your projects; an agent may then ask before reading one. It covers the panes of this server's PC; a remote PC keeps the default |
-| `OVIS_MEDIA_ROOTS` | unset | Folders besides its own that a rendered HTML page may play a video or sound from, through a symlink beside it or a `../` link: absolute paths separated by `:` (`;` on Windows), for example a network share where recordings are kept. Any page can then find out which files exist there. Unset, a page plays its large videos only from its own folder, so a page that came with its own symlinks cannot find out which of this PC's files exist. A large video plays from an address made for that render: it works only from the device's network address that opened the page, for 30 minutes (reload the page after that), and stops when that device is revoked or signs out. The page's own script can read that address and share it, so for those 30 minutes anyone behind the same network address can play that file too |
+| `OVIS_MEDIA_ROOTS` | unset | Folders besides its own that a rendered HTML page may play a video or sound from, through a symlink beside it or a `../` link: absolute paths separated by `:` (`;` on Windows), for example a network share where recordings are kept. Any page can then find out which files exist there. Unset, a page plays its large videos only from its own folder, so a page that came with its own symlinks cannot find out which of this PC's files exist. A large video plays from an address made for that render: it works only from the device's network address that opened the page, for 30 minutes (reload the page after that), and stops when that device is revoked or signs out. The page's own script can read that address and share it, so for those 30 minutes anyone behind the same network address can play that file too. On a Mac, every folder from the one named here down to the file must belong to the user Ovis runs as and be writable by no group or other user, or nothing in it plays |
 | `CODEX_HOME` | `~/.codex` | Where Codex sessions are read |
 
 ## Updates
@@ -553,11 +710,11 @@ This is for Linux and macOS. On Windows, and for a remote PC, update herdr on th
 
 ## Anonymous usage counts
 
-The app tells its maintainer how many installs there are, which versions they run, which countries the messages come from and which app settings people choose. It sends one message when it is first installed and one each time it runs a new version, plus a daily active message described below. The first time you open the app, a line under the header says so, with **What is sent**, which opens **Settings → About** and its switch. Nothing is sent before that line has been shown, and the first message waits ten minutes after it, so turning the switch off there stops it. An install that saw an older notice sees the expanded notice (version 4, which adds the daily active message) once more, and sends nothing until then. An existing choice to turn counts off stays off.
+The app tells its maintainer how many installs there are, which versions they run, which countries the messages come from and which app settings people choose. It sends one message when it is first installed and one each time it runs a new version, plus a daily active message described below. The first time you open the app, a line under the header says so, with **What is sent**, which opens **Settings → About** and its switch. Nothing is sent before that line has been shown, and the first message waits ten minutes after it, so turning the switch off there stops it. An install that saw an older notice sees the expanded notice (version 5, which adds the day's usage to the daily active message) once more, and sends nothing until then. An existing choice to turn counts off stays off.
 
 A message holds the event (`install` or `update`), a random ID made on this PC, the app's version and the version an update replaced, the OS and CPU architecture, how the app was installed (herdr plugin, `bun run start`, or `bun run server`), and an allowlisted `settings` snapshot. The snapshot contains actual choices for appearance, terminal and chat behavior, notifications, language, voice controls, usage-meter display and the file viewer, including defaults. Custom fonts, shortcuts, key-bar layouts, quick replies and the usage meters' account order are represented by customization flags, not their text, key combinations or account names; quick replies and hidden usage accounts also have counts. Account identifiers and the order itself, paths, addresses, credentials, commands, terminal content, conversations and files are not collected.
 
-The daily active message goes out at most once per UTC day on which the app is opened in a browser. It's dated with that day even when it goes out later (for example after the ten-minute wait), and it's sent again the same day only if a new kind of coding agent shows up. It holds the event (`active`), the day, the random ID, the app's version, the OS and CPU architecture, how the app was installed, and `harnesses`: the kinds of coding agents running in herdr panes, taken from a fixed list (such as `claude` or `codex`), with any other agent counted as `other`. Pane names, pane counts, paths and terminal content are never part of it, and a remote PC's panes aren't included.
+The daily active message goes out at most once per UTC day on which the app is opened in a browser. It's dated with that day even when it goes out later (for example after the ten-minute wait), and it's sent again the same day only if a new kind of coding agent shows up (with the usage already sent), or, at most once an hour and only when the app is opened, when the day's usage below changed (a day's last usage goes out with the next day's message). The usage is counted only once the version 5 notice has been shown: nothing of it from before then is kept or sent. It holds the event (`active`), the day, the random ID, the app's version, the OS and CPU architecture, how the app was installed, `harnesses`: the kinds of coding agents running in herdr panes, taken from a fixed list (such as `claude` or `codex`), with any other agent counted as `other`, and `usage`: the kinds of screen the app was opened on that day (the iOS, Android or Mac app, an installed web app or a browser tab, each on a phone or a computer), how those screens reached this PC (from this PC itself, the local network, Tailscale, Funnel or another proxy), and three counts: prompt answers sent from the app, pane alerts that reached a device, and pane alerts tapped. A count made on a day the app is not opened is never sent. Pane names, pane counts, paths, terminal content, which pane or agent an answer or alert was for, and the time of day are never part of it, and a remote PC's panes aren't included.
 
 The snapshot is the last one a browser reported to this server, not a list of devices or a complete picture of a person. Changing a setting updates that local snapshot but does not send another telemetry event. Before a browser reports, `settings` is `null`. The receiver ([`telemetry/`](../telemetry/README.md)) keeps the event fields, the day and the country the message came from (two letters, such as `KR`, worked out by its host from the connection), and never stores your IP address or anything finer than the country. The random install ID and settings can link events from an installation; they do not guarantee anonymity.
 
@@ -583,8 +740,8 @@ focus where it was. **Mod+Shift+E** focuses the selected pane's input in any mod
 terminal's input line and direct input; it prefers masked input while a secret prompt is open. The
 shortcut can be reassigned or disabled in Settings → Shortcuts.
 
-**New tab**, **Split pane right** and **Split pane down** have no default key: pick one in
-**Settings → Shortcuts**, and the command palette shows it beside the action.
+**New tab**, **Rename tab**, **Split pane right** and **Split pane down** have no default key:
+pick one in **Settings → Shortcuts**, and the command palette shows it beside the action.
 
 **Settings → Shortcuts** changes each app binding or turns it off: press **Record** on a row,
 then the new chord (Escape cancels). A Mod+Shift chord is always safe for the terminal. Other
@@ -665,7 +822,7 @@ flowchart LR
 A React client talks to a Bun HTTP/WebSocket server.
 
 - **Status:** the server reads workspaces and agent status from herdr's Unix socket.
-- **Terminal:** it streams the real `herdr terminal attach` output through a Node PTY sidecar. Browsers watching one pane share one attach, with a bounded replay and backpressure ([terminal flow control](terminal-flow-control.md)).
+- **Terminal:** it streams the real `herdr terminal attach` output through a PTY host: the Rust one (`crates/pty-sidecar`) on Linux and macOS, or the Node sidecar where that cannot run (`OVIS_PTY_SIDECAR=node` asks for it). Browsers watching one pane share one attach, with a bounded replay and backpressure ([terminal flow control](terminal-flow-control.md)).
 - **Chat:** it reads the agents' own session files, and sending types into the same live pane.
 
 herdr owns the processes and the scrollback.
@@ -685,7 +842,7 @@ No, but a phone needs two things Tailscale gives at once: a way to reach the PC 
 
 - **An SSH tunnel from the phone** (Termux, Blink): `ssh -L 7317:127.0.0.1:7317 <pc>`, then open `http://localhost:7317` on the phone. Browsers treat localhost as secure, so installing and alerts should work while the tunnel is up (not verified on iOS yet). The phone still has to reach the PC over SSH.
 - **A VPN into your home** (WireGuard, ZeroTier, a router VPN): the LAN address works in the browser, but a plain `http://` address can neither install the app nor receive alerts.
-- **A reverse proxy with a real certificate** on a domain you own, with a token set and the proxy sending `X-Forwarded-For`: [Behind a reverse proxy](#behind-a-reverse-proxy) has Caddy and nginx examples to copy. This exposes the server to the internet, so read [Access and safety](#access-and-safety) first.
+- **A reverse proxy with a real certificate** on a domain you own, with a token set and the proxy sending `X-Forwarded-For`: [Behind a reverse proxy](#behind-a-reverse-proxy) has Caddy, nginx and Cloudflare Tunnel examples to copy. This exposes the server to the internet, so read [Access and safety](#access-and-safety) first.
 - **A public address with Portal**, a tunnel with no account and no domain of your own, with a long random token set: [Behind a reverse proxy](#behind-a-reverse-proxy) has the command, and **Settings → Phone & devices → Portal** runs it for you. This exposes the server to the internet too.
 </details>
 

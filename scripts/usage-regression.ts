@@ -37,6 +37,8 @@ const RELOADED = "x-usage-qa-reloaded";
 async function staged(context: BrowserContext): Promise<{ asked: string[]; afterReload: string[] }> {
   const asked: string[] = [];
   const afterReload: string[] = [];
+  // the status-line switch reads Claude's settings on the server's PC: answered here, never by the test server
+  await context.route("**/api/usage/statusline", (route) => route.fulfill({ json: { installed: false, supported: true } }));
   await context.route("**/api/usage*", (route) => {
     asked.push(new URL(route.request().url()).search);
     if (route.request().headers()[RELOADED]) afterReload.push(route.request().url());
@@ -116,6 +118,10 @@ export async function checkUsageMeters(browser: Browser, origin: string): Promis
     assert.equal(await page.locator(".usage-chip").nth(1).evaluate((chip) => chip.classList.contains("is-high")), true);
     await settingsButton.click();
     await openSettingsPage(page, "Subscription usage");
+    // the moved order is shared: the page saves it to the server once the settings rest, and a check
+    // run after this one on the same server must not have that save land in the middle of it
+    const orderSaved = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/preferences"
+      && (response.request().postDataJSON() as { settings?: Record<string, unknown> } | null)?.settings?.["usageOrder"] !== undefined, { timeout: 10_000 });
     await page.getByRole("button", { name: "Used", exact: true }).click();
     await page.getByRole("switch", { name: "Show Codex · me@work.example", exact: true }).click();
     await page.getByRole("button", { name: "Move Codex · me@example.com up", exact: true }).click();
@@ -131,19 +137,39 @@ export async function checkUsageMeters(browser: Browser, origin: string): Promis
     await page.keyboard.press("Escape");
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:settings") ?? "{}") as { usageHidden?: string[]; usageCount?: string; usageGlance?: string });
     assert.deepEqual([stored.usageHidden, stored.usageCount, stored.usageGlance], [["codex:work"], "used", "week"]);
+    assert.equal((await orderSaved).status(), 200, "the moved order reached the server before this page closes");
 
     // turned off in Settings: gone, and no longer asked for
     await settingsButton.click();
     await openSettingsPage(page, "Subscription usage");
+    // The strip disappears before the shared preference's debounced save. Reload only once
+    // the server has taken OFF, or its older ON value will turn usage back on during hydration.
+    const usageOffSaved = page.waitForResponse((response) => response.request().method() === "PUT"
+      && new URL(response.url()).pathname === "/api/preferences" && response.ok()
+      && response.request().postDataJSON()?.settings?.showUsage === false, { timeout: 10_000 });
     await toggle.click();
     await strip.waitFor({ state: "detached" });
     assert.equal(await page.locator(".usage-accounts-intro .settings-note").count(), 1);
     assert.equal(await page.locator(".usage-provider").count(), 0, "disabled meters leave no provider placeholders");
+    await usageOffSaved;
     // a request Settings made before the switch can still be on its way here, so the count is of
     // the reloaded page's own requests, not of what arrives after the reload
     await context.setExtraHTTPHeaders({ [RELOADED]: "1" });
+    // In the new document, settings are written when the server's preferences are applied.
+    // Waiting for that write observes hydration, not just the footer's earlier mount.
+    await page.addInitScript(() => {
+      const setItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        setItem.call(this, key, value);
+        if (this === localStorage && key === "ovis:settings" && JSON.parse(value).showUsage === false) {
+          document.documentElement.setAttribute("data-usage-preferences-hydrated", "");
+        }
+      };
+    });
     await page.reload();
     await page.locator(".sidebar-footer").waitFor();
+    // a timeout here, not the assertion below, is how a lost OFF save would now fail
+    await page.locator("html[data-usage-preferences-hydrated]").waitFor();
     assert.deepEqual(afterReload, [], "a hidden strip asks for nothing");
     await context.setExtraHTTPHeaders({});
     assert.deepEqual(errors, []);
@@ -152,6 +178,10 @@ export async function checkUsageMeters(browser: Browser, origin: string): Promis
   }
 
   // on a phone the popover opens inside the drawer and stays on screen
+  // The desktop check saved OFF: seed the shared preference too, or hydration overrides
+  // this phone's local ON value before its strip can be opened.
+  const usageOn = await fetch(`${origin}/api/preferences`, { method: "PUT", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ settings: { showUsage: true } }) });
+  assert.equal(usageOn.status, 200, "the phone's shared usage preference is enabled");
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, locale: "en-US" });
   try {
     await staged(phone);
@@ -182,6 +212,162 @@ export async function checkUsageMeters(browser: Browser, origin: string): Promis
     await phone.close();
   }
   console.log("PASS plan meters beside the Settings gear: session left by default, accounts, order, hiding, week and used, row fit, popover, refresh, Escape, off switch and phone fit");
+  await checkStatuslineSwitch(browser, origin);
+}
+
+/**
+ * A Claude sign-in the usage API refuses although its token has not expired (a blocked network's
+ * 403) offers the status line in the popover; Settings' switch shows and undoes it. Only on or off
+ * is sent, and nothing reaches the test server's own home.
+ */
+async function checkStatuslineSwitch(browser: Browser, origin: string): Promise<void> {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "en-US" });
+  try {
+    let installed = false;
+    const posted: unknown[] = [];
+    await context.route("**/api/usage/statusline", (route) => {
+      if (route.request().method() === "POST") {
+        const body = route.request().postDataJSON() as { enabled: boolean };
+        posted.push(body);
+        installed = body.enabled;
+      }
+      return route.fulfill({ json: { installed, supported: true } });
+    });
+    await context.route("**/api/usage*", (route) => route.fulfill({ json: { providers: [installed ? report().providers[0]!
+      : { id: "claude", key: "claude:u1", account: "me@example.com", plan: "max", problem: "expired", checked_at: null, windows: [], statusline_offer: true }] } satisfies UsageReport }));
+    await context.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ showUsage: true })));
+    const page = await context.newPage();
+    await page.goto(origin);
+    await page.locator(".usage-strip").click();
+    const offer = page.getByRole("button", { name: "Read from Claude's status line instead", exact: true });
+    await offer.click();
+    // turned on, the limits are asked for again at once: the offer goes and the windows come
+    await offer.waitFor({ state: "detached" });
+    await page.locator(".usage-row").first().waitFor();
+    assert.deepEqual(posted, [{ enabled: true }]);
+
+    await page.keyboard.press("Escape");
+    await page.locator(".sidebar-footer-row .sidebar-footer-action").click();
+    await openSettingsPage(page, "Subscription usage");
+    const statusline = page.getByRole("switch", { name: "Read Claude's limits from its status line", exact: true });
+    await page.waitForFunction(() => document.querySelector('[role="switch"][aria-label="Read Claude\'s limits from its status line"]')?.getAttribute("aria-checked") === "true");
+    await statusline.click();
+    await page.waitForFunction(() => document.querySelector('[role="switch"][aria-label="Read Claude\'s limits from its status line"]')?.getAttribute("aria-checked") === "false");
+    assert.deepEqual(posted, [{ enabled: true }, { enabled: false }]);
+  } finally {
+    await context.close();
+  }
+  console.log("PASS a refused Claude sign-in offers the status line in place; Settings' switch shows and undoes it, sending only on or off");
+}
+
+/** An expired sign-in on this PC, one through the hub and Antigravity's, each expired: only the first can sign in again here. */
+const expiredReport = (): UsageReport => ({
+  providers: [
+    { id: "claude", key: "claude:u1", account: "me@example.com", plan: "max", problem: null, checked_at: at(0), windows: [{ kind: "session", scope: null, used_percent: 42, resets_at: at(2), starts_at: null }] },
+    { id: "claude", key: "claude:team", account: "me@team.example", plan: "team", problem: "expired", checked_at: null, windows: [] },
+    { id: "codex", key: "codex:cliproxy:hub-1", account: "hub@example.com", plan: "plus", problem: "expired", checked_at: null, windows: [] },
+    { id: "antigravity", key: "antigravity@keychain", account: null, plan: null, problem: "expired", checked_at: null, windows: [] },
+  ],
+});
+
+/**
+ * Sign in again: offered for the expired account on this PC, in the popover and in its Settings row,
+ * never for the hub's or Antigravity's; it asks the server by the account's key and hands the tab over.
+ */
+export async function checkUsageSignInAgain(browser: Browser, origin: string): Promise<void> {
+  // the account order is shared through the server: whatever an earlier check on it saved (checkUsageMeters
+  // moves an account) would put its accounts first here, so this check starts from none
+  const reset = await fetch(`${origin}/api/preferences`, { method: "PUT", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ settings: { usageOrder: [] } }) });
+  assert.equal(reset.status, 200, "the shared account order is cleared");
+  for (const phone of [false, true]) {
+    const context = await browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: 1280, height: 800 }, locale: "en-US", ...(phone ? { hasTouch: true, isMobile: true } : {}) });
+    try {
+      const posted: unknown[] = [];
+      const answers = [
+        { status: 409, json: { error: { code: "cli_unavailable", message: "Install the official CLI on this PC before signing in" } } },
+        { status: 200, json: { pane_id: "w9:p9", workspace_id: "w9", manual: false, device_auth: false } },
+      ];
+      await context.route("**/api/usage*", (route) => route.fulfill({ json: expiredReport() }));
+      await context.route("**/api/usage/login", (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        posted.push(route.request().postDataJSON());
+        return route.fulfill(answers[(posted.length - 1) % answers.length]!);
+      });
+      await context.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ showUsage: true })));
+      const page = await context.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.goto(origin);
+      const openDrawer = async () => { if (phone) await page.getByRole("button", { name: "Open workspace list", exact: true }).click(); };
+      await openDrawer();
+      await page.locator(".usage-strip").click();
+      const popover = page.getByRole("dialog", { name: "Subscription usage", exact: true });
+      await popover.waitFor();
+      const again = popover.getByRole("button", { name: /^Sign in again/ });
+      assert.equal(await again.count(), 1, "only the expired account on this PC can sign in again");
+      assert.equal(await again.getAttribute("aria-label"), "Sign in again to Claude · me@team.example");
+      assert.deepEqual(await popover.locator(".usage-note.is-problem").allTextContents(), [
+        "Sign-in expired.", "Sign-in expired. Open Codex to renew it.", "Sign-in expired. Open Antigravity to renew it.",
+      ]);
+      if (phone) {
+        const box = await popover.boundingBox();
+        assert.ok(box && box.x >= 0 && box.x + box.width <= 390, "the popover stays inside the phone's screen");
+      }
+      // a refusal is said where the button is, and the popover stays
+      await again.click();
+      await popover.getByRole("alert").filter({ hasText: "Install the official CLI on this PC before signing in" }).waitFor();
+      // started: the popover gives way to the sign-in tab
+      await again.click();
+      await popover.waitFor({ state: "detached" });
+
+      await openDrawer();
+      await page.locator(".sidebar-footer-row .sidebar-footer-action").click();
+      await openSettingsPage(page, "Subscription usage");
+      const rows = page.locator(".usage-accounts-row");
+      // the rows come with the usage report, loaded once the page is shown: count them once they are
+      await rows.nth(3).waitFor();
+      assert.equal(await rows.count(), 4);
+      const rowAgain = page.locator(".settings-dialog").getByRole("button", { name: /^Sign in again/ });
+      assert.equal(await rowAgain.count(), 1, "Settings offers it on the expired row of this PC only");
+      assert.equal(await rows.nth(1).getByRole("button", { name: "Sign in again to Claude · me@team.example", exact: true }).count(), 1);
+      assert.equal(await rows.evaluateAll((all) => all.every((row) => row.scrollWidth <= row.clientWidth)), true, "each account row fits, the button included");
+      await rowAgain.click();
+      await page.locator(".settings-dialog").getByRole("alert").filter({ hasText: "Install the official CLI" }).waitFor();
+      await rowAgain.click();
+      await page.locator(".settings-dialog").waitFor({ state: "detached" });
+      assert.deepEqual(posted, Array(4).fill({ provider: "claude", account: "claude:team" }), "the server is asked by the account's key, never a path");
+      assert.deepEqual(errors, []);
+    } finally {
+      await context.close();
+    }
+  }
+  // a watching device signs in to nothing: no button in either place, and the popover says how instead
+  const watching = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "en-US" });
+  try {
+    await watching.route("**/api/usage*", (route) => route.fulfill({ json: expiredReport() }));
+    await watching.route("**/api/health*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json() as { auth: Record<string, unknown> };
+      await route.fulfill({ response, json: { ...body, auth: { ...body.auth, role: "watch" } } });
+    });
+    await watching.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ showUsage: true })));
+    const page = await watching.newPage();
+    await page.goto(origin);
+    await page.locator(".usage-strip").click();
+    const popover = page.getByRole("dialog", { name: "Subscription usage", exact: true });
+    await popover.waitFor();
+    assert.equal(await popover.getByRole("button", { name: /^Sign in again/ }).count(), 0, "no Sign in again in a watching device's popover");
+    assert.equal(await popover.locator(".usage-note.is-problem").first().textContent(), "Sign-in expired. Open Claude to renew it.");
+    await page.keyboard.press("Escape");
+    await page.locator(".sidebar-footer-row .sidebar-footer-action").click();
+    await openSettingsPage(page, "Subscription usage");
+    await page.locator(".usage-accounts-row").nth(3).waitFor();
+    assert.equal(await page.locator(".usage-accounts-row").count(), 4);
+    assert.equal(await page.locator(".settings-dialog").getByRole("button", { name: /^Sign in again/ }).count(), 0, "no Sign in again in a watching device's Settings");
+  } finally {
+    await watching.close();
+  }
+  console.log("PASS Sign in again: offered only for an expired account on this PC, in the popover and its Settings row, refusal shown, tab handed over, phone fit, none on a watching device");
 }
 
 if (import.meta.main) {
@@ -191,17 +377,18 @@ if (import.meta.main) {
   const { chromium } = await import("playwright-core");
   const { chromePath } = await import("./chrome-path.ts");
   const { createServer } = await import("../server/index.ts");
-  const { UsageService } = await import("../server/usage.ts");
+  const { systemUsageContext, UsageService } = await import("../server/usage.ts");
   const root = mkdtempSync(join(tmpdir(), "herdr-usage-meters-"));
   let server: ReturnType<typeof createServer> | undefined;
   let browser: Browser | undefined;
   try {
     server = createServer({
       port: 0, hostname: "127.0.0.1", token: "", stateDir: root,
-      usage: new UsageService(undefined, []),
+      usage: new UsageService({ ...systemUsageContext(), home: root, env: {} }, []),
     });
     browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
     await checkUsageMeters(browser, `http://127.0.0.1:${server.port}`);
+    await checkUsageSignInAgain(browser, `http://127.0.0.1:${server.port}`);
   } finally {
     await browser?.close();
     server?.stop();

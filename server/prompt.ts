@@ -1,138 +1,48 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { HerdrPane, InteractivePrompt, InteractivePromptOption, PanePromptResponse, PromptAnswer, SessionSnapshot, SlashCommand } from "../shared/protocol.ts";
+import type { HerdrPane, InteractivePrompt, PanePromptResponse, PromptAnswer, SessionSnapshot, SlashCommand } from "../shared/protocol.ts";
 import { builtinCommands, cachedPaneCommands } from "./commands.ts";
-import { agentProcesses, readCommandTranscript } from "./conversation.ts";
+import { agentProcesses, ompTranscriptPath, paneRunsOmo, readCommandTranscript } from "./conversation.ts";
+import { agentProcessInFront } from "./agent-process.ts";
 import { resolveAgent } from "./pane-context.ts";
 import { processAlive, processStartedAt, processStartUpperBoundAsync } from "./process-start.ts";
 import { commandInvocations, commandOutcome, CommandReservations, dialogSettlingScreen, ownsCommandDialog, WINDOW_MS as COMMAND_WINDOW_MS, type CommandSend } from "./outcome.ts";
-import { codexTranscriptPath, paneCodexHome, unansweredCodexQuestions, type QueuedQuestion } from "./codex.ts";
-import { HerdrError, paneProcessInfo, paneRead, paneScrollInfo, paneSendKeys, paneSendText, sessionSnapshot, type ProcessInfo } from "./herdr/client.ts";
-import { omoTranscriptForPane } from "./omo.ts";
-import { OmoAskReader, omoAsksAfter, type OmoAskCall, type OmoAsks } from "./omo-ask.ts";
+import { codexTranscriptPath, paneCodexHome, unansweredCodexQuestions } from "./codex.ts";
+import { HerdrError, paneProcessInfo, paneRead, paneScrollInfo, paneSendKeys, paneSendText, type ProcessInfo } from "./herdr/client.ts";
+import { piTranscriptPath } from "./pi.ts";
+import { heldOmoProcess } from "./omo.ts";
+import { OmoAskReader, ompAsksAfter } from "./omo-ask.ts";
+import { ompMarkdownPrompt } from "./omp-ask.ts";
+import { answerPiAskUser, bindPiAsk, piAskActivity, piAskUserPrompt } from "./pi-ask-bridge.ts";
 import { badRequest, errorResponse, jsonResponse, setRequestRoute } from "./http.ts";
 import { claudePlanFile } from "./claude-plan.ts";
 import { listPendingQuestionForms, openCodeService, replyOpenCodeForm } from "./opencode-service.ts";
 import { opencodeSessionId } from "./opencode.ts";
 import { registry } from "./dialogs/registry.ts";
-import { claudeRewindPanelBelow } from "./dialogs/claude.ts";
-import { ANSI_RE, type AnswerStep, KEY, type OmoAsk, type OpenCodePromptEntry, PI_MODEL_HINT_RE, type ParsedPrompt, SOLID_RULE_RE, cleanLine, findLastIndex, finishPrompt, isDivider, keySteps, navigationKeys, normalizeText, parsedByPublicPrompt, publicPrompt, wrapped } from "./dialogs/shared.ts";
+import { ANSI_RE, type AnswerStep, KEY, type OmoAsk, type ParsedPrompt, type PromptDraft, finishPrompt, keySteps, navigationKeys, own, parsedByPublicPrompt, publicPrompt } from "./dialogs/shared.ts";
 import { executeInteractionPlan } from "./dialogs/interaction-plan.ts";
-import { openCodeV1QuestionActive } from "./dialogs/opencode.ts";
-import { CODEX_ASK_HINT_RE, CODEX_ASYNC_ASK_HINT_RE, CODEX_CONTINUE_HINT_RE, CODEX_QUEUE_HEADER_RE, codexModelListWaits } from "./dialogs/codex.ts";
-import { OMO_FOOTER_LINES, OMO_HINT_LINES, OMO_NOT_FOOTER_RE, OMO_OPTIONS_HINT_RE, OMO_PENDING_HINT_RE, OMO_REVIEW_HINT_RE, OMO_TYPING_HINT_RE, omoModelListWaits, sameText } from "./dialogs/omo.ts";
-import { CLAUDE_ASK_HINT_RE, CLAUDE_CONFIRM_HINT_RE, CLAUDE_EFFORT_GUARD_RE, CLAUDE_EFFORT_HINT_RE, INVISIBLE_CHAR_RE, claudeModelListWaits, withoutClaudeTasks } from "./dialogs/claude.ts";
-import { OMP_CLIPPED_SINGLE_HINT_RE, OMP_MULTI_HINT_RE, OMP_REVIEW_HINT_RE, OMP_SINGLE_CLIPPED_HINT_RE, OMP_SINGLE_HINT_RE } from "./dialogs/omp.ts";
-import { HERMES_HINT_RE } from "./dialogs/hermes.ts";
-import { PI_INPUT_HINT_RE, PI_MENU_HINT_RE, parsePiDialog } from "./dialogs/pi.ts";
-import { parseFallbackPrompt } from "./dialogs/fallback.ts";
+import { liveScreen, parsePrompt, promptTailIsActive } from "./dialogs/live.ts";
+import { sameText } from "./dialogs/omo.ts";
+import { INVISIBLE_CHAR_RE } from "./dialogs/claude.ts";
+import { parsePiDialog } from "./dialogs/pi.ts";
+import { pendingPiQuestionnaires } from "./pi-questionnaire.ts";
+import { isPiQuestionnaireScreen, parsePiQuestionnaire, piQuestionnaireInputMatches, piQuestionnaireOf } from "./dialogs/pi-questionnaire.ts";
+import { parsePiAsk } from "./dialogs/pi-ask.ts";
+import { navigatePiAsk } from "./dialogs/pi-ask-navigate.ts";
+import { gjcCustomEditorMatches, parseFallbackPrompt } from "./dialogs/fallback.ts";
+import { SUGGESTION_READ_MS, claudeHeldIsGrey, claudeInputDraft, claudeRestoredDraft, parseClaudeSuggestion, viewportShowsLive } from "./claude-input.ts";
+import { OMO_FORM_RE, omoAskOf, omoAsksFor } from "./omo-questions.ts";
+import { codexQueuedPrompt, queuedQuestionCount, type QueueFront } from "./codex-queue.ts";
+import { OpenCodePromptState } from "./opencode-prompt.ts";
 export { removedInvisible } from "./dialogs/claude.ts";
 export { INVISIBLE_CHAR_RE } from "./dialogs/claude.ts";
 export type { OmoAsk } from "./dialogs/shared.ts";
 export { parseFallbackPrompt } from "./dialogs/fallback.ts";
-
-const CODEX_QUEUE_COUNT_RE = /^\?\s*(\d+)\s+questions?\b/;
-/**
- * A row of OmO's omo-task widget under the input box (omo-ai plugin/extensions/omo-task.js): a live row
- * `<spinner> <task> · <route> · <state>[ · <elapsed>]` with the route `agent:X`, `category:X` or `task`,
- * a finished row `<task>|<route> <mode> <status>`, or the `+N more` line after five rows.
- */
-const OMO_TASK_ROW_RE = /^(?:[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏‖] .+? · (?:agent:|category:|task(?: ·|$))|[^|]+\|(?:agent:|category:|task\b)|\+\d+ more$)/u;
-/** a spinner row with no task route: another program's output, never the widget */
-const OMO_SPINNER_ROW_RE = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏‖] /u;
-/** a narrow pane wraps a task row's last fields (ending in the elapsed time) onto one more short line */
-const OMO_TASK_TAIL_RE = /^(?:[^\u00b7]+ \u00b7 )*\d+[hms](?: \d+[hms])*$/u;
-const OMO_TASK_WRAP_MAX = 32;
-/** where each of the form's hints ends, however a narrow pane wraps it */
-const OMO_HINT_END_RE = /\besc (?:cancel|back|discard)$/;
-/** OmO's apparently empty input box; never sufficient evidence for sending text into it. */
-const OMO_EMPTY_BOX_RE = /^[❯›>]$/;
-
-/**
- * How many questions wait in Codex's collapsed queue at the bottom of the screen, with the
- * main prompt right under it; 0 otherwise. The card (codexQueuedPrompt) and the send path
- * (codexQuestionsCollapsed) both read this count, so they cannot disagree.
- * - A message of the user's own waiting to be submitted replaces the questions' block
- *   (alt+↑ then opens nothing, checked on Codex 0.156.1): no count then.
- * - An open question (its "enter submit … skip" hint) or an approval under the queue holds the
- *   input itself: no count either.
- */
-function queuedQuestionCount(screen: string): number {
-  const lines = screen.replace(ANSI_RE, "").split(/\r?\n/).map(cleanLine).filter(Boolean);
-  const header = findLastIndex(lines, (line) => CODEX_QUEUE_HEADER_RE.test(line));
-  // the queue sits right above the main prompt and its status line
-  if (header < 0 || lines.length - header > 16) return 0;
-  if (lines.slice(header).some((line) => /^↳\s/.test(line) || /Messages to be submitted/i.test(line) || CODEX_ASYNC_ASK_HINT_RE.test(line))) return 0;
-  const at = lines.findIndex((line, index) => index > header && index <= header + 7 && CODEX_QUEUE_COUNT_RE.test(line));
-  // (the main prompt, not a numbered menu row the parser did not recognise)
-  if (at < 0 || !/\bto answer$/i.test(lines[at + 1] ?? "") || !/^›\s(?!\d+\.)/.test(lines[at + 2] ?? "")) return 0;
-  return Number(lines[at]!.match(CODEX_QUEUE_COUNT_RE)![1]);
-}
-
-/** The question a pane's queue opened on, as it showed there, when that was not the card's. */
-export interface QueueFront { question: string; options: string[] }
-
-/**
- * The collapsed queue shows only a count: the card takes its first question from the
- * rollout, the newest `count` unanswered ones (a skipped question leaves no record).
- */
-function queuedPrompt(count: number, unanswered: QueuedQuestion[], front: QueueFront | null = null): ParsedPrompt | null {
-  const waiting = unanswered.slice(-count);
-  // the question the queue opened on last time, when that was not the newest guess: by its
-  // title and its options, the newest such one (an older skipped one may share the title)
-  const first = (front !== null ? [...unanswered].reverse().find((question) => sameText(front.question, question.title)
-    && question.options.length === front.options.length && question.options.every((option, index) => sameText(front.options[index]!, option))) : undefined)
-    ?? waiting[0];
-  if (!first || waiting.length !== count || !first.title.trim()) return null;
-  return finishPrompt("codex", {
-    kind: "question", title: count > 1 ? `Question 1 of ${count}` : "Question", question: normalizeText(first.title), body: null,
-    options: first.options.map((label) => ({ label, description: null })),
-    multi_select: false, custom_option_index: first.options.length, queued: "collapsed",
-  }, {
-    responder: "codex-queued-question", menuLabels: first.options.length ? [...first.options, "Other"] : [],
-    selectedIndex: 0, checkedOptionIndices: [], customMenuIndex: first.options.length, rejectWithEscapeIndex: null,
-  });
-}
-
-/** A call's questions, or null for arguments that are not the shape omo asks with. */
-function omoAskOf(call: OmoAskCall): OmoAsk | null {
-  const questions = (call.args as { questions?: unknown } | null | undefined)?.questions;
-  if (!Array.isArray(questions) || questions.length === 0) return null;
-  const ask: OmoAsk = { id: call.id, questions: [], wait: call.wait };
-  for (const question of questions as Record<string, unknown>[]) {
-    if (typeof question?.["header"] !== "string" || typeof question["question"] !== "string" || (question["options"] !== undefined && !Array.isArray(question["options"]))) return null;
-    const options = ((question["options"] ?? []) as Record<string, unknown>[]).map((option) => ({
-      label: typeof option?.["label"] === "string" ? option["label"] : "",
-      description: typeof option?.["description"] === "string" && option["description"] ? option["description"] : null,
-    }));
-    if (options.some((option) => !option.label)) return null;
-    ask.questions.push({ header: question["header"], question: question["question"], multiSelect: question["multiSelect"] === true, options });
-  }
-  return ask;
-}
-
-/** the records that can open or close a question; the rest of a session's tail is not parsed */
-const OMO_ASK_RECORD_RE = /"role":"(?:assistant|toolResult|user)"|ask-user:settlement/;
-
-/**
- * The questions omo's session (its .jsonl, or the tail of it) still has open (omo-ask.ts), newest
- * first: a waiting call until its tool result, a non-waiting call until it is settled. Calls whose arguments are not the shape omo asks
- * with are left out.
- */
-export function openOmoAsks(jsonl: string): OmoAsk[] {
-  let open: OmoAsks = [];
-  for (const line of jsonl.split("\n")) {
-    if (!OMO_ASK_RECORD_RE.test(line)) continue;
-    let entry: unknown;
-    try { entry = JSON.parse(line); } catch { continue; }
-    if (typeof entry === "object" && entry !== null) open = omoAsksAfter(open, entry);
-  }
-  return open.flatMap((call) => omoAskOf(call) ?? []).reverse();
-}
-
-/** The newest question omo's session has open, or null. */
-export function pendingOmoAsk(jsonl: string): OmoAsk | null {
-  return openOmoAsks(jsonl)[0] ?? null;
-}
+export { CLAUDE_CLEAR_INPUT_KEYS, INPUT_BOX_SHOWN_CHARS, claudeClearableDraft, claudeHeldIsGrey, claudeInputBoxContent, claudeInputBoxText, claudeInputDraft, claudeInputEmpty, claudeRestoredDraft, claudeRewindOpen, historyEndShowsLive, isClaudeHeld, parseClaudeSuggestion, shownInputBox, viewportShowsLive } from "./claude-input.ts";
+export { hermesInputDraft } from "./hermes-input.ts";
+export { OpenCodePromptState } from "./opencode-prompt.ts";
+export { openOmoAsks, pendingOmoAsk } from "./omo-questions.ts";
+export { codexQueuedPrompt } from "./codex-queue.ts";
+export type { QueueFront } from "./codex-queue.ts";
 
 /** What the chat last sent to each pane, while it carried invisible characters (noteSubmitted). */
 const heldCandidates = new Map<string, { text: string; at: number }>();
@@ -146,13 +56,18 @@ type PaneCommandSend = CommandSend & {
     discovering: boolean;
     identity: string;
     /** The agent process the send went to (bindCommandProcess); null when it could not be told, none when not bound. */
-    process?: { readonly pid: number; readonly started: number | null } | null;
+    process?: { readonly pid: number; readonly started: number | null; readonly held?: true } | null;
     /**
      * No foreground process matched the agent when binding (native Windows lists only the shell; an executable
      * named otherwise than its kind), or the read failed: nothing can show a replacement, so the session the same
      * agent reports in this terminal is adopted.
      */
     unmatched?: true;
+    /**
+     * The agent herdr named for the pane when the send was made: herdr names an OmO pane `pi`, and a session it
+     * reports there is labelled so, never `omo`. An unmatched send adopts a session under this label too.
+     */
+    readonly label?: string | null;
     /**
      * The identity herdr still reported from an earlier process when this send went to a later one (a restarted
      * Claude Code keeps its old session id until its first turn): the send waits for its own session, as one sent
@@ -174,11 +89,36 @@ const chatSent = new Map<string, { text: string; commands: PaneCommandSend[]; re
 
 const outcomeIdentity = (pane: HerdrPane): string => JSON.stringify([pane.terminal_id, pane.agent_session]);
 
-/** The agent's own process (agentProcesses), keyed by its pid and, on Linux, its start time; never the process-group id. */
-function outcomeProcess(info: ProcessInfo | undefined, agent: string, bound?: number): { pid: number; started: number | null } | null {
-  const candidates = agentProcesses(info?.foreground_processes ?? [], agent);
-  const running = bound === undefined ? candidates[0] : candidates.find((entry) => entry.pid === bound);
-  return running ? { pid: running.pid, started: process.platform === "linux" ? processStartedAt(running.pid) : null } : null;
+/**
+ * The agent process in front (agentProcessInFront, as a pending send is bound), keyed by its pid and, on Linux, its
+ * start time; never the process-group id. `held`: the OmO process holding a session (heldOmoProcess), which an
+ * argv-silent custom OmO is known by alone, so a send is not bound to its bundled SDK child; a process bound so is
+ * marked `held` and keyed by its start on macOS too (the kernel's record, no `ps`). With `bound`, that process only,
+ * while herdr still lists it as one of the agent's, or it is the OmO it was bound as: a holder counts only while its
+ * start is readable (never on Windows, which hands a finished agent's pid to the next process at once), and a later
+ * start under that pid is another process (checkBoundProcess).
+ */
+function outcomeProcess(info: ProcessInfo | undefined, agent: string, bound?: number, held?: number | null):
+  { pid: number; started: number | null; held?: true } | null {
+  const running = agentProcessInFront(info, agent, bound, held);
+  if (!running) return null;
+  const heldStart = running.pid === held ? processStartedAt(running.pid) : null;
+  if (bound !== undefined && (running.pid !== bound || heldStart === null && agentProcesses([running], agent).length === 0)) return null;
+  return heldStart !== null ? { pid: running.pid, started: heldStart, held: true }
+    : { pid: running.pid, started: process.platform === "linux" ? processStartedAt(running.pid) : null };
+}
+
+/** The OmO process holding a session among `info`'s, for an OmO send only; read without holding the event loop. */
+const heldOmoOf = async (pane: HerdrPane | null | undefined, agent: string, info: ProcessInfo | undefined): Promise<{ pid: number; started: number | null } | null> =>
+  pane && agent === "omo" ? await heldOmoProcess(pane, info?.foreground_processes ?? []).catch(() => null) : null;
+
+/**
+ * outcomeProcess for a send, the OmO holder keyed by the start its holder check verified: a pid reused between that
+ * check and this read is another process, which the next poll tells apart (checkBoundProcess), never the holder (#2190).
+ */
+function sentToProcess(info: ProcessInfo | undefined, agent: string, held: { pid: number; started: number | null } | null): { pid: number; started: number | null; held?: true } | null {
+  const found = outcomeProcess(info, agent, undefined, held?.pid ?? null);
+  return found?.held && held ? { ...found, started: held.started } : found;
 }
 
 /** How long a poll waits for a send's process binding before it judges that send without one, this time. */
@@ -205,9 +145,13 @@ const sameProcess = (a: { pid: number; started: number | null }, b: { pid: numbe
  * `seen`: herdr's foreground answer read before this send, which is the process it went to. Without one, the read
  * starts alongside delivery and can answer after a replacement: a process that started at or after the send never
  * received it, so the send is left unidentified rather than bound to it. Outside Linux and macOS no start time is
- * known and the answer is taken as the send-time one.
+ * known and the answer is taken as the send-time one. `pane`: the pane the send went to, which places an OmO's
+ * session holder (heldOmoProcess). `held`: that holder as the caller already checked it (a queued send's pending
+ * context), or null when its process is no holder: then no holder is read again, so two holders listed in another
+ * order meanwhile cannot move the send to the other one (#2190).
  */
-export function bindCommandProcess(paneId: string, command: PaneCommandSend | undefined, seen?: ProcessInfo): void {
+export function bindCommandProcess(paneId: string, command: PaneCommandSend | undefined, seen?: ProcessInfo, pane?: HerdrPane | null,
+  held?: { pid: number; started: number | null } | null): void {
   const visibility = command?.visibility;
   if (!command || !visibility || visibility.process !== undefined || visibility.binding) return;
   const sentAt = Date.now();
@@ -215,11 +159,12 @@ export function bindCommandProcess(paneId: string, command: PaneCommandSend | un
     if (seen) {
       // the /proc start-time read waits until delivery has its turn
       await Promise.resolve();
-      visibility.process = outcomeProcess(seen, command.agent);
+      visibility.process = sentToProcess(seen, command.agent, held !== undefined ? held : await heldOmoOf(pane, command.agent, seen));
       if (!visibility.process) visibility.unmatched = true;
       return;
     }
-    const found = outcomeProcess(await paneProcessInfo(paneId).catch(() => undefined), command.agent);
+    const info = await paneProcessInfo(paneId).catch(() => undefined);
+    const found = sentToProcess(info, command.agent, held !== undefined ? held : await heldOmoOf(pane, command.agent, info));
     const startedBy = found ? await processStartUpperBoundAsync(found.pid) : null;
     visibility.process = found && (startedBy === null || startedBy < sentAt) ? found : null;
     if (!found) visibility.unmatched = true;
@@ -230,7 +175,8 @@ export function bindCommandProcess(paneId: string, command: PaneCommandSend | un
 function checkBoundProcess(visibility: NonNullable<PaneCommandSend["visibility"]>, agent: string, processes: ProcessInfo):
   { pid: number; started: number | null } | null {
   const original = visibility.process!;
-  const current = outcomeProcess(processes, agent, original.pid);
+  // bound as the OmO holding the session, it is still that one: no holder is read again on a poll
+  const current = outcomeProcess(processes, agent, original.pid, original.held ? original.pid : null);
   if (current) {
     visibility.misses = 0;
     if (original.started !== null && current.started !== null && original.started !== current.started) visibility.replaced = true;
@@ -269,13 +215,29 @@ export function commandSendFrom(pane: HerdrPane, agent: string, commands: SlashC
   const sessionChange = /^\/(?:clear|new|reset|resume)(?:\s|$)/iu.test(text.trim())
     && commands.some((row) => row.source === "builtin" && row.name === invocations[0]?.name);
   return { id: randomBytes(12).toString("hex"), text, at: Date.now(), agent, identity: outcomeIdentity(pane),
-    visibility: { terminalId: pane.terminal_id, discovering: pane.agent_session == null, identity: outcomeIdentity(pane) },
+    visibility: { terminalId: pane.terminal_id, discovering: pane.agent_session == null, identity: outcomeIdentity(pane), label: pane.agent },
     screen, invocations, form: invocations[0]?.form ?? null, store: null,
     ...(sessionChange ? { sessionChange: { terminalId: pane.terminal_id } } : {}) };
 }
 
-/** A message the chat just sent to a pane: one with invisible characters may be held by Claude Code. */
-export function noteSubmitted(paneId: string, text: string, command?: PaneCommandSend): void {
+type SubmittedListener = (paneId: string, prompt: boolean, sentAt: number | undefined) => void;
+const submittedListeners = new Set<SubmittedListener>();
+
+/**
+ * Each successful chat send, as it returns. `prompt`: it is a prompt, which begins a turn; a
+ * slash command may run with none, and Claude Code may hold a message with invisible characters.
+ * `sentAt`: when the send's Enter was sent, where its sender knows.
+ */
+export function onChatSubmitted(listener: SubmittedListener): () => void {
+  submittedListeners.add(listener);
+  return () => { submittedListeners.delete(listener); };
+}
+
+/**
+ * A message the chat just sent to a pane: one with invisible characters may be held by Claude Code.
+ * `sentAt`: taken right before the key (or herdr's prompt call) that submitted it.
+ */
+export function noteSubmitted(paneId: string, text: string, command?: PaneCommandSend, sentAt?: number): void {
   const previous = chatSent.get(paneId)?.commands ?? [];
   const reservations = chatSent.get(paneId)?.reservations ?? new CommandReservations();
   reservations.close(command?.text ?? text, command?.at ?? Date.now());
@@ -286,16 +248,16 @@ export function noteSubmitted(paneId: string, text: string, command?: PaneComman
   if (chatSent.size > 128) chatSent.delete(chatSent.keys().next().value!);
   if (INVISIBLE_CHAR_RE.test(text)) heldCandidates.set(paneId, { text, at: Date.now() });
   else heldCandidates.delete(paneId);
+  const prompt = !INVISIBLE_CHAR_RE.test(text) && !text.trimStart().startsWith("/");
+  // the message is sent: what a listener makes of it must not turn the send into a failure
+  for (const listener of submittedListeners) {
+    try { listener(paneId, prompt, sentAt); } catch (error) { console.error(`chat send on ${paneId}: a listener failed: ${error instanceof Error ? error.message : String(error)}`); }
+  }
 }
 
 /** The text of the pane's last successful chat send (noteSubmitted), or none. */
 export function lastChatSubmitted(paneId: string): string | null {
   return chatSent.get(paneId)?.text ?? null;
-}
-
-/** The last chat send remains owned when Claude puts a cancelled send back in its input box. */
-export async function chatOwnedInput(paneId: string): Promise<string | null> {
-  return lastChatSubmitted(paneId);
 }
 
 /** Native observers must name the send they correlated; a timestamp or idle transition alone is not an event. */
@@ -307,7 +269,7 @@ export function noteCommandEvidence(paneId: string, id: string, evidence: NonNul
   sent.outcome = commandOutcome(paneId, sent, { now: Date.now(), evidence, nextAt: commands[index + 1]?.at });
 }
 
-async function commandOutcomes(paneId: string, pane: HerdrPane, prompt: InteractivePrompt | null, screen: string | undefined, readSendId: string | undefined, codexHome?: string): Promise<NonNullable<PanePromptResponse["outcomes"]>> {
+async function commandOutcomes(paneId: string, pane: HerdrPane, prompt: InteractivePrompt | null, screen: string | undefined, readSendId: string | undefined, codexHome?: string, snapshot?: SessionSnapshot): Promise<NonNullable<PanePromptResponse["outcomes"]>> {
   if (!chatSent.get(paneId)?.commands.length) return [];
   chatSent.get(paneId)?.reservations.prune(Date.now());
   screen ??= await liveScreen(paneId).catch(() => "");
@@ -324,7 +286,19 @@ async function commandOutcomes(paneId: string, pane: HerdrPane, prompt: Interact
   // the process is read only while some send still waits for its session, or is inside its window
   const watched = commands.filter((sent) => sent.visibility?.process && !sent.visibility.replaced
     && (sent.visibility.discovering || now < sent.at + COMMAND_WINDOW_MS));
-  const processes = watched.length > 0 ? await paneProcessInfo(paneId).catch(() => undefined) : undefined;
+  // The transcript can be megabytes; read it only while a send can still change from it.
+  const open = commands.some((sent) => sent.outcome?.state !== "result-observed" && sent.form?.interaction !== "terminal"
+    && now < sent.at + COMMAND_WINDOW_MS);
+  // one read of the pane's processes serves the binding checks and the transcript's lookup alike; a read that
+  // failed answers neither, and the lookup asks herdr itself (an attach client found there names the job's session)
+  let processes: ProcessInfo | undefined;
+  let processesRead = false;
+  if (watched.length > 0 || open) {
+    try {
+      processes = await paneProcessInfo(paneId);
+      processesRead = true;
+    } catch { /* no answer this poll */ }
+  }
   for (const [index, sent] of commands.entries()) {
     const visibility = sent.visibility;
     if (!visibility || visibility.replaced) continue;
@@ -344,10 +318,11 @@ async function commandOutcomes(paneId: string, pane: HerdrPane, prompt: Interact
     const current = processes && watched.includes(sent) ? checkBoundProcess(visibility, sent.agent, processes) : null;
     // A send's own session is adopted while its bound process runs. With no process bound (native Windows
     // lists only the shell; an executable named otherwise than its kind), nothing can show a replacement,
-    // so the session that appears in the same terminal is taken as its own, when it is the same agent's.
+    // so the session that appears in the same terminal is taken as its own, when it is the same agent's:
+    // reported under its kind, or under the label herdr gave the pane at the send (an OmO pane's `pi`).
     if (visibility.discovering && !visibility.replaced && pane.agent_session && identity !== visibility.stale
       && visibility.terminalId === pane.terminal_id
-      && (current || visibility.unmatched && pane.agent_session.agent === sent.agent)) {
+      && (current || visibility.unmatched && [sent.agent, visibility.label].includes(pane.agent_session.agent))) {
       visibility.identity = identity;
       visibility.discovering = false;
       if (sent.sessionChange) sent.sessionChange.identity = identity;
@@ -355,10 +330,9 @@ async function commandOutcomes(paneId: string, pane: HerdrPane, prompt: Interact
   }
   const sameSession = (sent: PaneCommandSend): boolean => !sent.visibility?.replaced
     && (sent.visibility?.identity ?? sent.identity) === identity;
-  // The transcript can be megabytes; read it only while a send can still change from it.
-  const open = commands.some((sent) => sent.outcome?.state !== "result-observed" && sent.form?.interaction !== "terminal"
-    && now < sent.at + COMMAND_WINDOW_MS);
-  const transcript = open ? await readCommandTranscript(paneId, codexHome).catch(() => null) : null;
+  const transcript = open
+    ? await readCommandTranscript(paneId, codexHome, { snapshot, ...processesRead ? { processes: processes ?? null } : {} }).catch(() => null)
+    : null;
   if (transcript) chatSent.get(paneId)?.reservations.observeTranscript(outcomeIdentity(pane), transcript.identity, transcript.records, readSendId);
   const parsed = prompt ? parsedByPublicPrompt.get(prompt) : undefined;
   const readIndex = commands.findIndex((sent) => sent.id === readSendId);
@@ -429,182 +403,6 @@ export function heldCandidate(paneId: string): string | null {
 }
 
 /**
- * Whether a model list of Claude Code's or Codex's holds the end of the screen, read or not. Enter
- * there saves a default, so nothing that ends in Enter is typed while one is open.
- */
-export function modelListWaits(agent: string, screen: string): boolean {
-  return registry.waits(agent, screen);
-}
-/** the last row of Claude's review of several answers, which ends it in place of a hint */
-const CLAUDE_SUBMIT_TAIL_RE = /^(?:[›>❯]\s*)?\d+\.\s+Cancel$/i;
-
-/** The rule below an OmO form or composer, then extension task status and the native footer. */
-function omoFooterIsActive(lines: string[]): boolean {
-  let rules = 0;
-  let footer = 0;
-  let widget = false;
-  let tail = false;
-  for (const line of lines) {
-    if (!line) continue;
-    if (OMO_SPINNER_ROW_RE.test(line) && !OMO_TASK_ROW_RE.test(line)) return false;
-    if (SOLID_RULE_RE.test(line)) {
-      if (rules > 0 || footer > 0) return false;
-      rules = 1;
-    } else if (rules > 0 && footer === 0 && (
-      /^(?:[▶◌✗✓] .*\bcategory:|▶ .* \bwave \d+\/\d+\b)/.test(line)
-      || (widget && /^(?:\d+[hms]\s*)+$/.test(line))
-    )) {
-      tail = false;
-      // A duration may wrap off the task row. Only these status rows precede the native footer;
-      // arbitrary output, a second rule, or another program's input still invalidates the form.
-      widget = true;
-    } else if (rules > 0 && footer === 0 && !OMO_NOT_FOOTER_RE.test(line) && (
-      OMO_TASK_ROW_RE.test(line)
-      || (tail && line.length <= OMO_TASK_WRAP_MAX && OMO_TASK_TAIL_RE.test(line))
-    )) {
-      // a task row, or the one short line it wrapped onto
-      tail = OMO_TASK_ROW_RE.test(line);
-    } else if (rules === 0 || ++footer > OMO_FOOTER_LINES || OMO_NOT_FOOTER_RE.test(line)) return false;
-  }
-  return rules === 1;
-}
-
-function promptTailIsActive(prompt: ParsedPrompt, screen: string): boolean {
-  const cleanLines = screen.replace(ANSI_RE, "").split(/\r?\n/).map(cleanLine);
-  const visible = cleanLines.filter((line) => line && !isDivider(line));
-  // Claude's review has no hint of its own: its last row ends the panel, the session's rule and task list come after it
-  const shown = prompt.responder === "claude-submit" ? withoutClaudeTasks(visible, (lines, end) => CLAUDE_SUBMIT_TAIL_RE.test(lines[end - 1] ?? ""))
-    : prompt.responder.startsWith("claude-") ? withoutClaudeTasks(visible) : visible;
-  const last = shown.at(-1) ?? "";
-  // The menu is still at the bottom. A narrow pane wraps its hint, so the last line alone can
-  // be the hint's tail (`cancel`): the lines before it count only when the match runs into
-  // the last one, never for a hint that ended above later output (an answered, stale menu).
-  const ends = (re: RegExp): boolean => [1, 2, 3].some((span) =>
-    re.test(shown.slice(-span).join(" ")) && (span === 1 || !re.test(shown.slice(-span, -1).join(" "))));
-  if (prompt.responder === "omp-question") return ends(OMP_SINGLE_HINT_RE) || ends(OMP_CLIPPED_SINGLE_HINT_RE) || ends(OMP_SINGLE_CLIPPED_HINT_RE) || ends(OMP_MULTI_HINT_RE);
-  if (prompt.responder === "omp-submit") return ends(OMP_REVIEW_HINT_RE);
-  // Hermes keeps its status line (and maybe the hint's wrapped tail) under the hint; an answered
-  // question leaves the screen, so a hint among the last few lines is the live one
-  if (prompt.responder === "hermes-question" || prompt.responder === "hermes-input") return shown.slice(-4).some((line) => HERMES_HINT_RE.test(line));
-  if (prompt.responder === "codex-menu") return ends(CODEX_CONTINUE_HINT_RE);
-  if (prompt.responder === "codex-question") return ends(CODEX_ASK_HINT_RE);
-  if (prompt.responder === "codex-async-question") return cleanLines.slice(-4).some((line) => CODEX_ASYNC_ASK_HINT_RE.test(line)) || ends(CODEX_ASYNC_ASK_HINT_RE);
-  if (prompt.responder === "claude-question") return ends(CLAUDE_ASK_HINT_RE);
-  if (prompt.responder === "claude-submit") return CLAUDE_SUBMIT_TAIL_RE.test(last);
-  // the last row carries the cursor once a move has put it there
-  // Codex's folder trust prompt ends "enter continue · esc back" or, from 0.163, "· esc quit".
-  // Only those two: its update prompt ends "· esc skip" and must not read as an approval.
-  if (prompt.responder === "codex-approval") return ends(/press enter to confirm|esc to cancel|enter continue\s*·\s*esc (?:back|quit)$|^(?:[›>❯]\s*)?\d+\.\s+(?:No|Reject|Cancel|Deny)\b/i);
-  if (prompt.responder === "omp-approval") return ends(/^(?:[›>❯•]\s*)?(?:Approve|Deny)$|esc.*cancel/i);
-  // Claude Code 2.1.29x ends with "Esc to cancel", optionally followed by its stop-agents
-  // chord. Anchor that suffix so arbitrary trailing text cannot keep an old approval live.
-  if (prompt.responder === "claude-approval") return ends(/esc to cancel.*(?:tab|ctrl\+e)|ctrl\+e to explain|^esc to cancel(?:\s*·\s*ctrl\+x ctrl\+k twice to stop background agents)?$/i);
-  if (prompt.responder === "claude-confirm") return ends(CLAUDE_CONFIRM_HINT_RE);
-  // its parser already found the hint over the input box with only the footer under it
-  if (prompt.responder === "claude-held") return true;
-  // so has omp's handoff status: only omp's status bar and editor under it
-  if (prompt.responder === "omp-handoff") return true;
-  // the goal dialog ends the screen with its own dismiss hint
-  if (prompt.responder === "claude-goal") return ends(/esc to dismiss$/i);
-  if (prompt.responder === "claude-model") return claudeModelListWaits(screen);
-  if (prompt.responder === "claude-effort") return ends(CLAUDE_EFFORT_HINT_RE);
-  if (prompt.responder === "codex-model") return ends(/(?:^|\s)enter select\s*·\s*esc back$|(?:^|\s)enter (?:default|apply)\s*·\s*s session\s*·\s*esc back$/i);
-  if (prompt.responder === "omo-question" || prompt.responder === "omo-review" || prompt.responder === "omo-typing") {
-    // The form is live only with OmO's footer and extension status under its hint: blank lines, one
-    // rule, status widgets, then the footer's few lines (cwd, context, model). Anything else is the form's text
-    // in another program (printed in a shell, quoted in a transcript over an input box), where
-    // an answer's keys would be typed into that program.
-    const hint = { "omo-question": OMO_OPTIONS_HINT_RE, "omo-review": OMO_REVIEW_HINT_RE, "omo-typing": OMO_TYPING_HINT_RE }[prompt.responder];
-    const at = findLastIndex(cleanLines, (line, index) => line !== "" && hint.test(wrapped(cleanLines, index, OMO_HINT_LINES)));
-    if (at < 0) return false;
-    let end = at;
-    while (end < at + OMO_HINT_LINES && !OMO_HINT_END_RE.test(cleanLines.slice(at, end + 1).join(" ").trim())) end += 1;
-    if (end >= at + OMO_HINT_LINES) return false;
-    return omoFooterIsActive(cleanLines.slice(end + 1));
-  }
-  if (prompt.responder === "omo-pending") {
-    // The widget is live over OmO's input box, other widgets maybe between them: the box (a rule,
-    // the box's line, empty, a rule) and then OmO's extension status and native footer.
-    const at = findLastIndex(cleanLines, (line, index) => line !== "" && OMO_PENDING_HINT_RE.test(wrapped(cleanLines, index)));
-    const box = cleanLines.findIndex((line, index) => index > at && OMO_EMPTY_BOX_RE.test(line));
-    if (at < 0 || box < 0 || box - at > 60 || !cleanLines[box - 1]!.startsWith("─")) return false;
-    return omoFooterIsActive(cleanLines.slice(box + 1));
-  }
-  // pi keeps its footer under every dialog — the pane's folder, then its context meter — so the
-  // hint sits near the end without being it. A dialog already answered leaves its hint far
-  // above whatever came after, which is what keeps this window narrow.
-  if (prompt.responder === "pi-model") return hintAtEnd(shown, PI_MODEL_HINT_AT_END_RE, PI_FOOTER_LINES);
-  if (prompt.responder === "omo-model") return omoModelListWaits(screen);
-  // its reader already found the picker ending the screen, which only an open picker does
-  if (prompt.responder === "omp-model") return true;
-  if (prompt.responder === "pi-question" || prompt.responder === "pi-confirm" || prompt.responder === "pi-input") {
-    return hintAtEnd(shown, PI_MENU_HINT_AT_END_RE, PI_FOOTER_LINES, 4)
-      || hintAtEnd(shown, PI_INPUT_HINT_AT_END_RE, PI_FOOTER_LINES, 4);
-  }
-  // Command Code's permission footer names its keys at the dialog's end and wraps on a narrow
-  // pane: `↑/↓ navigate · enter select · ctrl+e explain · Run cmd --yolo to bypass all …`
-  if (prompt.responder === "cmd-question") return cmdFooterEnds(shown);
-  // its footer ends the screen, wrapped or not (dialogs/opencode.ts)
-  if (prompt.responder === "opencode-v1-question") return openCodeV1QuestionActive(screen);
-  return ends(/ctrl\+g to edit|shift\+tab to approve with this feedback/i);
-}
-/**
- * The same two hints told from the end of the window. A phone leaves pi a pane barely wide enough
- * for its hint, which wraps it, and pi keeps its footer underneath: the wrapped hint then sits
- * further from the bottom than a three-line window reaches, while a wider pane still has it as the
- * last thing. Anchored, because the footer's own lines complete a join that merely starts with the
- * hint's words, which would keep an answered dialog offering to press keys into the pane.
- */
-const PI_MENU_HINT_AT_END_RE = new RegExp(`${PI_MENU_HINT_RE.source}$`, "i");
-const PI_INPUT_HINT_AT_END_RE = new RegExp(`${PI_INPUT_HINT_RE.source}$`, "i");
-/** Command Code's permission footer: `↑/↓ navigate · enter select · ctrl+e explain · Run cmd --yolo …` */
-const CMD_HINT_RE = /↑\/↓ navigate.*enter select/i;
-const CMD_FOOTER_WORDS = new Set(["·", "ctrl+e", "explain", "run", "cmd", "--yolo", "to", "bypass", "all", "permissions", "(docs", "↗)", "↗", "(docs↗)"]);
-/**
- * The footer ends the screen: after its key hint only the footer's own words may follow, wrapped or
- * not. A line typed below a quoted or stale dialog (`❯ my next message`) means it is no live one.
- */
-function cmdFooterEnds(shown: string[]): boolean {
-  const at = findLastIndex(shown, (line) => CMD_HINT_RE.test(line));
-  if (at < 0 || shown.length - at > 3) return false;
-  const rest = [shown[at]!.replace(/^.*?enter select/i, ""), ...shown.slice(at + 1)].join(" ");
-  return rest.split(/\s+/).filter(Boolean).every((word) => CMD_FOOTER_WORDS.has(word.toLowerCase()));
-}
-/** The same hint told from the end, so lines that follow it cannot complete a match of their own. */
-const PI_MODEL_HINT_AT_END_RE = new RegExp(`${PI_MODEL_HINT_RE.source}$`, "i");
-/**
- * pi's own footer, under `/model` and under every dialog alike: the pane's folder, then its
- * context meter. A hint is allowed this many lines of it before the bottom of the screen.
- */
-const PI_FOOTER_LINES = 2;
-
-/**
- * Whether a hint is the last thing before an agent's footer, allowing for a phone's pane being
- * too narrow to hold it on one line: a TUI hard-wraps, so the hint arrives split over two or
- * three lines with nothing marking the break. Anchored to the end of the joined window, because
- * a hint's words also match a join that merely starts with them — the footer's own lines read as
- * a hint that way, which would keep an answered, buried list offering a switch into whatever the
- * pane shows by then.
- */
-function hintAtEnd(shown: string[], atEnd: RegExp, footerLines: number, span = 3): boolean {
-  for (let end = shown.length - 1; end >= Math.max(0, shown.length - 1 - footerLines); end -= 1) {
-    for (let size = 1; size <= span; size += 1) {
-      const from = end - size + 1;
-      if (from < 0) break;
-      if (atEnd.test(shown.slice(from, end + 1).join(" "))) return true;
-    }
-  }
-  return false;
-}
-
-function parsePrompt(agent: string, screen: string, omoAsk: OmoAsk | null = null, omoTrusted = true, omoOpen: OmoAsk[] = [], sent: string | null = null, working = false): ParsedPrompt | null {
-  const ctx = { agent, omoAsk, omoTrusted, omoOpen, sent, working };
-  // a result reader reads only below a send's own echo (outcome.ts), never a card on the whole screen
-  const candidates = registry.readersFor(agent).filter((reader) => reader.kind !== "result").map((reader) => reader.parse(screen, ctx));
-  return candidates.find((candidate): candidate is ParsedPrompt => candidate !== null && promptTailIsActive(candidate, screen)) ?? null;
-}
-
-/**
  * Codex 0.156 holds the questions it asked with request_user_input_async in a queue above
  * its main prompt, collapsed to "? 2 questions / alt+↑ to answer", and herdr reports the
  * agent blocked meanwhile. Yet the main prompt has the input and takes a message (Codex
@@ -614,13 +412,6 @@ function parsePrompt(agent: string, screen: string, omoAsk: OmoAsk | null = null
  */
 export function codexQuestionsCollapsed(screen: string): boolean {
   return parsePrompt("codex", screen) === null && queuedQuestionCount(screen) > 0;
-}
-
-/** The card for Codex's collapsed queue on this screen, from the rollout's unanswered questions. */
-export function codexQueuedPrompt(screen: string, unanswered: QueuedQuestion[], front: QueueFront | null = null): InteractivePrompt | null {
-  const count = queuedQuestionCount(screen);
-  const queued = count > 0 ? queuedPrompt(count, unanswered, front) : null;
-  return queued ? publicPrompt(queued) : null;
 }
 
 /**
@@ -640,13 +431,25 @@ class InvalidAnswer extends Error {}
 export function answerKeys(prompt: InteractivePrompt, answer: Pick<PromptAnswer, "option_index" | "option_indices" | "custom_text">): AnswerStep[] {
   const parsed = parsedByPublicPrompt.get(prompt);
   if (!parsed) throw new InvalidAnswer("The prompt was not produced by parseInteractivePrompt.");
+  if (parsed.piQuestionnaireInput !== undefined) throw new InvalidAnswer("Finish or cancel the terminal-owned questionnaire draft in the terminal.");
   const supplied = [answer.option_index !== undefined, answer.option_indices !== undefined, answer.custom_text !== undefined].filter(Boolean).length;
   if (supplied !== 1) throw new InvalidAnswer("Exactly one answer is required.");
 
   if (answer.custom_text !== undefined) {
     if (typeof answer.custom_text !== "string") throw new InvalidAnswer("Custom text must be a string.");
+    // A raw newline/control in rpiv's inline input can submit it and type into the next
+    // question, review, or composer. Validate before trimming and before any navigation.
+    if ((parsed.responder === "pi-ask-question" || parsed.responder === "pi-questionnaire-question") && /[\u0000-\u001f\u007f-\u009f]/.test(answer.custom_text)) {
+      throw new InvalidAnswer("Pi custom answers must be one line without control characters.");
+    }
     const text = answer.custom_text.trim();
     if (!text || parsed.customMenuIndex === null || (parsed.multi_select && parsed.responder !== "claude-question")) throw new InvalidAnswer("This prompt does not accept a custom answer.");
+    if (parsed.responder === "fallback-gjc-menu") {
+      if (/[\r\n]/.test(text)) throw new InvalidAnswer("Use the terminal for a multiline GJC custom answer.");
+      if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(text)) throw new InvalidAnswer("Custom text contains unsupported control characters.");
+      // GJC handles bracketed paste atomically without /, @ or # autocomplete, as in core/pending.ts.
+      return [...keySteps([...navigationKeys(parsed.customMenuIndex - parsed.selectedIndex), KEY.enter]), { text: `\u001b[200~${text}\u001b[201~` }, ...keySteps([KEY.enter])];
+    }
     if (parsed.customSteps) return parsed.customSteps(text);
     // Claude's multiple choice: typing into the row ticks it, and Enter on Submit, the row under
     // it, sends the choice (→ in the row would move the text's cursor; measured on 2.1.301)
@@ -790,399 +593,15 @@ function contentId(prompt: InteractivePrompt | null): string | undefined {
   return prompt ? parsedByPublicPrompt.get(prompt)?.id : undefined;
 }
 
-/** When each pane's omo form was last answered from the chat (see readPrompt). */
+/** When each pane's OmO/rpiv custom form was last answered from the chat (see readPrompt). */
 const formsAnswered = new Map<string, number>();
 const FORM_SETTLE_MS = 3_000;
-
-/** Owned by one server; reads cannot overwrite progress made after they started. */
-export class OpenCodePromptState {
-  readonly entries = new Map<string, OpenCodePromptEntry>();
-  private snapshotIssued = 0;
-  private snapshotApplied = 0;
-  private latestSnapshot: SessionSnapshot | null = null;
-  constructor(readonly now: () => number = Date.now) {}
-
-  checkpoint(): Map<string, { entry: OpenCodePromptEntry; revision: number }> {
-    return new Map([...this.entries].map(([id, entry]) => [id, { entry, revision: entry.revision }]));
-  }
-
-  async snapshot(timeoutMs?: number): Promise<SessionSnapshot> {
-    const issued = ++this.snapshotIssued;
-    const snapshot = await sessionSnapshot(undefined, timeoutMs);
-    if (issued > this.snapshotApplied) {
-      this.snapshotApplied = issued;
-      this.latestSnapshot = snapshot;
-    }
-    if (!this.latestSnapshot || issued === this.snapshotApplied) return snapshot;
-    // Only native OpenCode drafts need this ordering. Other agents' screen readers keep the
-    // snapshot that accompanies their own read, including a newer status in a delayed reply.
-    const nativeIds = new Set([...snapshot.panes, ...this.latestSnapshot.panes]
-      .filter((pane) => pane.agent === "opencode").map((pane) => pane.pane_id));
-    return { ...snapshot, panes: [
-      ...snapshot.panes.filter((pane) => !nativeIds.has(pane.pane_id)),
-      ...this.latestSnapshot.panes.filter((pane) => nativeIds.has(pane.pane_id)),
-    ] };
-  }
-
-  prune(): void {
-    for (const [id, entry] of this.entries) if (this.now() - entry.updatedAt >= 30 * 60_000) this.entries.delete(id);
-  }
-
-  reconcile(panes: readonly HerdrPane[], before = this.checkpoint()): void {
-    this.prune();
-    for (const [id, entry] of this.entries) {
-      const observed = before.get(id);
-      if (observed?.entry !== entry || observed.revision !== entry.revision) continue;
-      const pane = panes.find((pane) => pane.pane_id === id);
-      if (!pane || opencodeSessionId(pane) !== entry.sessionID || pane.agent !== "opencode") this.entries.delete(id);
-    }
-  }
-
-  begin(paneId: string, sessionID: string): OpenCodePromptEntry {
-    this.prune();
-    let entry = this.entries.get(paneId);
-    if (!entry || entry.sessionID !== sessionID) {
-      entry = { sessionID, form: null, listed: null, available: false, revision: 0, issued: 0, applied: 0, updatedAt: this.now() };
-      this.entries.delete(paneId);
-      this.entries.set(paneId, entry);
-      if (this.entries.size > 64) this.entries.delete(this.entries.keys().next().value!);
-    }
-    return entry;
-  }
-
-  forget(paneId: string): void { this.entries.delete(paneId); }
-  clear(): void { this.entries.clear(); }
-}
 
 const defaultOpenCodeState = new OpenCodePromptState();
 
 /** Each pane's rollout, resolved for its collapsed queue: a poll every 2s would otherwise redo it. */
 const queueRollouts = new Map<string, { path: string | null; at: number }>();
 const QUEUE_ROLLOUT_MS = 15_000;
-
-/** how long a prompt poll waits for the ANSI read behind Claude's suggestion before going without it */
-const SUGGESTION_READ_MS = 1_500;
-
-/** Claude's new-session tip in the empty input (`Try "how does <filepath> work?"`), not a suggestion. */
-const CLAUDE_TIP_RE = /^Try "/;
-
-/**
- * Claude Code's IDE pill, drawn right after the `❯` while an editor is connected: `[⧉ 3 lines
- * selected] ` or `[⧉ In src/foo.ts] ` (Claude Code 2.1.302 matches it as `\[⧉ [^\]\n]+\]`). It is
- * painted in the theme's IDE color, not dim, yet it is no input: typing and Ctrl+K/Ctrl+U leave it.
- */
-const CLAUDE_IDE_PILL_RE = /^[ \u00a0]?\[⧉ [^\]\n]+\] ?/;
-
-/** The text after the `❯` of an input row with Claude's IDE pill (CLAUDE_IDE_PILL_RE) taken out. */
-const withoutIdePill = (afterPrompt: string): string => afterPrompt.replace(CLAUDE_IDE_PILL_RE, " ");
-
-/**
- * How many characters after the `❯` of a plain input row Claude's IDE pill takes, with the space
- * before it: what a walk over that row skips. 0 without a pill.
- */
-function idePillChars(afterPrompt: string): number {
-  const match = CLAUDE_IDE_PILL_RE.exec(afterPrompt);
-  return match === null ? 0 : Array.from(match[0]).length;
-}
-
-/**
- * Whether each character of an ANSI line is drawn dim (SGR 2) and inverse (SGR 7), as
- * [text, dim, inverse] runs. Only SGR sequences change the state; 38/48 colors are skipped whole,
- * so the 2 of `38;2;r;g;b` is a color mode, not dim. Other escapes are dropped.
- */
-function sgrRuns(line: string): [string, boolean, boolean][] {
-  const runs: [string, boolean, boolean][] = [];
-  let dim = false;
-  let inverse = false;
-  let offset = 0;
-  const escape = /\u001b(?:\[([0-?]*)[ -/]*([@-~])|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
-  for (const match of line.matchAll(escape)) {
-    if (match.index! > offset) runs.push([line.slice(offset, match.index), dim, inverse]);
-    offset = match.index! + match[0].length;
-    if (match[2] !== "m") continue;
-    const codes = (match[1] || "0").split(";").map((code) => Number(code || 0));
-    for (let index = 0; index < codes.length; index++) {
-      const code = codes[index]!;
-      if (code === 38 || code === 48 || code === 58) index += codes[index + 1] === 5 ? 2 : codes[index + 1] === 2 ? 4 : 0;
-      else if (code === 0) { dim = false; inverse = false; }
-      else if (code === 22) dim = false;
-      else if (code === 2) dim = true;
-      else if (code === 27) inverse = false;
-      else if (code === 7) inverse = true;
-    }
-  }
-  if (offset < line.length) runs.push([line.slice(offset), dim, inverse]);
-  return runs;
-}
-
-/**
- * The prompt Claude Code suggests next, grey in its empty input box: the `❯` line between the
- * screen's last two rules (the live input box, not an earlier one above a bash-mode input), all
- * of it dim but for Claude's own drawn cursor on its first character. None while anything is
- * typed there (typed text is not dim), for the new-session tip, or for an input box of more than
- * one line.
- */
-export function parseClaudeSuggestion(ansi: string): string | null {
-  const grey = claudeGreyInput(ansi);
-  return grey === null || CLAUDE_TIP_RE.test(grey) ? null : grey;
-}
-
-/**
- * What Claude Code's input box shows in grey while it is empty (a suggested prompt, or the
- * new-session tip), null when the box holds typed text or nothing. Only an ANSI read tells grey
- * text from a message: as plain text both are `❯ words`.
- */
-function claudeGreyInput(ansi: string): string | null {
-  const lines = ansi.split("\n").map((line) => line.replace(/\r$/, ""));
-  const plain = lines.map((line) => line.replace(ANSI_RE, "").replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, ""));
-  let index = plain.length - 1;
-  while (index >= 0 && !SOLID_RULE_RE.test(plain[index]!.trim())) index--;
-  index--;
-  if (index < 1 || !/^❯[\s\u00a0]/.test(plain[index]!) || !SOLID_RULE_RE.test(plain[index - 1]!.trim())) return null;
-  let text = "";
-  let seenPrompt = false;
-  let cursor = false;
-  // Claude's IDE pill before the grey text is neither typed nor suggested
-  let pill = idePillChars(plain[index]!.slice(plain[index]!.indexOf("❯") + 1));
-  for (const [run, dim, inverse] of sgrRuns(lines[index]!)) {
-    for (const character of run) {
-      if (!seenPrompt) { if (character === "❯") seenPrompt = true; continue; }
-      if (pill > 0) { pill--; continue; }
-      const blank = character.trim() === "" || character === "\u00a0";
-      // the cursor Claude draws itself sits inverse on the first grey character
-      if (!dim && !blank && !(inverse && text.trim() === "" && !cursor)) return null;
-      if (!dim && !blank) cursor = true;
-      text += character;
-    }
-  }
-  // a cursor over typed text has nothing grey after it
-  if (cursor && !sgrRuns(lines[index]!).some(([run, dim]) => dim && run.trim() !== "")) return null;
-  const suggestion = text.replace(/\u00a0/g, " ").trim();
-  return suggestion === "" ? null : suggestion;
-}
-
-/**
- * A labeled rule over an input box: Claude's named session (`──── my-session ─`), and OmO's own
- * box while it works (`── • Running eval (7s • esc to interrupt) ───`), which herdr reports as
- * Claude. Only the box reader takes the shorter lead; the task panel keeps LABELED_RULE_RE.
- */
-const BOX_LABELED_RULE_RE = /^─{2,}\s.*─$/;
-
-/**
- * Claude Code's input box: the rows between the screen's last two rules (a named session labels
- * its rule). "clipped" when only the bottom rule is on screen, as under a draft taller than the
- * pane; null when the screen has no rule at all.
- */
-function claudeInputBox(screen: string): { plain: string[]; raw: string[] } | "clipped" | null {
-  const raw = screen.split("\n").map((line) => line.replace(/\r$/, ""));
-  const plain = raw.map((line) => line.replace(ANSI_RE, "").replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "").trimEnd());
-  const rule = (line: string): boolean => SOLID_RULE_RE.test(line.trim()) || BOX_LABELED_RULE_RE.test(line.trim());
-  let end = plain.length - 1;
-  while (end >= 0 && !rule(plain[end]!)) end--;
-  if (end < 0) return null;
-  let start = end - 1;
-  while (start >= 0 && !rule(plain[start]!)) start--;
-  if (start < 0) return "clipped";
-  return { plain: plain.slice(start + 1, end), raw: raw.slice(start + 1, end) };
-}
-
-/** Claude's new-session tip as a whole input row: `Try "how does <filepath> work?"`. */
-const CLAUDE_TIP_ROW_RE = /^Try "[^"]+"$/;
-
-/** Whether an ANSI read sets no color and no dim anywhere, as Claude Code draws under NO_COLOR. */
-function colorless(ansi: string): boolean {
-  for (const match of ansi.matchAll(/\u001b\[([0-9;:]*)m/g)) {
-    for (const code of (match[1] || "0").split(/[;:]/).map((value) => Number(value || 0))) {
-      if (code === 2 || (code >= 30 && code <= 38) || (code >= 40 && code <= 48) || (code >= 90 && code <= 97) || (code >= 100 && code <= 107)) return false;
-    }
-  }
-  return true;
-}
-
-/** A screen row without its escapes, OSC sequences (titles, links) included. */
-const plainRow = (row: string): string => row.replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "").replace(ANSI_RE, "");
-
-/** The screen's bottom-most row with a `❯`: Hermes' input, below every message it echoes. */
-function hermesInputRow(screen: string): string | null {
-  const rows = screen.split(/\r?\n/);
-  for (let index = rows.length - 1; index >= 0; index--) if (plainRow(rows[index]!).includes("❯")) return rows[index]!;
-  return null;
-}
-
-/**
- * Whether Hermes' input is not known to be empty, so that a paste would join what is there and the
- * Enter send both as one message (measured on Hermes 0.21.5, classic CLI and TUI). The input is the
- * bottom-most `❯` row, empty when nothing follows the `❯`. Hermes' own hint there is not a draft:
- * the classic CLI draws its placeholder italic (its skin's `placeholder: "{dim} italic"`), and the TUI
- * starts its hint with a synthetic cursor, a cell with a background color (ui-tui textInput.tsx
- * `hintCursorCell`); typed text has neither. `live` is the detection read; `colors` the viewport's
- * ANSI read, passed only once it is verified to show that screen (viewportShowsLive), else null, and
- * then any text after the `❯` counts as a draft. A screen without a `❯` row is not known to be empty.
- */
-export function hermesInputDraft(live: string, colors: string | null): boolean {
-  const row = hermesInputRow(live);
-  if (row === null) return true;
-  const plain = plainRow(row);
-  // the row's first `❯` is the prompt: one after it is typed text
-  if (plain.slice(plain.indexOf("❯") + 1).replace(/\u00a0/g, " ").trim() === "") return false;
-  const shown = colors === null ? null : hermesInputRow(colors);
-  if (shown === null || plainRow(shown).trimEnd() !== plain.trimEnd()) return true;
-  const after = plainRow(shown).indexOf("❯");
-  let column = 0;
-  let italic = false;
-  let background = false;
-  // the first character after the `❯` decides: a TUI hint's cursor chip, or typed (not italic) text
-  let decided: boolean | null = null;
-  const visit = (text: string): void => {
-    for (const character of text) {
-      const at = column;
-      column += character.length;
-      if (decided !== null) return;
-      if (at <= after || character.trim() === "" || character === "\u00a0") continue;
-      if (background) { decided = false; return; }
-      if (!italic) { decided = true; return; }
-    }
-  };
-  const escape = /\u001b(?:\[([0-?]*)[ -/]*([@-~])|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
-  let offset = 0;
-  for (const match of shown.matchAll(escape)) {
-    visit(shown.slice(offset, match.index));
-    offset = match.index! + match[0].length;
-    if (match[2] !== "m") continue;
-    const codes = (match[1] || "0").split(";").map((code) => Number(code || 0));
-    for (let index = 0; index < codes.length; index++) {
-      const code = codes[index]!;
-      if (code === 38 || code === 58) index += codes[index + 1] === 5 ? 2 : codes[index + 1] === 2 ? 4 : 0;
-      else if (code === 48) { background = true; index += codes[index + 1] === 5 ? 2 : codes[index + 1] === 2 ? 4 : 0; }
-      else if (code === 0) { italic = false; background = false; }
-      else if (code === 3) italic = true;
-      else if (code === 23) italic = false;
-      else if (code === 49) background = false;
-      else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) background = true;
-    }
-  }
-  visit(shown.slice(offset));
-  // every character italic: the classic CLI's placeholder
-  return decided ?? false;
-}
-
-/**
- * Whether Claude Code's input box is not known to be empty, so that a paste would land in what is
- * there and the Enter after it send both, or run it as a command: typed text, bash mode (`!`), a
- * box clipped by the pane, or a box that is not a `❯` input. Claude's own grey text (a suggested
- * prompt, its tip, on any number of rows) and its drawn cursor are not a draft. The box is read
- * from the live screen (`live`, a detection read, as the other pending checks); only the viewport
- * read carries colors (`colors`), and the caller passes it only once it is verified to show that
- * live screen (null otherwise): equal words do not prove it, since an older box in a scrolled
- * viewport, or a grey suggestion the user then typed out, reads the same. Without verified colors a
- * box that is not empty is a draft. False when the screen shows no rule at all.
- */
-export function claudeInputDraft(live: string, colors: string | null): boolean {
-  const box = claudeInputBox(live);
-  if (box === null) return false;
-  if (box === "clipped" || !box.plain[0]?.startsWith("❯")) return true;
-  // Claude's IDE pill after the `❯` is no input (#1096): a box holding only it is empty
-  const afterPill = withoutIdePill(box.plain[0]!.slice(1));
-  if ([afterPill, ...box.plain.slice(1)].join("\n").replace(/\u00a0/g, " ").trim() === "") return false;
-  // a paste or an image Claude folded into a placeholder is content, however it is colored
-  if (/\[(?:Pasted text #\d+|Image #\d+)/.test(box.plain.join(" "))) return true;
-  if (colors === null) return true;
-  const shown = claudeInputBox(colors);
-  if (shown === null || shown === "clipped" || shown.plain.join("\n") !== box.plain.join("\n")) return true;
-  // Under NO_COLOR (#926) the tip is not dim: only its exact form as the box's whole one row, on a
-  // screen drawn without any color, tells it from typed words. Typed `Try "…"` reads the same there.
-  if (box.plain.length === 1 && CLAUDE_TIP_ROW_RE.test(afterPill.replace(/\u00a0/g, " ").trim()) && colorless(colors)) return false;
-  let prompt = false;
-  let pill = idePillChars(box.plain[0]!.slice(1));
-  let first = true;
-  let cursor = false;
-  let grey = false;
-  for (const row of shown.raw) {
-    for (const [run, dim, inverse] of sgrRuns(row)) {
-      for (const character of run) {
-        if (!prompt) { prompt = character === "❯"; continue; }
-        if (pill > 0) { pill--; continue; }
-        if (character.trim() === "" || character === "\u00a0") continue;
-        if (dim) grey = true;
-        // the cursor Claude draws itself sits inverse on the first grey character
-        else if (first && inverse) cursor = true;
-        else return true;
-        first = false;
-      }
-    }
-  }
-  // a cursor over a typed character has nothing grey after it
-  return cursor && !grey;
-}
-
-/** Positive proof of an ordinary empty input box, never absence of a readable box. */
-export function claudeInputEmpty(live: string, colors: string | null): boolean {
-  const box = claudeInputBox(live);
-  return box !== null && box !== "clipped" && box.plain[0]?.startsWith("❯") === true
-    && !claudeInputDraft(live, colors);
-}
-
-/** What empties a one-row Claude input box: the row after the cursor, then before it (measured on 2.1.295; Ctrl+Y puts it back). */
-export const CLAUDE_CLEAR_INPUT_KEYS = ["ctrl+k", "ctrl+u"];
-
-/**
- * The draft the chat may offer to clear before it sends (claudeInputDraft with the same reads):
- * typed text on the only row of a `❯` box, read with verified colors, as the user sees it there.
- * CLAUDE_CLEAR_INPUT_KEYS edit one screen row, so a draft on more rows (a long line wraps), bash
- * mode, a pasted or image placeholder and a box read without colors are not offered: null.
- */
-export function claudeClearableDraft(live: string, colors: string | null): string | null {
-  if (colors === null || !claudeInputDraft(live, colors)) return null;
-  const box = claudeInputBox(live);
-  if (box === null || box === "clipped" || box.plain.length !== 1 || !box.plain[0]!.startsWith("❯")) return null;
-  if (/\[(?:Pasted text #\d+|Image #\d+)/.test(box.plain[0]!)) return null;
-  // plain rows trim their right edge for screen parsing. Match the raw row instead: a
-  // trailing space, or another space after Claude's one separator, belongs to the user.
-  const rowText = (row: string): string => row.replace(ANSI_RE, "").replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "");
-  const row = rowText(box.raw[0]!);
-  const shown = claudeInputBox(colors);
-  if (shown === null || shown === "clipped" || shown.raw.length !== 1 || rowText(shown.raw[0]!) !== row) return null;
-  // Claude's IDE pill is not the user's text, and the clearing keys leave it
-  const afterPrompt = row.slice(1);
-  const pill = CLAUDE_IDE_PILL_RE.exec(afterPrompt)?.[0];
-  const draft = pill === undefined ? afterPrompt.replace(/^[ \u00a0]/, "") : afterPrompt.slice(pill.length);
-  return draft.trim() === "" ? null : draft;
-}
-
-/** How much of the box an input_draft refusal shows: enough to tell a draft from Claude's own text. */
-export const INPUT_BOX_SHOWN_CHARS = 200;
-
-/**
- * The live input box (claudeInputBox) as plain text, whole: what a refusal that names no clearable
- * draft records, so a send anyway goes only over exactly that box. null when no box could be read
- * whole (none on screen, or clipped by the pane): such a box cannot be compared, so nothing is sent over it.
- */
-export function claudeInputBoxContent(live: string): string | null {
-  const box = claudeInputBox(live);
-  if (box === null || box === "clipped") return null;
-  return box.plain.map((row) => row.replace(/\u00a0/g, " ").trimEnd()).join("\n").trim();
-}
-
-/**
- * Whether Claude Code's rewind dialog is open: the screen ends in its panel and Claude's own input box
- * is not drawn under it (the dialog takes its place in every recorded state). A reply that draws the
- * panel has the box under it, and must not hold the pane's sends; rules above the panel (an earlier
- * reply's) are no box.
- */
-export function claudeRewindOpen(screen: string): boolean {
-  const below = claudeRewindPanelBelow(screen);
-  return below !== null && claudeInputBoxContent(below) === null;
-}
-
-/** What the user is shown of a box's content: enough to tell a real draft from a box misread. */
-export function shownInputBox(content: string): string {
-  return content.length > INPUT_BOX_SHOWN_CHARS ? `${content.slice(0, INPUT_BOX_SHOWN_CHARS)}…` : content;
-}
-
-/** The live input box as a refusal shows it (claudeInputBoxContent, cut by shownInputBox). */
-export function claudeInputBoxText(live: string): string {
-  return shownInputBox(claudeInputBoxContent(live) ?? "");
-}
 
 /**
  * The chat's own message back in Claude's box (claudeRestoredDraft), only when the live screen holds
@@ -1192,7 +611,8 @@ export function claudeInputBoxText(live: string): string {
  * viewportShowsLive verifies they show that screen.
  */
 async function restoredOnLiveScreen(paneId: string, viewport: string): Promise<string | null> {
-  const sent = await chatOwnedInput(paneId);
+  // the last chat send remains owned when Claude puts a cancelled send back in its input box
+  const sent = lastChatSubmitted(paneId);
   const plain = (text: string): string => text.replace(ANSI_RE, "").replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "");
   if (claudeRestoredDraft(plain(viewport), viewport, sent) === null) return null;
   const detection = async (): Promise<string> => (await paneRead({ paneId, source: "detection", format: "text", timeoutMs: SUGGESTION_READ_MS })).text;
@@ -1205,82 +625,10 @@ async function restoredOnLiveScreen(paneId: string, viewport: string): Promise<s
   return viewportShowsLive(scrollBefore, scrollAfter, colors, before, live) ? claudeRestoredDraft(live, colors, sent) : null;
 }
 
-/**
- * The chat's own last message back in Claude Code's input box as typed text, where Claude puts it
- * when the send right before is cancelled: `sent` when the box is a draft (`claudeInputDraft`, so
- * typed text on a verified viewport) holding exactly it — the `❯` of the first row dropped, the
- * wrapped rows joined with nothing (a split word) or one space (a wrap between words), each row's
- * own spaces as they are (U+00A0 read as a space). Anything else a
- * draft could be — bash mode, a clipped box, a `[Pasted text #`/`[Image #` placeholder, other or
- * edited words — and a box that is no known draft, unverified colors or nothing sent answer null.
- */
-export function claudeRestoredDraft(live: string, colors: string | null, sent: string | null): string | null {
-  if (sent === null || sent.trim() === "" || colors === null || !claudeInputDraft(live, colors)) return null;
-  const box = claudeInputBox(live);
-  if (box === null || box === "clipped" || !box.plain[0]?.startsWith("❯")) return null;
-  if (/\[(?:Pasted text #\d+|Image #\d+)/.test(box.plain.join(" "))) return null;
-  // each row's own words exactly (the box's U+00A0 as a space), its marker, indentation and padding
-  // aside; where the terminal wrapped, a word split in two joins with nothing between, and a wrap
-  // between words with one space or line break. Any other change to the spaces is the user's edit.
-  const rows = box.plain.map((row, index) => (index === 0 ? withoutIdePill(row.slice(1)) : row).replace(/\u00a0/g, " ").trim());
-  // walked row by row over the set of places the sent text can be at, never a regex: one built from
-  // the rows backtracks exponentially over a box of blank rows
-  const text = sent.replace(/\u00a0/g, " ").trim();
-  let at = new Set([0]);
-  rows.forEach((row, index) => {
-    const next = new Set<number>();
-    for (const from of at) {
-      // a wrap between words leaves one space or line break before the next row; within a word, none
-      const starts = index === 0 ? [from] : /\s/.test(text[from] ?? "") ? [from, from + 1] : [from];
-      for (const start of starts) if (text.startsWith(row, start)) next.add(start + row.length);
-    }
-    at = next;
-  });
-  return at.has(text.length) ? sent : null;
-}
-
-/**
- * Whether a colored viewport read shows the live screen, so claudeInputDraft may take its colors:
- * the viewport at the bottom of the pane's history before and after the colored read, or, only when
- * herdr reports no scroll for either read, the viewport's whole text equal to the live screen; and
- * the live screen the same before and after it. A scroll known for one read and not the other is
- * no proof.
- */
-export function viewportShowsLive(scrollBefore: { offset_from_bottom: number } | null, scrollAfter: { offset_from_bottom: number } | null,
-  colors: string, before: string, live: string): boolean {
-  const lines = (text: string): string => text.replace(ANSI_RE, "").replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
-    .split(/\r?\n/).map((line) => line.trimEnd()).join("\n").trimEnd();
-  const atBottom = scrollBefore !== null && scrollAfter !== null
-    ? scrollBefore.offset_from_bottom === 0 && scrollAfter.offset_from_bottom === 0
-    : scrollBefore === null && scrollAfter === null && lines(colors) === lines(live);
-  return atBottom && live === before;
-}
-
-/** Whether a card is the one for a message Claude Code holds back (parseClaudeHeld). */
-export function isClaudeHeld(prompt: InteractivePrompt): boolean {
-  return parsedByPublicPrompt.get(prompt)?.responder === "claude-held";
-}
-
-/**
- * Whether a held-message card was read off Claude's own grey text. Claude's hint outlasts the
- * message for a moment (sent or cleared in the terminal), over a box that is empty again and shows
- * its tip or a suggested prompt: Enter there sends Claude's suggestion and Ctrl+C asks to leave
- * Claude. A read that fails or shows no box says nothing, and the card stays.
- * herdr gives colors for the viewport alone (an ANSI read of "detection", the live screen the card
- * is read from, carries no escapes: measured on 0.9.3), and a viewport scrolled into the history
- * can show an older box. So the grey text counts only when it is the very text the card took for
- * the message.
- */
-export async function claudeHeldIsGrey(paneId: string, prompt: InteractivePrompt): Promise<boolean> {
-  if (!isClaudeHeld(prompt)) return false;
-  const same = (text: string | null): boolean => text !== null && normalizeText(text) === normalizeText(prompt.body ?? "");
-  return paneRead({ paneId, source: "visible", format: "ansi", timeoutMs: SUGGESTION_READ_MS })
-    .then((read) => same(claudeGreyInput(read.text)), () => false);
-}
-
-async function readPrompt(paneId: string, codexHome?: string, openCodeStateDir?: string, openCodeState = defaultOpenCodeState, signal?: AbortSignal): Promise<{ agent: string; status: string; prompt: InteractivePrompt | null; pane: HerdrPane; panes: HerdrPane[]; screen?: string; stale?: boolean }> {
+async function readPrompt(paneId: string, codexHome?: string, openCodeStateDir?: string, openCodeState = defaultOpenCodeState, signal?: AbortSignal): Promise<{ agent: string; status: string; prompt: InteractivePrompt | null; pane: HerdrPane; panes: HerdrPane[]; snapshot: SessionSnapshot; screen?: string; stale?: boolean; inputUnverified?: true }> {
   const before = openCodeState.checkpoint();
-  const { panes } = await openCodeState.snapshot();
+  const snapshot = await openCodeState.snapshot();
+  const { panes } = snapshot;
   // a closed pane's wait has ended too
   for (const logged of fallbackLogged) if (!panes.some((candidate) => candidate.pane_id === logged)) fallbackLogged.delete(logged);
   for (const known of askings.keys()) if (!panes.some((candidate) => candidate.pane_id === known)) askings.delete(known);
@@ -1295,51 +643,76 @@ async function readPrompt(paneId: string, codexHome?: string, openCodeStateDir?:
   // counted right before the screen is read, after the snapshot: what matters is whether an
   // answer ran while the screen was being read
   const turns = answerTurns.get(paneId) ?? 0;
-  const known = await readKnownPrompt(paneId, pane, agent, codexHome, panes, openCodeStateDir, openCodeState, signal);
-  if (known.stale) return { agent, status, prompt: null, pane, panes, stale: true };
-  // an omo form just answered has closed, while herdr still reports the wait for a moment: that
-  // is no screen to answer, and its fallback card would flash up after the form's last answer
+  const known = await readKnownPrompt(paneId, pane, agent, codexHome, panes, openCodeStateDir, openCodeState, signal, true);
+  if (known.stale) return { agent, status, prompt: null, pane, panes, snapshot, stale: true };
+  // A custom form just answered can close before Herdr stops reporting blocked. Its hint may
+  // outlive the widget, but that is no input to offer as fallback keys. Known next steps still
+  // show immediately; only an unrecognized screen waits for this bounded settling window.
   const settling = Date.now() - (formsAnswered.get(paneId) ?? 0) < FORM_SETTLE_MS;
-  if (known.prompt !== null || status !== "blocked" || !agent || settling) {
+  // a pi pane gets no generic card (readKnownPrompt says so through suppressFallback)
+  if (known.prompt !== null || known.suppressFallback || status !== "blocked" || !agent || settling) {
     fallbackLogged.delete(paneId);
-    return { agent, status, prompt: asked(paneId, known.prompt, turns), pane, panes, screen: known.screen };
+    return { agent, status, prompt: asked(paneId, known.prompt, turns), pane, panes, snapshot, screen: known.screen, inputUnverified: known.inputUnverified };
   }
   // herdr says the agent waits on the user and no reader knows the screen: the fallback card
   const screen = known.screen ?? await liveScreen(paneId);
   // Codex's collapsed question queue reads blocked while its main prompt takes a message; a
   // model list of Claude Code's or Codex's that no reader could read is left to the terminal
-  // (claudeModelListWaits, codexModelListWaits)
-  if ((agent === "codex" && (codexQuestionsCollapsed(screen) || codexModelListWaits(screen))) || claudeModelListWaits(screen) || claudeModelListWaits(screen, CLAUDE_EFFORT_GUARD_RE)) {
+  // (registry.waits)
+  if ((agent === "codex" && codexQuestionsCollapsed(screen)) || registry.waits(agent, screen)) {
     fallbackLogged.delete(paneId);
-    return { agent, status, prompt: asked(paneId, null, turns), pane, panes, screen };
+    return { agent, status, prompt: asked(paneId, null, turns), pane, panes, snapshot, screen };
   }
   const prompt = asked(paneId, parseFallbackPrompt(agent, screen), turns)!;
   if (!fallbackLogged.has(paneId) && fallbackLogged.size < FALLBACK_LOGGED_MAX) {
     fallbackLogged.add(paneId);
     console.warn(`prompt: ${agent} pane ${paneId} is blocked on a screen no reader knows; fallback card (${prompt.options.length} options)`);
   }
-  return { agent, status, prompt, pane, panes, screen };
+  return { agent, status, prompt, pane, panes, snapshot, screen, inputUnverified: known.inputUnverified };
 }
+
+const piAskReader = new OmoAskReader(); // Pi and OmO share the message/toolCall JSONL envelope.
 
 /**
- * The pane's live screen as text: herdr's bottom buffer, whatever part of the history the pane's
- * viewport shows. A pane scrolled up (a drag or the wheel in a terminal) stays scrolled while the
- * agent draws its next menu at the bottom, out of that viewport.
+ * Whether no key may go into the pi pane: the web UI's pi-ask extension serves the pane's pi (its
+ * socket answers, or cannot be read), so a pi-ask form can open there at any moment, between any
+ * check and the key that follows it. pi-ask takes no typed keys (its docs/remote-events.md): such a
+ * pane gets no key-driven card at all, pi's own dialogs included, and the terminal answers them.
+ * The pi-ask card answers through the extension instead. A pi without the extension is as on main.
  */
-async function liveScreen(paneId: string): Promise<string> {
-  return (await paneRead({ paneId, source: "detection", format: "text" })).text;
+async function piAskRefusesKeys(paneId: string, signal?: AbortSignal): Promise<boolean> {
+  return await piAskActivity(paneId, signal) !== "absent";
 }
 
-/** omo's form or widget hint: a narrow pane wraps it, including between "just" and "type". */
-const OMO_FORM_RE = /\b1-9\s+select\b|enter\s+save\s+and\s+next|\btab\s+next\s+question\b|\bor\s+just\s+type\s+your\s+reply\b/;
-const omoAskReader = new OmoAskReader();
+/** A pi-ask form opened under a key-driven answer: nothing more is sent. */
+class PiAskFormOpen extends Error {}
 
-/** Resolve the live process tree every time: a cached session can outlive its agent. */
-async function omoAsksFor(paneId: string, cwd: string, panes: HerdrPane[]): Promise<OmoAsk[]> {
-  const path = await omoTranscriptForPane(paneId, cwd, panes).catch(() => null);
-  if (!path) return [];
-  try { return omoAskReader.read(path).flatMap((call) => omoAskOf({ ...call, id: `${path}\0${call.id}` }) ?? []).reverse(); }
-  catch { return []; }
+/**
+ * Whether omp itself holds the pane's input: one of its own processes is in the pane's foreground (herdr's
+ * `pane.process_info`). herdr keeps naming the pane omp while omp is stopped behind its shell (job control,
+ * live-verified with herdr 0.9.5: the foreground is then the shell alone), and the screen can still show omp's
+ * last dialog: a key answered there would go to the shell. Unknown (herdr did not answer) is not omp's. Windows
+ * has no job control and no foreground process group (process_info names only the shell there,
+ * windows-processes.ts), so nothing can stand in front of a running omp: its panes are read as before.
+ */
+async function ompOwnsInput(paneId: string): Promise<boolean> {
+  if (process.platform === "win32") return true;
+  const info = await paneProcessInfo(paneId).catch(() => undefined);
+  return agentProcesses(info?.foreground_processes ?? [], "omp").length > 0;
+}
+
+/** The shell (or anything but omp) took the pane's input under a key-driven omp answer: nothing more is sent. */
+class OmpNotInFront extends Error {}
+const ompAskReader = new OmoAskReader(ompAsksAfter);
+
+/** An omp Ask card in the agent's own Markdown when its session's open ask call is the menu on screen (omp-ask.ts); else the card as drawn. */
+async function withOmpMarkdown(paneId: string, cwd: string, prompt: InteractivePrompt): Promise<InteractivePrompt> {
+  if (parsedByPublicPrompt.get(prompt)?.responder !== "omp-question") return prompt;
+  try {
+    return ompMarkdownPrompt(prompt, ompAskReader.read((await ompTranscriptPath(paneId, cwd)).path));
+  } catch {
+    return prompt; // no session proved for the pane, or not written yet: the card as drawn
+  }
 }
 
 async function readKnownPrompt(
@@ -1351,7 +724,9 @@ async function readKnownPrompt(
   openCodeStateDir?: string,
   openCodeState = defaultOpenCodeState,
   signal?: AbortSignal,
-): Promise<{ prompt: InteractivePrompt | null; screen?: string; stale?: boolean }> {
+  /** the card as the chat shows it (omp's own Markdown, withOmpMarkdown); an answer's reads compare only ids and keys, which are the screen's either way */
+  markdown = false,
+): Promise<{ prompt: InteractivePrompt | null; screen?: string; stale?: boolean; inputUnverified?: true; suppressFallback?: true }> {
   // no native card (no session herdr reports, no verified v2 service, no pending form): OpenCode
   // v1's own question prompt is read off the screen below (dialogs/opencode.ts, #1386)
   native: if (agent === "opencode") {
@@ -1406,11 +781,11 @@ async function readKnownPrompt(
     const rawOptions = field.options ?? [];
     const customAllowed = field.custom === true || rawOptions.length === 0;
 
-    let options: InteractivePromptOption[];
+    let options: PromptDraft["options"];
     let customOptionIndex: number | null = null;
 
     if (rawOptions.length === 0) {
-      options = [{ label: "Type your answer", description: null }];
+      options = [{ label: own("Type your answer"), description: null }];
       customOptionIndex = 0;
     } else {
       options = rawOptions.map((opt) => ({
@@ -1418,16 +793,16 @@ async function readKnownPrompt(
         description: opt.description ?? null,
       }));
       if (customAllowed) {
-        options.push({ label: "Type your own answer", description: null });
+        options.push({ label: own("Type your own answer"), description: null });
         customOptionIndex = options.length - 1;
       }
     }
 
-    const title = field.title && field.title !== field.description ? field.title : (form.title || "Question");
+    const title = field.title && field.title !== field.description ? field.title : (form.title || own("Question"));
     const question = field.description || field.title || form.title || "";
     const steps = form.fields.length > 1
       ? form.fields.map((f, i) => ({
-          label: f.title || `Question ${i + 1}`,
+          label: f.title || own("Question {n}", { n: i + 1 }),
           answered: i < stepIndex,
           current: i === stepIndex,
         }))
@@ -1497,21 +872,96 @@ async function readKnownPrompt(
   }
 
   if (!["claude", "omp", "codex", "omo", "pi", "gjc", "hermes", "cmd", "opencode", ""].includes(agent)) return { prompt: null };
-  const screen = await liveScreen(paneId);
+  const piTranscript = agent === "pi" ? await piTranscriptPath(paneId).catch(() => null) : null;
+  // pi-ask's ask_user form, as the web UI's pi extension reports it: answered through pi-ask, never keys
+  if (piTranscript && "path" in piTranscript) {
+    const card = await bindPiAsk(paneId, piTranscript, signal);
+    if (card) return { prompt: publicPrompt(piAskUserPrompt(paneId, piTranscript.path, card)) };
+  }
+  let screen = await liveScreen(paneId);
+  const questionnaire = agent === "pi" && isPiQuestionnaireScreen(screen);
+  const piTabs = agent === "pi" && (questionnaire && /[□■]/.test(screen)
+    || /^\s*←.*✓ Submit\s*→$/m.test(screen) && /Enter to select · ↑\/↓ to navigate/.test(screen));
+  let inputUnverified: true | undefined;
+  if (piTabs) {
+    // Detection text has no styles. Background or neutral-vs-dim/green text identifies
+    // the active tab, not answered boxes: verify the viewport before authorizing moves.
+    const before = screen;
+    const scrollBefore = await paneScrollInfo(paneId).catch(() => null);
+    const colors = await paneRead({ paneId, source: "visible", format: "ansi", timeoutMs: SUGGESTION_READ_MS }).then(read => read.text, () => null);
+    const scrollAfter = await paneScrollInfo(paneId).catch(() => null);
+    screen = await liveScreen(paneId);
+    // Bottom offsets alone cannot prove that the styled read captured the same question.
+    const text = (value: string): string => value.replace(ANSI_RE, "").replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
+      .split(/\r?\n/).map(line => line.trimEnd()).join("\n").trimEnd();
+    if (colors !== null && viewportShowsLive(scrollBefore, scrollAfter, colors, before, screen)
+      && text(colors) === text(screen)) screen = colors;
+    else inputUnverified = true; // Plain-text labels remain readable, but authorize no input.
+  }
   // omo's form reads its text from the session's call, the screen showing where the form stands
   const omoAsks = ["omo", "pi", "claude", ""].includes(agent) && pane.cwd && OMO_FORM_RE.test(screen)
     ? await omoAsksFor(paneId, pane.cwd, panes) : [];
   // a pane herdr names claude, or not at all, is omo's only on evidence: herdr reports it waiting
   // on the user, or the session's pending call is the form on screen
   const omoTrusted = (agent !== "claude" && agent !== "") || pane.agent_status === "blocked";
-  const prompt = parseInteractivePrompt(agent, screen, omoAsks[0] ?? null, omoTrusted, omoAsks, agent === "claude" ? heldCandidate(paneId) : null, pane.agent_status === "working");
+  let piNative: ParsedPrompt | null = null;
+  if (agent === "pi") {
+    const transcript = piTranscript;
+    if (transcript && "path" in transcript) {
+      try {
+        const calls = pendingPiQuestionnaires(transcript.path);
+        if (calls === null && questionnaire) return { prompt: null, screen, suppressFallback: true };
+        const matches = (calls ?? []).flatMap(call => {
+          const source = piQuestionnaireOf(`${transcript.path}\0${call.id}`, call.args);
+          const parsed = source && parsePiQuestionnaire(screen, source);
+          return parsed ? [parsed] : [];
+        });
+        if (matches.length === 1) piNative = matches[0]!;
+        else if (calls?.length) return { prompt: null, screen, suppressFallback: true }; // never guess keys for a partial custom widget
+      } catch { /* Missing or replaced session: no authorization from a screen alone. */ }
+    }
+  }
+  if (piTabs && !questionnaire && !piNative) {
+    // A saved custom answer replaces the Other label. Only the pane's verified pending call
+    // can prove that last row is still input, not a clipped third/fourth ordinary option.
+    const transcript = piTranscript;
+    if (transcript && "path" in transcript) {
+      try {
+        const matches = piAskReader.read(transcript.path).flatMap(call => {
+          const ask = omoAskOf({ ...call, id: `${transcript.path}\0${call.id}` });
+          const parsed = ask && parsePiAsk(screen, ask);
+          return parsed ? [parsed] : [];
+        });
+        if (matches.length === 1) piNative = matches[0]!;
+        else screen = screen.replace(ANSI_RE, ""); // no unambiguous call binding: labels, not navigation
+      } catch { screen = screen.replace(ANSI_RE, ""); }
+    }
+  }
+  let prompt = piNative ? publicPrompt(piNative)
+    : parseInteractivePrompt(agent, screen, omoAsks[0] ?? null, omoTrusted, omoAsks, agent === "claude" ? heldCandidate(paneId) : null, pane.agent_status === "working");
+  if (markdown && prompt && agent === "omp" && pane.cwd) prompt = await withOmpMarkdown(paneId, pane.cwd, prompt);
+  // every omp card answers by keys, and so would a fallback card: offered only while omp holds the input
+  if (agent === "omp" && (prompt !== null || pane.agent_status === "blocked") && !(await ompOwnsInput(paneId))) {
+    return { prompt: null, screen, suppressFallback: true };
+  }
   if (prompt && await claudeHeldIsGrey(paneId, prompt)) return { prompt: null, screen };
+  // pi-ask's form with no card: pi-ask takes no typed keys (its docs/remote-events.md), so no card
+  // that answers by keys is offered, pi's own dialogs included (the answer would refuse them too):
+  // the terminal answers it. The pane's pi says so through the extension (any open form, a card or
+  // not, with or without a session written yet); without it, an open ask_user call in the session
+  // does. Asked after the screen read, so a form that opened during it counts
+  // A pi pane gets no generic card: its Enter/Esc would be keys guessed into pi, which may be showing
+  // pi-ask's form (it takes no typed keys); the terminal answers what no reader knows. herdr labels an
+  // OmO pane `pi` while OmO waits: told apart by its process tree, it keeps the card other agents get
+  if (agent === "pi" && (prompt === null || parsedByPublicPrompt.get(prompt)?.responder.startsWith("fallback"))
+    && !(await paneRunsOmo(paneId).catch(() => false))) return { prompt: null, screen, suppressFallback: true };
+  if (agent === "pi" && await piAskRefusesKeys(paneId, signal)) return { prompt: null, screen, suppressFallback: true };
   if (!prompt && agent === "gjc") {
     const fallback = parseFallbackPrompt(agent, screen);
     if (parsedByPublicPrompt.get(fallback)?.responder === "fallback-gjc-menu") return { prompt: fallback, screen };
   }
   const count = agent === "codex" && prompt === null ? queuedQuestionCount(screen) : 0;
-  if (count === 0 || !pane.cwd) return { prompt, screen };
+  if (count === 0 || !pane.cwd) return { prompt, screen, inputUnverified };
   let rollout = queueRollouts.get(paneId);
   if (!rollout || Date.now() - rollout.at > QUEUE_ROLLOUT_MS) {
     rollout = { path: await codexTranscriptPath(paneId, pane.cwd, await paneCodexHome(paneId, codexHome)), at: Date.now() };
@@ -1629,6 +1079,8 @@ export interface PromptRequestOptions {
   openCodeStateDir?: string;
   /** Each server owns its drafts and clears them when stopped. */
   openCodeState?: OpenCodePromptState;
+  /** an answer reached the agent (a 2xx that sent it on, not a saved step or a navigation), for the daily active message's usage */
+  onAnswered?: () => void;
 }
 
 /**
@@ -1671,7 +1123,7 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
         ? await paneRead({ paneId, source: "visible", format: "ansi", timeoutMs: SUGGESTION_READ_MS })
           .then((read) => read.text, () => null)
         : null;
-      const outcomes = await commandOutcomes(paneId, read.pane, read.prompt, read.screen, readSendId, options.codexHome);
+      const outcomes = await commandOutcomes(paneId, read.pane, read.prompt, read.screen, readSendId, options.codexHome, read.snapshot);
       return jsonResponse({
         prompt,
         suggestion: box === null ? null : parseClaudeSuggestion(box),
@@ -1697,15 +1149,18 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
     const form: { answered?: string } = {};
     const log = { paneId: body.pane_id, matched: false };
     answerLog = log;
+    // the answer reached the agent: OpenCode or pi-ask took it, or its keys went to the pane. A saved OpenCode
+    // step, a step back or a move between pi-ask questions reaches nothing and is no answer (onAnswered)
+    let delivered = false;
     const response = await serialize(body.pane_id, async () => {
       // given up while it waited its turn: nothing is read, opened or sent for it
       if (request.signal.aborted) return promptChanged();
       const deadlineAt = Date.now() + 4_000;
       const deadline = AbortSignal.any([request.signal, AbortSignal.timeout(4_000)]);
       const openCodeState = options.openCodeState ?? defaultOpenCodeState;
-      const { prompt, agent, pane, panes } = await readPrompt(body.pane_id, options.codexHome, options.openCodeStateDir, openCodeState, deadline);
+      const { prompt, agent, pane, panes, inputUnverified } = await readPrompt(body.pane_id, options.codexHome, options.openCodeStateDir, openCodeState, deadline);
       // a plan card's id carries its plan file's revision: the file as it is now must match too
-      if (!prompt || (await withPlanFile(prompt, options.claudeTranscript?.(body.pane_id)))!.id !== body.prompt_id) return promptChanged();
+      if (inputUnverified || !prompt || (await withPlanFile(prompt, options.claudeTranscript?.(body.pane_id)))!.id !== body.prompt_id) return promptChanged();
       log.matched = true;
 
       const parsedPrompt = parsedByPublicPrompt.get(prompt);
@@ -1833,6 +1288,7 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
         if (!(await stillBound())) return promptChanged();
         const replyResult = await replyOpenCodeForm(config, openCodeForm.sessionID, openCodeForm.formId, draft.answers, deadline);
         if (replyResult.ok) {
+          delivered = true;
           const sent = chatSent.get(body.pane_id)?.commands.at(-1);
           // OpenCode itself took the answer to the form the sent command opened
           if (sent?.dialogId === prompt.id) noteCommandEvidence(body.pane_id, sent.id, { kind: "native", at: Date.now() });
@@ -1859,6 +1315,68 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
           return jsonResponse({ error: { code: "prompt_changed", message: "The form has already been settled." } }, 409);
         }
         return jsonResponse({ error: { code: "reply_failed", message: `Failed to reply to OpenCode form (HTTP ${replyResult.status}).` } }, 502);
+      }
+
+      if (parsedPrompt?.responder === "pi-ask-user" && parsedPrompt.piAskUser) {
+        const { response, answered } = await answerPiAskUser(body.pane_id, parsedPrompt, body, deadline);
+        if (response.ok) askingEnded(body.pane_id);
+        if (answered) {
+          delivered = true;
+          const sent = chatSent.get(body.pane_id)?.commands.at(-1);
+          // pi-ask itself took the answer to the form the sent command opened
+          if (sent?.dialogId === prompt.id) noteCommandEvidence(body.pane_id, sent.id, { kind: "native", at: Date.now() });
+          formsAnswered.set(body.pane_id, Date.now());
+          if (formsAnswered.size > 64) formsAnswered.delete(formsAnswered.keys().next().value!);
+        }
+        return response;
+      }
+
+      if (body.step_back === true || body.step_index !== undefined) {
+        const native = parsedPrompt?.piAskForm;
+        if (!native || body.step_back === true && body.step_index !== undefined
+          || body.option_index !== undefined || body.option_indices !== undefined || body.custom_text !== undefined) {
+          return badRequest("invalid_answer", "Exactly one supported navigation action is required.");
+        }
+        const target = body.step_index ?? native.index - 1;
+        if (!Number.isInteger(target) || target < 0 || target === native.index || !parsedPrompt.steps?.[target]?.can_navigate) {
+          return badRequest("invalid_answer", "Invalid question to navigate to.");
+        }
+        // Do not drop web-only edits or turn a navigation request into an implicit answer.
+        if (body.draft !== undefined) {
+          const draft = body.draft;
+          const expected = parsedPrompt.multi_select ? parsedPrompt.default_option_indices ?? []
+            : parsedPrompt.default_option_index !== undefined && parsedPrompt.default_option_index !== null ? [parsedPrompt.default_option_index] : [];
+          if (!draft || !Array.isArray(draft.option_indices) || typeof draft.custom_text !== "string"
+            || draft.option_indices.some(index => !Number.isInteger(index))
+            || JSON.stringify([...draft.option_indices].sort((a, b) => a - b)) !== JSON.stringify(expected)
+            || draft.custom_text !== (parsedPrompt.default_custom_text ?? "")) {
+            return badRequest("invalid_answer", "Submit or clear edits before switching questions.");
+          }
+        }
+        const asking = askings.get(body.pane_id);
+        const active = (): boolean => !deadline.aborted && asking !== undefined && askings.get(body.pane_id) === asking && asking.content !== null;
+        answersUnderWay.add(body.pane_id);
+        answerTurns.set(body.pane_id, (answerTurns.get(body.pane_id) ?? 0) + 1);
+        try {
+          const moved = await navigatePiAsk(parsedPrompt, target, {
+            deadline: deadlineAt, active,
+            send: async key => {
+              if (await piAskRefusesKeys(body.pane_id, deadline)) throw new PiAskFormOpen();
+              await paneSendKeys(body.pane_id, [key]);
+            },
+            read: async () => {
+              if (!active()) return null;
+              const live = await readPrompt(body.pane_id, options.codexHome, options.openCodeStateDir, openCodeState, deadline);
+              return !live.inputUnverified && live.agent === "pi" && (live.status === "blocked" || live.status === "idle" && parsedPrompt.responder.startsWith("pi-questionnaire-")) && live.prompt ? parsedByPublicPrompt.get(live.prompt) ?? null : null;
+            },
+          });
+          if (!moved) return promptChanged();
+          askingEnded(body.pane_id);
+          return jsonResponse({ ok: true });
+        } catch (error) {
+          if (error instanceof PiAskFormOpen) return promptChanged();
+          throw error;
+        } finally { answersUnderWay.delete(body.pane_id); }
       }
 
       // checked against the card before anything is sent: an invalid answer never opens the queue
@@ -1951,7 +1469,8 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
             const dialog = parsePiDialog(screen, true);
             return dialog?.id === parsed.id && dialog.selectedIndex === cursor && promptTailIsActive(dialog, screen);
           }
-          return shown?.id === parsed.id && shown.selectedIndex === cursor;
+          return shown?.id === parsed.id && shown.selectedIndex === cursor
+            && (responder !== "pi-questionnaire-question" || shown.piQuestionnaireInput === undefined);
         };
         /**
          * Waits for the screen to show the card's own menu with the cursor where the moves sent
@@ -1972,11 +1491,16 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
             const read = await Promise.race([reading, Bun.sleep(left).then(() => null)]);
             if (!read || Date.now() > deadline) return false;
             const shown = read.prompt ? parsedByPublicPrompt.get(read.prompt) ?? null : null;
-            if (asks() && aimed(shown, read.screen ?? "")) { looked(shown); matchedScreen = read.screen ?? ""; return true; }
+            if (!read.inputUnverified && asks() && aimed(shown, read.screen ?? "")) { looked(shown); matchedScreen = read.screen ?? ""; return true; }
             await Bun.sleep(50);
           }
         };
         const sendStep = async (step: AnswerStep, move: boolean, more: boolean): Promise<void> => {
+          // right before each key: a pi-ask form that opened since the read takes none of them
+          if (agent === "pi" && await piAskRefusesKeys(body.pane_id, deadline)) throw new PiAskFormOpen();
+          // and an omp stopped behind its shell since the read takes none either: the shell would. A stop between
+          // this look and herdr writing the key is not seen: herdr's send_keys takes no condition on the foreground
+          if (agent === "omp" && !(await ompOwnsInput(body.pane_id))) throw new OmpNotInFront();
           const first = !move && !committed;
           if (!move) committed = true;
           try {
@@ -1988,6 +1512,43 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
             throw error;
           }
           if (more) await Bun.sleep(30);
+        };
+        let customTyped = false;
+        const customEditorReady = async (draft: string): Promise<boolean> => {
+          const deadline = Date.now() + SETTLE_MS;
+          if (responder === "pi-questionnaire-question") {
+            const read = await readKnownPrompt(body.pane_id, pane, agent, options.codexHome, panes, options.openCodeStateDir);
+            const shown = read.prompt ? parsedByPublicPrompt.get(read.prompt) : null;
+            return !read.inputUnverified && asks() && !request.signal.aborted && Date.now() < deadline
+              && shown?.id === parsed.id && piQuestionnaireInputMatches(shown, draft)
+              && shown.selectedIndex === parsed.customMenuIndex;
+          }
+          if (responder === "pi-ask-question") {
+            // Clear, text and submit each await an RPC: the editor may disappear between them.
+            const reading = readKnownPrompt(body.pane_id, pane, agent, options.codexHome, panes, options.openCodeStateDir);
+            const read = await Promise.race([reading, Bun.sleep(Math.max(0, deadline - Date.now())).then(() => null)]);
+            const shown = read?.prompt ? parsedByPublicPrompt.get(read.prompt) : null;
+            return !!read && !read.inputUnverified && asks() && !request.signal.aborted && Date.now() < deadline
+              && shown?.id === parsed.id && shown.piAskTyping === true && shown.selectedIndex === parsed.customMenuIndex;
+          }
+          while (asks() && !request.signal.aborted && Date.now() < deadline) {
+            const read = await Promise.race([
+              paneRead({ paneId: body.pane_id, source: "detection" }),
+              Bun.sleep(Math.max(0, deadline - Date.now())).then(() => null),
+            ]);
+            if (!read || !asks() || request.signal.aborted || Date.now() >= deadline) return false;
+            if (gjcCustomEditorMatches(read.text, parsed, draft)) return true;
+            // Retry only the known pre-transition drawing. A dismissed or different question
+            // permanently ends this delivery, even if an identical-looking one appears later.
+            if (customTyped) {
+              if (!gjcCustomEditorMatches(read.text, parsed, "")) return false;
+            } else {
+              const before = parsedByPublicPrompt.get(parseFallbackPrompt("gjc", read.text));
+              if (before?.id !== parsed.id || before.selectedIndex !== parsed.customMenuIndex) return false;
+            }
+            await Bun.sleep(50);
+          }
+          return false;
         };
         if (interaction) {
           const result = await executeInteractionPlan(interaction, body.option_index!, {
@@ -2006,8 +1567,12 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
             const move = step.keys?.every((key) => key === KEY.up || key === KEY.down || (sideways && (key === KEY.left || key === KEY.right))) ?? false;
             // the asking ended under the answer: no further key, whatever the screen shows
             if (!asks()) return promptChanged();
+            if ((responder === "fallback-gjc-menu" || responder === "pi-ask-question" || responder === "pi-questionnaire-question") && body.custom_text !== undefined && committed) {
+              if (!(await customEditorReady(customTyped ? body.custom_text.trim() : ""))) return promptChanged();
+              if (step.text !== undefined) customTyped = true;
+            }
             // GJC's selector can close under the answer: its composer must not take the moves.
-            if (move && walked && (list || responder === "fallback-gjc-menu") && !(await onRow())) return promptChanged();
+            if (move && walked && (list || reader?.reread === "each-move" || responder === "fallback-gjc-menu") && !(await onRow())) return promptChanged();
             if (!move && !committed) {
               // The first irreversible step goes only once the menu shows the expected cursor.
               // Later keys follow as before: the menu itself changes under them.
@@ -2026,6 +1591,7 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
           }
         }
         answered = true;
+        delivered = true;
         const sent = chatSent.get(body.pane_id)?.commands.at(-1);
         // An incidental question only unblocks the command; only its named dialog can complete it.
         // The card's Esc row (a cancel or refusal: omp's handoff Cancel, Codex's No) is not a result.
@@ -2033,6 +1599,7 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
           && body.option_index !== parsed.rejectWithEscapeIndex) noteCommandEvidence(body.pane_id, sent.id, { kind: "dialog", at: Date.now() });
       } catch (error) {
         if (error instanceof InvalidAnswer) return badRequest("invalid_answer", error.message);
+        if (error instanceof PiAskFormOpen || error instanceof OmpNotInFront) return promptChanged();
         throw error;
       } finally {
         answersUnderWay.delete(body.pane_id);
@@ -2052,7 +1619,9 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
         await closeQueue(body.pane_id, contentId(target)!);
       }
       const responder = parsedByPublicPrompt.get(target)?.responder;
-      if (responder === "omo-question" || responder === "omo-review" || responder === "omo-typing" || responder === "omo-pending") {
+      if (responder === "omo-question" || responder === "omo-review" || responder === "omo-typing" || responder === "omo-pending"
+        || responder === "pi-ask-question" || responder === "pi-ask-submit"
+        || responder === "pi-questionnaire-question" || responder === "pi-questionnaire-submit") {
         formsAnswered.set(body.pane_id, Date.now());
         if (formsAnswered.size > 64) formsAnswered.delete(formsAnswered.keys().next().value!);
       }
@@ -2065,6 +1634,7 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
     // the wait for the form's next step only reads the pane: after the pane's turn, so a message
     // queued for it meanwhile is not held up behind the polls
     if (form.answered !== undefined) await formMovedOn(body.pane_id, form.answered, options.codexHome, options.openCodeStateDir);
+    if (response.ok && delivered) options.onAnswered?.();
     await logAnswer(log, response);
     return response;
   } catch (error) {

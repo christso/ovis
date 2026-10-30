@@ -1,7 +1,9 @@
 import { closeSync, constants, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { PANE_TOKEN_NAME, type AgentRowTokens, type PaneTokenRule, type PaneTokenSpec } from "../shared/pane-tokens.ts";
+import type { Machine } from "../shared/machines.ts";
+import type { SessionSnapshot } from "../shared/protocol.ts";
+import { PANE_TOKEN_NAME, paneTokenRuleMatches, paneTokenSpecs, type AgentRowTokens, type PaneTokenRule, type PaneTokenSpec } from "../shared/pane-tokens.ts";
 
 /** how often a watched config.toml is looked at again while a browser listens */
 const POLL_MS = 5_000;
@@ -53,6 +55,26 @@ function normalizeConfigBom(text: string): string {
     if (quote?.length === 1) quote = null;
     return normalized;
   }).join("\n");
+}
+
+/**
+ * herdr's config.toml at `path`, parsed, or null when it is no regular file of a config's size, cannot
+ * be read whole, or is no TOML. The opened file is checked too: a FIFO swapped in after a stat must not
+ * block the server. A file that grew while being read is not taken (a later read takes it whole).
+ */
+export function readHerdrConfig(path: string): unknown {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > MAX_CONFIG_BYTES) return null;
+    const buffer = Buffer.alloc(stat.size + 1);
+    let length = 0;
+    for (let count = 1; count > 0 && length < buffer.length; length += count) count = readSync(fd, buffer, length, buffer.length - length, null);
+    if (length > stat.size) return null;
+    return Bun.TOML.parse(normalizeConfigBom(buffer.subarray(0, length).toString("utf8")));
+  } catch { return null; }
+  finally { if (fd !== undefined) closeSync(fd); }
 }
 
 /** A rule with exactly one condition of its kind, as herdr accepts it; anything else herdr refuses, and is left out. */
@@ -115,6 +137,97 @@ export function agentRowTokens(config: unknown): AgentRowTokens | null {
   return { rows, by_agent: byAgent };
 }
 
+const nonblank = (value: string | null | undefined): string | null => value?.trim() || null;
+
+/** Whether every place `specs` name `name` hides `value`: the agent row then never draws it. */
+function hiddenEverywhere(specs: PaneTokenSpec[], name: string, value: unknown): boolean {
+  if (typeof value !== "string" || !value.trim()) return false;
+  const places = specs.filter((spec) => spec.name === name);
+  return places.length > 0 && places.every(({ rules }) => rules?.find((rule) => paneTokenRuleMatches(rule, value))?.hide === true);
+}
+
+/**
+ * The PCs as browsers are told them (#1349): without the token values herdr's rows hide wherever
+ * they name them, so no roster, streamed or polled, holds a value the user chose to hide, whatever
+ * rows a browser holds when it lands. A row's tokens are its pane's, else its agent's, under its
+ * pane's agent, else its agent record's (src/lib/sidebarAgents.ts, src/components/AgentSidebar.tsx).
+ * The machines are copied where a value leaves, never changed: the manager keeps them.
+ */
+export function withoutHiddenTokens(layout: AgentRowTokens | null, machines: Machine[]): Machine[] {
+  if (layout === null) return machines;
+  return machines.map((machine) => {
+    if (!machine.snapshot) return machine;
+    const snapshot = snapshotWithoutHiddenTokens(layout, machine.snapshot);
+    return snapshot === machine.snapshot ? machine : { ...machine, snapshot };
+  });
+}
+
+/**
+ * One PC's snapshot as a browser is told it, wherever it goes (#2160): the session read, the /ws
+ * snapshot frame and the relayed or proxied ones, without the token values herdr's rows hide, as
+ * withoutHiddenTokens tells the roster. Copied where a value leaves; the same object when none does.
+ * Another Ovis server reading this PC with its bridge token gets the snapshot whole: it applies its
+ * own rows, as herdr's sidebar is the client's config.
+ */
+export function snapshotWithoutHiddenTokens<S extends Pick<SessionSnapshot, "panes" | "agents">>(layout: AgentRowTokens | null, snapshot: S): S {
+  if (layout === null) return snapshot;
+  const recordAgent = new Map<string, string | null | undefined>();
+  for (const record of snapshot.agents) if (!recordAgent.has(record.pane_id)) recordAgent.set(record.pane_id, record.agent);
+  const paneAgent = new Map<string, string | null>();
+  for (const pane of snapshot.panes) if (!paneAgent.has(pane.pane_id)) paneAgent.set(pane.pane_id, nonblank(pane.agent) ?? nonblank(recordAgent.get(pane.pane_id)));
+  let changed = false;
+  const shown = <T extends { pane_id: string; tokens?: Record<string, unknown> }>(item: T, agent: string | null): T => {
+    const specs = paneTokenSpecs(layout, agent);
+    if (!item.tokens || specs === null) return item;
+    const kept = Object.entries(item.tokens).filter(([name, value]) => !hiddenEverywhere(specs, name, value));
+    if (kept.length === Object.keys(item.tokens).length) return item;
+    changed = true;
+    return { ...item, tokens: Object.fromEntries(kept) };
+  };
+  const panes = snapshot.panes.map((pane) => shown(pane, paneAgent.get(pane.pane_id) ?? null));
+  const agents = snapshot.agents.map((record) => shown(record, paneAgent.has(record.pane_id) ? paneAgent.get(record.pane_id)! : nonblank(record.agent)));
+  return changed ? { ...snapshot, panes, agents } : snapshot;
+}
+
+/**
+ * The token values the PCs' panes and agents report in `machines`, by token name, read now: the
+ * manager's machines are changed in place, so a roster kept for later is kept as this.
+ */
+export function reportedTokenValues(machines: readonly Machine[]): Map<string, Set<string>> {
+  const reported = new Map<string, Set<string>>();
+  for (const { snapshot } of machines) {
+    for (const { tokens } of [...snapshot?.panes ?? [], ...snapshot?.agents ?? []]) {
+      for (const [name, value] of Object.entries(tokens ?? {})) {
+        if (typeof value !== "string" || !value.trim()) continue;
+        const values = reported.get(name) ?? new Set<string>();
+        reported.set(name, values.add(value));
+      }
+    }
+  }
+  return reported;
+}
+
+/**
+ * What browsers are told of the rows (#1349): the rows' tokens as they are, with the hide rules of
+ * each place that has them decided here for the values reported (reportedTokenValues, of one roster
+ * or of several): an `equals` rule that shows each such value the place draws, then one that hides
+ * any other (`contains: ""` matches every value). The rules' own operands (a literal no pane
+ * reports, a number's bound) stay on this PC, while a browser, an older one too, draws the same
+ * tokens for those values (shared/pane-tokens.ts paneTokenValues). A value the server has not
+ * decided, as one a browser kept from a roster told under other rows, is hidden there: a decision
+ * that lands out of step with a roster can hide a value for a moment, never show one.
+ */
+export function decidedRowTokens(layout: AgentRowTokens | null, ...reported: ReadonlyMap<string, ReadonlySet<string>>[]): AgentRowTokens | null {
+  if (layout === null) return null;
+  const valuesOf = (name: string): string[] => [...new Set(reported.flatMap((values) => [...values.get(name) ?? []]))];
+  const decide = (specs: PaneTokenSpec[]): PaneTokenSpec[] => specs.map(({ name, rules }) => {
+    if (rules === undefined) return { name };
+    const shown = valuesOf(name).filter((value) => !rules.find((rule) => paneTokenRuleMatches(rule, value))?.hide).sort();
+    return { name, rules: [...shown.map((value): PaneTokenRule => ({ equals: value })), { contains: "", hide: true }] };
+  });
+  return { rows: layout.rows && decide(layout.rows), by_agent: Object.fromEntries(Object.entries(layout.by_agent).map(([agent, specs]) => [agent, decide(specs)])) };
+}
+
 /**
  * herdr's sidebar rows for agents, read from its config.toml, and read again when the file
  * changes while a browser listens (herdr's own sidebar reads them at start and on reload-config).
@@ -166,23 +279,8 @@ export class HerdrSidebarConfig {
     this.stamp = stamp;
     let next: AgentRowTokens | null = null;
     if (stamp !== null) {
-      let fd: number | undefined;
-      try {
-        // Check the opened file too: a FIFO swapped in after stat must not block the server.
-        fd = openSync(this.path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
-        const stat = fstatSync(fd);
-        if (stat.isFile() && stat.size <= MAX_CONFIG_BYTES) {
-          const buffer = Buffer.alloc(stat.size + 1);
-          let length = 0;
-          for (let count = 1; count > 0 && length < buffer.length; length += count) count = readSync(fd, buffer, length, buffer.length - length, null);
-          // A file that grew while being read is retried once its stamp changes.
-          if (length <= stat.size) {
-            const text = normalizeConfigBom(buffer.subarray(0, length).toString("utf8"));
-            next = agentRowTokens(Bun.TOML.parse(text));
-          }
-        }
-      } catch { next = null; }
-      finally { if (fd !== undefined) closeSync(fd); }
+      const parsed = readHerdrConfig(this.path);
+      try { next = parsed === null ? null : agentRowTokens(parsed); } catch { next = null; }
     }
     const changed = JSON.stringify(next) !== JSON.stringify(this.layout);
     this.layout = next;

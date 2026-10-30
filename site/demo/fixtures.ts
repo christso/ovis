@@ -5,6 +5,7 @@
  * code, so the browser bundle can take it.
  */
 import type { ConversationTurn, InteractivePrompt, SessionHistoryAgent, SessionHistoryRow, SlashCommand } from "../../shared/protocol.ts";
+import { AGENT_CATALOG, catalogRow, meetsMinVersion, type AgentCatalogResponse } from "../../shared/agent-catalog.ts";
 
 export interface DemoSpec {
   key: string;
@@ -20,6 +21,20 @@ export interface DemoSpec {
   /** a second tab, labelled `label`, in this spec's workspace instead of a workspace of its own */
   tabOf?: string;
 }
+
+/** The demo PC's versions of the agents its panes run; every other catalog agent is not installed there. */
+const DEMO_INSTALLED: Readonly<Record<string, string>> = { claude: "2.1.311", codex: "0.163.0", omp: "18.8.7", pi: "0.73.1", hermes: "0.22.5" };
+
+/** GET /api/agent-catalog on the demo PC, a Linux one: the real catalog, with the agents above installed. */
+export const DEMO_AGENT_CATALOG: AgentCatalogResponse = {
+  platform: "linux",
+  agents: AGENT_CATALOG.map((entry) => {
+    const version = DEMO_INSTALLED[entry.id];
+    return catalogRow(entry, "linux", version === undefined
+      ? { installed: false, binary: null, on_path: null, version: null, version_error: null, meets_min_version: null }
+      : { installed: true, binary: entry.detect.binaries[0]!, on_path: true, version, version_error: null, meets_min_version: entry.min_version === null ? null : meetsMinVersion(version, entry.min_version.version) });
+  }),
+};
 
 // The sidebar reads as two repositories, each with its own agent and two agent worktrees under it.
 export const SPECS: DemoSpec[] = [
@@ -40,6 +55,37 @@ const RESUME_FLAGS: Record<SessionHistoryAgent, string[]> = {
   omo: ["--session-id"], opencode: ["--session"], hermes: ["--resume"], grok: ["--resume"], agy: ["--conversation"], devin: ["--resume"],
 };
 export const SESSION_HISTORY_AGENTS = Object.keys(RESUME_FLAGS) as SessionHistoryAgent[];
+
+/**
+ * The session a launch's arguments resume: the agent's own resume flags, then the id, as its history
+ * rows give them (`claude --resume <id>`, `codex resume <id>`); any other arguments resume none.
+ */
+export function resumedSession(agent: string | null, args: unknown): string | null {
+  if (agent === null || !(SESSION_HISTORY_AGENTS as string[]).includes(agent) || !Array.isArray(args)) return null;
+  const flags = RESUME_FLAGS[agent as SessionHistoryAgent];
+  const id: unknown = args[flags.length];
+  return args.length === flags.length + 1 && flags.every((flag, index) => args[index] === flag) && typeof id === "string" ? id : null;
+}
+
+/**
+ * Web push on the demo: the fictional workstation's key, and two subscriptions its push service has
+ * already answered for, so the alerts notice has something to show. The public demo has no
+ * PushManager, so only a browser script that lends it one (scripts/push-health-demo-regression.ts)
+ * ever hands these over; nothing here reaches a real push service.
+ */
+export const DEMO_PUSH = {
+  publicKey: "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+  /** retired by its push service after one alert got through: the tombstone that says why alerts stopped */
+  retired: {
+    subscription: { endpoint: "https://push.example.test/demo/retired", keys: { p256dh: "CzBVep_E6Q4zWH2ix-wRNluApcrvFDleg6jN8hc8YYar0PUaP2SJrtP4HUJnjLHW-yBFao-02f4jSG2St9wBJks", auth: "BzxxptsQRXqv5BlOg7jtIg" } },
+    status: { registered: false, last_success_at: t(2), last_failure_at: t(41), last_failure: "gone" as const },
+  },
+  /** refused by its push service, and still registered: told, and not mended by subscribing again */
+  refused: {
+    subscription: { endpoint: "https://push.example.test/demo/refused", keys: { p256dh: "AyA9WneUsc7rCCVCX3yZttPwDSpHZIGeu9j1Ei9MaYajwN36FzRRbouoxeL_HDlWc5CtyucEIT5beJWyz-wJJkM", auth: "BUJ_vPk2c7DtKmek4R5bmA" } },
+    status: { registered: true, last_success_at: t(2), last_failure_at: t(44), last_failure: "rejected" as const },
+  },
+};
 
 /** Two earlier, fictional sessions of an agent in a demo folder, newest first. */
 export function sessionHistoryRows(agent: SessionHistoryAgent): SessionHistoryRow[] {
@@ -103,6 +149,8 @@ export const CHATS: Record<string, { turns: ConversationTurn[]; metadata: { mode
     turns: [
       { role: "user" as const, ts: t(1), parts: [{ kind: "text" as const, text: "Rate-limit the export button so a double click can't start two exports, then push the branch." }] },
       { role: "assistant" as const, ts: t(1, 4), end_ts: t(3, 20), parts: [
+        tool("update_plan", "update_plan", { plan: [{ step: "Find where the export starts", status: "in_progress" }, { step: "Guard the button while an export runs", status: "pending" }, { step: "Push the branch", status: "pending" }] }, "Plan updated"),
+        tool("update_plan", "update_plan", { plan: [{ step: "Find where the export starts", status: "completed" }, { step: "Guard the button while an export runs", status: "in_progress" }, { step: "Push the branch", status: "pending" }] }, "Plan updated"),
         tool("exec", "rg -n \"startExport\" src", { cmd: "rg -n \"startExport\" src" }, "src/pages/Reports.tsx:88:  onClick={() => startExport(filters)}"),
         tool("apply_patch", "src/pages/Reports.tsx", "*** Begin Patch\n*** Update File: src/pages/Reports.tsx\n@@\n-  onClick={() => startExport(filters)}\n+  disabled={exporting}\n+  onClick={() => { if (!exporting) startExport(filters); }}\n*** End Patch", "Success. Updated the following files:\nM src/pages/Reports.tsx"),
         tool("exec", "pnpm test --filter reports", { cmd: "pnpm test --filter reports" }, "✓ 9 tests passed"),
@@ -115,6 +163,8 @@ export const CHATS: Record<string, { turns: ConversationTurn[]; metadata: { mode
     turns: [
       { role: "user" as const, ts: t(7), parts: [{ kind: "text" as const, text: "`retries a timed-out upload` fails about one run in ten. Find out why and fix it." }] },
       { role: "assistant" as const, ts: t(7, 4), end_ts: t(9, 30), parts: [
+        tool("TodoWrite", "TodoWrite", { todos: [{ content: "Reproduce the failure", status: "in_progress", activeForm: "Reproducing the failure" }, { content: "Find what the timing depends on", status: "pending", activeForm: "Finding what the timing depends on" }, { content: "Fix the test and rerun it 50 times", status: "pending", activeForm: "Fixing the test" }] }, "Todos have been modified successfully."),
+        tool("TodoWrite", "TodoWrite", { todos: [{ content: "Reproduce the failure", status: "completed", activeForm: "Reproducing the failure" }, { content: "Find what the timing depends on", status: "in_progress", activeForm: "Finding what the timing depends on" }, { content: "Fix the test and rerun it 50 times", status: "pending", activeForm: "Fixing the test" }] }, "Todos have been modified successfully."),
         tool("Read", "src/lib/retry.test.ts", { file_path: "src/lib/retry.test.ts" }, "test(\"retries a timed-out upload\", async () => { … })"),
         tool("Bash", "bun test retry --rerun-each 50", { command: "bun test retry --rerun-each 50" }, " 46 pass\n 4 fail\nexpected 3 attempts, received 2"),
         tool("Edit", "src/lib/retry.test.ts", { file_path: "src/lib/retry.test.ts" }, "Updated src/lib/retry.test.ts"),
@@ -128,6 +178,8 @@ export const CHATS: Record<string, { turns: ConversationTurn[]; metadata: { mode
     turns: [
       { role: "user" as const, ts: t(3), parts: [{ kind: "text" as const, text: "Plan a `cli-tools.toml` so the flags people repeat can live in a file." }] },
       { role: "assistant" as const, ts: t(3, 4), end_ts: t(5, 10), parts: [
+        tool("todo", "todo", { op: "init", list: [{ phase: "Plan", items: ["Read the flags people repeat", "Pick where the file is read from", "Write the plan"] }] }, "Overall: 0/3 done, 3 open.\n  Plan:\n    - [ ] Read the flags people repeat (in progress)\n    - [ ] Pick where the file is read from\n    - [ ] Write the plan"),
+        tool("todo", "todo", { op: "done", task: "Read the flags people repeat" }, "Overall: 1/3 done, 2 open.\n  Plan:\n    - [X] Read the flags people repeat\n    - [ ] Pick where the file is read from (in progress)\n    - [ ] Write the plan"),
         tool("bash", "rg -n \"option\\(\" src/cli.ts", { command: "rg -n \"option\\(\" src/cli.ts" }, "src/cli.ts:12:  .option(\"--retries <n>\")\nsrc/cli.ts:13:  .option(\"--registry <url>\")\nsrc/cli.ts:14:  .option(\"--dry-run\")"),
         { kind: "text" as const, text: "Three steps:\n\n1. Read `cli-tools.toml` from the project root, then `~/.config/cli-tools.toml`.\n2. A flag on the command line wins over the file, the file over the defaults.\n3. `cli-tools config` prints the merged values and where each one came from.\n\n`--retries` and `--registry` move over as they are; `--dry-run` stays a flag only." },
       ] },
@@ -167,6 +219,21 @@ export const CHATS: Record<string, { turns: ConversationTurn[]; metadata: { mode
     ],
   },
 };
+
+/**
+ * Claude Code and Codex record each call's own id (shared/protocol.ts `call_id`); every call in
+ * these chats was answered. Claude's unflagged tool_result makes it `ok`; Codex records no outcome,
+ * so its answered calls carry no state. Other agents' chats carry neither.
+ */
+for (const [key, agent] of [["api", "claude"], ["flaky", "claude"], ["web", "codex"]] as const) {
+  let n = 0;
+  for (const turn of CHATS[key]!.turns) for (const part of turn.parts) {
+    if (part.kind !== "tool") continue;
+    n += 1;
+    part.call_id = agent === "claude" ? `toolu_demo_${key}_${n}` : `call_demo_${key}_${n}`;
+    if (agent === "claude") part.state = "ok";
+  }
+}
 
 export const PROMPT: InteractivePrompt = {
   id: "demo-approval",

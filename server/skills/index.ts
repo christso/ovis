@@ -25,6 +25,12 @@ export interface AgentCommandContext {
   readonly roots: ProcessRoots;
   /** the running agent's version, read from its own store; null or absent when unknown */
   readonly version?: string | null;
+  /**
+   * The server's own environment, the fallback for a setting the pane's process does not name
+   * (absent: `process.env`). A scan on a file thread (`file-pool.ts`) is handed the server's copy:
+   * a Bun thread keeps the environment the process started with, not what the server set since.
+   */
+  readonly serverEnv?: Readonly<Record<string, string | undefined>>;
 }
 export interface AgentCommandSource {
   readonly builtins: readonly string[];
@@ -36,8 +42,8 @@ export interface AgentCommandSource {
   readonly terminalBound?: readonly string[];
   /** builtins the agent's own menu hides: listed with visibility `agent-hidden`, still sent when typed */
   readonly agentHidden?: readonly string[];
-  /** the agent version the builtin list was checked against (compared by major.minor) */
-  readonly pin?: string;
+  /** the agent version the builtin list was checked against (compared by major.minor); one per TUI when the agent ships two */
+  readonly pin?: string | readonly string[];
   /** a skill or custom command named like a builtin replaces it when typed the same way */
   readonly skillsOverrideBuiltins?: boolean;
 }

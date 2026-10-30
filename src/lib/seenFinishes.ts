@@ -95,6 +95,12 @@ function oldestRecord(): CachedFinish | undefined {
   return oldest;
 }
 
+/**
+ * Keeps the index (and storage) at SEEN_LIMIT records, dropping the oldest first. Deliberately
+ * no exception for a pane still on screen: once evicted, an old read finish shows its DONE dot
+ * again, as it would after a reload. It takes SEEN_LIMIT other panes read since, and keeping
+ * evicted records for the page's life would bring back the per-update merge this index replaced.
+ */
 function trimRecords(storage: Storage | null, changes?: SeenChange[]): void {
   while (records.size > SEEN_LIMIT) {
     const oldest = oldestRecord();
@@ -114,7 +120,6 @@ function hydrate(): void {
   hydrated = true;
   const refreshing = refreshSnapshot;
   scopeRecords.clear();
-  if (!refreshing) for (const entry of records.values()) entry.stored = false;
   if (!storage) { refreshSnapshot = false; return; }
 
   const seenDuringRefresh = refreshing ? new Set<string>() : null;
@@ -177,9 +182,10 @@ function recordFor(pc: string, epoch: string): SeenRecord {
       hasFinish = true;
     }
   }
-  if (!hasFinish) return emptyRecord;
-  scopeRecords.set(cacheKey, record);
-  return record;
+  // A PC with no finishes is cached too, so each roster update does not walk the index for it.
+  const result = hasFinish ? record : emptyRecord;
+  scopeRecords.set(cacheKey, result);
+  return result;
 }
 
 function notify(changes: readonly SeenChange[]): void {
@@ -268,11 +274,16 @@ function write(pc: string, epoch: string, pane: string, id: number, answer?: str
   hydrate();
   const key = seenKey(pc, epoch, pane);
   const held = records.get(key);
+  const storage = storageNow();
   if (held?.stored && (held.id > id || (held.id === id && (held.answer !== undefined || answer === undefined)))) {
-    return { id: held.id, changes: [] };
+    // A subscriber's storage listener keeps `stored` true to what other tabs did. With none, another
+    // tab may have removed the key since it was read: look, and write the record back if so.
+    if (listeningWindow !== null || !storage) return { id: held.id, changes: [] };
+    let current: StoredFinish | null = null;
+    try { current = parse(storage.getItem(key)); } catch { return { id: held.id, changes: [] }; }
+    if (current !== null && current.id >= held.id) return { id: held.id, changes: [] };
   }
 
-  const storage = storageNow();
   let saved: StoredFinish | null = null;
   let read = false;
   try {
@@ -345,17 +356,11 @@ export function receiveSeen(finishes: readonly SeenFinish[]): void {
  * belong to a newer tab than this tab's initial roster, so it is capped, not guessed to be old.
  * Never prune from a pane/PC roster. Old-format records cannot identify finishes and are removed.
  */
-export function cleanSeen(retired: readonly { pc: string; epoch: string }[] = []): void {
-  // An explicit global cleanup remains a fresh storage snapshot. Ordinary saves use the warm
-  // bounded index and never pay this scan; epoch retirement is already targeted by scope.
-  if (retired.length === 0 && hydrated) {
-    hydrated = false;
-    refreshSnapshot = true;
-    scopeRecords.clear();
-  }
+export function cleanSeen(retired: readonly { pc: string; epoch: string }[]): void {
   hydrate();
   const storage = storageNow();
   const retiredScopes = new Set(retired.map(({ pc, epoch }) => recordScope(pc, epoch)));
+  for (const scope of retiredScopes) scopeRecords.delete(scope);
   const changes: SeenChange[] = [];
   for (const [key, entry] of records) {
     if (!retiredScopes.has(recordScope(entry.pc, entry.epoch))) continue;

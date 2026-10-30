@@ -18,6 +18,7 @@ import { checkTerminalFileInput } from "./terminal-file-input-regression.ts";
 import { checkTerminalInput } from "./terminal-input-regression.ts";
 import { checkSafariIme } from "./terminal-safari-ime-regression.ts";
 import { checkIpadIme } from "./terminal-ipad-ime-regression.ts";
+import { checkLinuxIme } from "./terminal-linux-ime-regression.ts";
 import { checkHeldDraftPaneSwitch } from "./terminal-draft-regression.ts";
 import { checkCommandBackspace } from "./terminal-command-backspace-regression.ts";
 import { checkCtrlEnter } from "./terminal-ctrl-enter-regression.ts";
@@ -25,7 +26,7 @@ import { checkCommandArrows } from "./terminal-command-arrows-regression.ts";
 import { checkFolderFilter, checkNewFolder } from "./folder-filter-regression.ts";
 import { checkPaletteKeys } from "./palette-keys-regression.ts";
 import { checkFollowHerdrFocus } from "./follow-focus-regression.ts";
-import { UsageService } from "../server/usage.ts";
+import { systemUsageContext, UsageService } from "../server/usage.ts";
 import { openSettingsPage } from "./settings-page.ts";
 import { assertCspClean, watchCsp } from "./csp-violations.ts";
 import type { CspWatch } from "./csp-violations.ts";
@@ -84,7 +85,7 @@ try {
   }
   const [paneA, paneB] = panes as [string, string];
   // no provider is asked with the test machine's own sign-ins
-  server = createServer({ port: 0, hostname: "127.0.0.1", token: "", stateDir: join(root, "push"), usage: new UsageService(undefined, []) });
+  server = createServer({ port: 0, hostname: "127.0.0.1", token: "", stateDir: join(root, "push"), usage: new UsageService({ ...systemUsageContext(), home: root, env: {} }, []) });
   const origin = `http://127.0.0.1:${server.port}`;
   browser = await chromium.launch({
     executablePath: chromePath(),
@@ -123,8 +124,10 @@ try {
   csp.push(await watchCsp(page));
   let holdSubmitResult = false;
   let releaseSubmitResult: (() => void) | null = null;
-  // a connection's first frame held back: what the page does between a reconnect and its snapshot
+  // a connection's first frames held back: what the page does between a reconnect and the frame that
+  // says what the bridge supports (features), and then its snapshot
   let holdSnapshot = false;
+  let releaseFeatures: (() => void) | null = null;
   let releaseSnapshot: (() => void) | null = null;
   const routed: Array<{ close: () => Promise<void> }> = [];
   await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) => {
@@ -132,7 +135,11 @@ try {
     const upstream = socket.connectToServer();
     upstream.onMessage((raw) => {
       const message = JSON.parse(String(raw));
-      if (holdSnapshot && message.type === "snapshot") {
+      if (holdSnapshot && message.type === "features") {
+        const release = () => { socket.send(raw); releaseFeatures = null; };
+        releaseFeatures = release;
+        releases.push(release);
+      } else if (holdSnapshot && message.type === "snapshot") {
         holdSnapshot = false;
         const release = () => { socket.send(raw); releaseSnapshot = null; };
         releaseSnapshot = release;
@@ -358,7 +365,7 @@ try {
   assert.equal(await runDot.evaluate((dot) => getComputedStyle(dot).animationName), "sidebar-breathe", "the dot breathes");
   releasePoll();
   await until(() => pollFinished, "stale machines response released");
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(300); // fixed wait: the stale poll may not revert the RUN badge
   assert.equal(await badge.getAttribute("data-status"), "working", "stale poll must not revert RUN to INPUT");
   assert.equal(await agentRow(paneA).locator(".badge").getAttribute("data-status"), "working",
     "a stale poll must not revert the separate Agents list either");
@@ -389,26 +396,21 @@ try {
   await page.getByTitle("Chat transcript (⌘⇧J)", { exact: true }).click();
   console.log("PASS delayed machines poll preserves newer status; unavailable chat keeps DONE until terminal content is presented");
 
-  // Agents is global to the sidebar, so collapsing a PC's Spaces does not hide
-  // its reported agents or prevent explicit pane selection from that list.
+  // Agents is global to the sidebar: explicit pane selection from that list keeps its machine and pane target.
+  // The test session's only PC is the Host, drawn without its header: no caret folds it, and its + is the New
+  // workspace row under the workspaces. A PC's fold over Agents, with two PCs, is in sidebar-spacing-demo-regression.ts.
   await herdrRpc("pane.report_agent", { pane_id: paneB, source: "manual", agent: "codex", state: "idle" });
   await agentRow(paneB).waitFor();
-  const machineToggle = page.locator(".machine-group .machine-toggle");
-  // the PC's fold is the caret beside its +
-  assert.equal(await page.locator(".machine-group .machine-toggle + .machine-new").count(), 1);
-  await machineToggle.click();
-  await workspaceGroup(workspaces[0]!).waitFor({ state: "detached" });
-  assert.equal(await agentRow(paneA).isVisible(), true, "PC folding leaves Agents visible");
+  assert.equal(await page.locator(".machine-group .machine-header").count(), 0, "the lone Host is drawn without its header");
+  assert.equal(await page.locator(".machine-group .machine-new-row").count(), 1, "its + is the New workspace row");
   await agentRow(paneB).locator(".agent-select").click();
   await agentRow(paneB).locator('.agent-select[aria-current="true"]').waitFor();
   assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem("ovis:selection") ?? "null")),
     { machine_id: "local", pane_id: paneB }, "Agent selection retains its machine and pane target");
-  assert.equal(await machineToggle.getAttribute("aria-expanded"), "false", "Agent selection preserves the user's PC fold");
   painted.delete(paneA);
   await agentRow(paneA).locator(".agent-select").click();
   await agentRow(paneA).locator('.agent-select[aria-current="true"]').waitFor();
   await until(() => painted.has(paneA), "returning from Agents paints the current pane");
-  await machineToggle.click();
   await workspaceHeader(workspaces[0]!).locator('.workspace-select[aria-current="true"]').waitFor();
 
   // Reuse the real API roster as an offline cache in an isolated context. Its
@@ -609,7 +611,7 @@ try {
     await terminalInput.focus();
     const beforeCtrlV = inputs.length;
     await page.keyboard.press("Control+v");
-    await page.waitForTimeout(NO_SEND_WAIT_MS);
+    await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: Ctrl+V may send no control key
     assert.deepEqual(inputs.slice(beforeCtrlV), [], "Ctrl+V must never send the image-paste control key");
   }
   for (const [shortcut, text] of [
@@ -646,7 +648,7 @@ try {
     const beforeEnter = inputs.length;
     await page.keyboard.press(shortcut!);
     await until(() => inputs.length > beforeEnter, `terminal ${shortcut}`);
-    await page.waitForTimeout(NO_SEND_WAIT_MS);
+    await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: no second copy of the shortcut sequence may arrive
     assert.deepEqual(inputs.slice(beforeEnter).map(({ pane_id, text }) => ({ pane_id, text })),
       [{ pane_id: paneA, text: expected }], `${shortcut} must send its sequence exactly once`);
   }
@@ -656,7 +658,7 @@ try {
     await terminalInput.dispatchEvent("keydown", {
       key: "Enter", code: "Enter", shiftKey: true, ...composition, bubbles: true, cancelable: true,
     });
-    await page.waitForTimeout(NO_SEND_WAIT_MS);
+    await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: no ESC-CR may be sent during composition
     assert.equal(inputs.slice(beforeIme).some(({ text }) => text === "\x1b\r"), false,
       "IME commits must not receive the custom Shift+Enter sequence");
   }
@@ -679,7 +681,7 @@ try {
     textarea.dispatchEvent(new KeyboardEvent("keyup", enter));
   });
   await until(() => inputs.length >= beforeCommittedIme + 2, "IME commit followed by Shift+Enter");
-  await page.waitForTimeout(NO_SEND_WAIT_MS);
+  await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: nothing beyond the commit and one Shift+Enter may arrive
   assert.deepEqual(inputs.slice(beforeCommittedIme).map(({ pane_id, text }) => ({ pane_id, text })),
     [{ pane_id: paneA, text: "한" }, { pane_id: paneA, text: "\x1b\r" }],
     "a pending IME commit must precede Shift+Enter without a delayed duplicate");
@@ -702,7 +704,7 @@ try {
     const beforeSwitch = inputs.length;
     await page.keyboard.press(key);
     await until(async () => !(await selectedTitle())?.startsWith(`${paneA} —`), `${key} leaves the pane`);
-    await page.waitForTimeout(NO_SEND_WAIT_MS);
+    await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: the shortcut may reach no pane
     assert.deepEqual(inputs.slice(beforeSwitch), [], `${key} must not reach a pane`);
     await page.locator(`.pane-select[title^="${paneA} —"]`).click();
     await until(async () => (await selectedTitle())?.startsWith(`${paneA} —`) === true, "back on the first pane");
@@ -716,11 +718,18 @@ try {
   await page.locator(`.pane-select[title^="${paneA} —"]`).click();
   await until(async () => (await selectedTitle())?.startsWith(`${paneA} —`) === true, "back on the first pane");
   await composer.fill("draft");
-  await page.keyboard.press("ControlOrMeta+Shift+ArrowDown");
-  await page.waitForTimeout(NO_SEND_WAIT_MS);
-  assert.ok((await selectedTitle())?.startsWith(`${paneA} —`), "a draft keeps Mod+Shift+arrows for selecting text");
+  // the caret at the end of a draft: up selects the text first, and the pane stays
+  await page.keyboard.press("ControlOrMeta+Shift+ArrowUp");
+  await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: the shortcut may not switch pane while the draft has text that way
+  assert.ok((await selectedTitle())?.startsWith(`${paneA} —`), "a draft keeps Mod+Shift+arrows while they select text");
+  assert.deepEqual(await composer.evaluate((node: HTMLTextAreaElement) => [node.selectionStart, node.selectionEnd]), [0, 5], "up selected the draft");
+  // nothing is left to select that way: the next press switches panes, so a draft never stops the shortcut
+  await page.keyboard.press("ControlOrMeta+Shift+ArrowUp");
+  await until(async () => !(await selectedTitle())?.startsWith(`${paneA} —`), "a draft selected to its start lets the pane shortcut go");
+  await page.locator(`.pane-select[title^="${paneA} —"]`).click();
+  await until(async () => (await selectedTitle())?.startsWith(`${paneA} —`) === true, "back on the first pane");
   await composer.fill("");
-  console.log("PASS pane shortcut from the empty message box; a draft keeps text selection");
+  console.log("PASS pane shortcut from the empty message box; a draft keeps text selection until none is left that way");
   console.log("PASS terminal clipboard paste sends text once and preserves Ctrl+C");
 
   await page.keyboard.press("ControlOrMeta+Shift+Comma");
@@ -934,11 +943,11 @@ try {
   assert.equal(await page.locator(".composer-action").count(), 1, "one primary action");
   const actionsBeforeTextClick = pendingActions.length;
   await pendingRows.locator(".pending-message-bubble").first().click();
-  await page.waitForTimeout(NO_SEND_WAIT_MS);
+  await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: clicking pending text may trigger no action
   assert.equal(pendingActions.length, actionsBeforeTextClick, "pending message text is selectable, not a send action");
   assert.equal(pendingBytes(), "");
   await reportPending("blocked"); await page.locator('.composer-status[data-status="blocked"]').waitFor();
-  await page.waitForTimeout(NO_SEND_WAIT_MS);
+  await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: blocked status may not advance pending input
   assert.equal(pendingBytes(), "", "blocked status never advances pending input");
   assert.equal(await pendingRows.count(), 3);
   await reportPending("working"); await page.locator('.composer-status[data-status="working"]').waitFor();
@@ -950,7 +959,7 @@ try {
   // a draft puts Send where Stop was: Escape in the box is still Stop, once a completion is put away, and keeps the draft
   await composer.fill("/he");
   await composer.press("Escape");
-  await page.waitForTimeout(NO_SEND_WAIT_MS);
+  await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: the first Escape may send nothing
   assert.equal(pendingBytes(), `\u001b[200~${queuedTexts[0]}\u001b[201~\r`, "the first Escape on a command being completed only puts the completion away");
   await composer.fill("a draft while the agent works");
   assert.equal(await page.getByRole("button", { name: "Stop agent", exact: true }).count(), 0);
@@ -964,7 +973,7 @@ try {
   const socketsBeforeReconnect = sockets.length;
   holdSnapshot = true;
   await routed.at(-1)!.close();
-  await until(() => releaseSnapshot !== null, "the reconnect's snapshot was held back");
+  await until(() => releaseFeatures !== null && releaseSnapshot !== null, "the reconnect's features and snapshot were held back");
   // the server can send its snapshot before the page has even sent its attach: the pane is
   // ready only once the new connection says so, not by the closed one's last word
   await until(() => sockets.length > socketsBeforeReconnect, "the page opened its new connection");
@@ -972,9 +981,12 @@ try {
   assert.equal(await page.locator('.pending-message[data-state="uncertain"]').count(), 2, "the lost connection's rows are no longer its own");
   await composer.fill("sent before the snapshot");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  assert.equal(inputs.length, sentBeforeSnapshot, "the message waits for the snapshot that says what the bridge supports");
-  releaseSnapshot!();
+  assert.equal(inputs.length, sentBeforeSnapshot, "the message waits for the frame that says what the bridge supports");
+  // that frame needs no herdr: once it is in, the message goes, with the snapshot (which waits on herdr) still held
+  releaseFeatures!();
   await until(async () => await page.locator('.pending-message[data-state="queued"]').count() === 1, "the message sent before the snapshot is a live pending row");
+  assert.notEqual(releaseSnapshot, null, "the snapshot was still held back when the message went");
+  releaseSnapshot!();
   assert.equal(inputs.at(-1)?.delivery, "queue");
   assert.equal(await page.locator(".composer-note").count(), 0);
   await page.getByRole("button", { name: "Discard", exact: true }).click();
@@ -986,7 +998,7 @@ try {
   assert.equal(await page.locator('.pending-message[data-state="uncertain"]').count(), 2, "reload removes connection proof");
   assert.equal(await page.locator(".pending-message-send").count(), 0, "unknown delivery cannot be resent");
   await reportPending("idle"); await page.locator('.composer-status:not([data-status="working"])').waitFor();
-  await page.waitForTimeout(NO_SEND_WAIT_MS);
+  await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: readiness may not replay saved pending input
   assert.equal(pendingBytes(), `\u001b[200~${queuedTexts[0]}\u001b[201~\r\u001b`, "reload and readiness never replay saved pending input");
   for (let left = 2; left > 0; left--) { await page.getByRole("button", { name: "Discard saved copy", exact: true }).first().click(); await until(async () => await pendingRows.count() === left - 1, "discard saved copy"); }
   console.log("PASS Send queues server-owned input, explicit Send now delivers once, and reload/readiness never replay uncertain copies");
@@ -1158,7 +1170,7 @@ try {
   await composer.fill("한글 조합");
   const imeInputs = inputs.length;
   await composer.dispatchEvent("keydown", IME_ENTER);
-  await page.waitForTimeout(NO_SEND_WAIT_MS);
+  await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: an IME Enter may send nothing
   assert.equal(inputs.length, imeInputs);
   assert.equal(await composer.inputValue(), "한글 조합");
   await composer.fill("");
@@ -1469,7 +1481,7 @@ try {
     await createGate;
     await route.continue();
   });
-  await page.getByRole("button", { name: /^New workspace on / }).click();
+  await page.locator(".machine-new-row").click();
   const dialog = page.getByRole("dialog", { name: /^New workspace/ });
   // opening Browse on home leaves Directory as typed, `~`, not the absolute path it lists
   await dialog.getByLabel(/^Directory/).fill("~");
@@ -1681,7 +1693,7 @@ try {
   const sent = moves.length;
   await childHeader.locator(".workspace-select").focus();
   await page.keyboard.press("Alt+ArrowDown");
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(400); // fixed wait: no worktree move may be sent
   assert.equal(moves.length, sent, "a lone worktree has nowhere to move");
   await page.unroute("**/api/workspace/move");
   writeFileSync(join(worktree.path, "unsaved.txt"), "dirty\n");
@@ -1849,8 +1861,8 @@ try {
   await page.unroute("**/api/agents");
   await page.evaluate(() => localStorage.removeItem("ovis:new-session-agent"));
   console.log("PASS reopening after a failed agent start owns focus before paint, enables its fields and closes with Escape");
-  // the PC's + is New workspace again, not a tab in the workspace the last dialog was for
-  await page.getByRole("button", { name: /^New workspace on / }).click();
+  // the lone Host's New workspace row is New workspace again, not a tab in the workspace the last dialog was for
+  await page.locator(".machine-new-row").click();
   await page.getByRole("dialog", { name: /^New workspace/ }).waitFor();
   await page.keyboard.press("Escape");
   await page.getByRole("dialog", { name: /^New workspace/ }).waitFor({ state: "hidden" });
@@ -1912,7 +1924,7 @@ try {
   await tabMenu.waitFor();
   assert.equal(await strip.getByRole("tab", { selected: true }).textContent(), "first", "opening another tab's context menu does not select it");
   // The tab menu keeps native tab scope; pane operations belong to the pane or header.
-  assert.deepEqual(await tabMenu.getByRole("menuitem").allTextContents(), ["Move tab left", "New tab with agent…", "Rename tab", "Close tab"], "the last tab offers only a move to the left");
+  assert.deepEqual(await tabMenu.getByRole("menuitem").allTextContents(), ["Move tab left", "Move to workspace…", "New tab with agent…", "Rename tab", "Close tab"], "the last tab offers only a move to the left, and a one-pane tab a move to another workspace");
   await tabMenu.getByRole("menuitem", { name: "Rename tab", exact: true }).click();
   await tabName.fill("build");
   await page.keyboard.press("Enter");
@@ -1935,7 +1947,7 @@ try {
   const tabSheet = tabPhonePage.getByRole("dialog", { name: "build", exact: true });
   await tabSheet.waitFor();
   const touchTabItems = await tabSheet.locator(".row-sheet-item").allTextContents();
-  assert.deepEqual(touchTabItems.slice(-5), ["Move tab left", "Move tab right", "New tab with agent…", "Rename tab", "Close tab"], "a tab between siblings offers both adjacent moves on touch");
+  assert.deepEqual(touchTabItems.slice(-6), ["Move tab left", "Move tab right", "Move to workspace…", "New tab with agent…", "Rename tab", "Close tab"], "a tab between siblings offers both adjacent moves on touch");
   assert.ok(touchTabItems.includes("Rename pane") && touchTabItems.includes("Close pane"), "the touch menu carries the open pane's actions");
   await tabSheet.getByRole("button", { name: "Cancel", exact: true }).tap();
   await tabSheet.waitFor({ state: "detached" });
@@ -1962,7 +1974,7 @@ try {
   await until(async () => (await third.getAttribute("aria-selected")) === "true", "the third tab is open");
   // a held Delete is one press: its repeats close nothing
   await third.dispatchEvent("keydown", { key: "Delete", repeat: true, bubbles: true });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(300); // fixed wait: a repeated Delete may close no tab
   assert.equal((await tabsInHerdr()).join(), "first,build,third");
   await third.click({ button: "right" });
   await page.getByRole("menu", { name: "third", exact: true }).getByRole("menuitem", { name: "Close tab", exact: true }).click();
@@ -2026,7 +2038,7 @@ try {
   await startupPrompt.waitFor({ state: "hidden" });
   await paintStartupMenu();
   await startupPrompt.getByRole("button", { name: "1. Yes, continue", exact: true }).waitFor();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(500); // fixed wait: no Confirm may appear on the startup menu
   assert.equal(await startupPrompt.locator(".prompt-card-confirm").count(), 0);
   await startupPrompt.getByRole("button", { name: "1. Yes, continue", exact: true }).click();
   await startupPrompt.waitFor({ state: "hidden" });
@@ -2242,10 +2254,10 @@ try {
   await mobilePage.locator(`.pane-select[title^="${paneA} —"]`).click();
   await mobilePage.getByRole("textbox", { name: "Message", exact: true }).waitFor();
   await mobilePage.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await mobilePage.waitForTimeout(NO_SEND_WAIT_MS);
+  await mobilePage.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: a picked pane may not take the keyboard
   assert.equal(await typing(mobilePage), false, "a pane picked on a phone does not take the keyboard");
   await mobilePage.getByTitle("Live terminal (⌘⇧J)", { exact: true }).click();
-  await mobilePage.waitForTimeout(NO_SEND_WAIT_MS);
+  await mobilePage.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: switching the lens may not take the keyboard
   assert.equal(await typing(mobilePage), false, "nor does switching its lens");
   await mobilePage.getByTitle("Chat transcript (⌘⇧J)", { exact: true }).click();
   await mobilePage.getByRole("textbox", { name: "Message", exact: true }).tap();
@@ -2291,6 +2303,7 @@ try {
   await checkTerminalInput(browser, origin, paneA, paneB);
   await checkSafariIme(browser, origin, paneA, paneB);
   await checkIpadIme(browser, origin, paneA, paneB);
+  await checkLinuxIme(browser, origin, paneA);
   await checkHeldDraftPaneSwitch(browser, origin, paneA, paneB);
 
   // the terminal lens on a touch screen starts in direct typing without raising the keyboard;
@@ -2332,13 +2345,13 @@ try {
   await line.fill("echo 한글");
   const imeSent = touchSent.length;
   await line.dispatchEvent("keydown", IME_ENTER);
-  await touchPage.waitForTimeout(NO_SEND_WAIT_MS);
+  await touchPage.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: an IME Enter may send nothing
   assert.equal(touchSent.length, imeSent);
   assert.equal(await line.inputValue(), "echo 한글");
   await line.dispatchEvent("compositionstart", { data: "" });
   const beforeComposeSend = touchSent.length;
   await touchPage.getByRole("button", { name: "Send to the terminal", exact: true }).click();
-  await touchPage.waitForTimeout(NO_SEND_WAIT_MS);
+  await touchPage.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: the Send button may send nothing mid-composition
   assert.equal(touchSent.length, beforeComposeSend, "button cannot submit an unfinished composition");
   await line.dispatchEvent("compositionend", { data: "한글" });
   await line.fill("");

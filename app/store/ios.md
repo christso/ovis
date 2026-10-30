@@ -12,12 +12,14 @@ Extension, a later build; see [Later builds](#later-builds)).
 | Setting | Value | Where |
 |---|---|---|
 | Bundle ID | `sh.ovis.app` | `PRODUCT_BUNDLE_IDENTIFIER`, `app/ios/App/App.xcodeproj` |
-| Version | `1.0` | `MARKETING_VERSION` |
-| Build | `1` | `CURRENT_PROJECT_VERSION`; raise it by one for every upload, TestFlight included |
+| Version | `1.0` | `MARKETING_VERSION`, in the project's build settings, which the app and its extension share (not a target's General tab) |
+| Build | `3` | `CURRENT_PROJECT_VERSION`, in the project's build settings too; raise it by one for every upload, TestFlight included |
 | Devices | iPhone and iPad | `TARGETED_DEVICE_FAMILY = "1,2"`, so the listing needs iPad screenshots too |
 | Minimum iOS | 15.0 | `IPHONEOS_DEPLOYMENT_TARGET` |
 | Signing | Automatic, no team yet | the owner picks the team in Xcode (section 3) |
 | Camera text | "Scan the QR code your PC shows under Settings, Phone & devices." | `NSCameraUsageDescription`, `Info.plist` |
+| Microphone text | "Dictate messages and commands to your agents with voice input." | `NSMicrophoneUsageDescription`, `Info.plist` |
+| Speech recognition text | "Turn what you say into text for your agents when no OpenAI key is set." | `NSSpeechRecognitionUsageDescription`, `Info.plist` |
 | Export compliance | no non-exempt encryption (only Apple's HTTPS) | `ITSAppUsesNonExemptEncryption = false`, so uploads skip the question |
 | Privacy manifest | no tracking; product interaction, device ID and coarse location collected for analytics, linked to the PC's install ID, not tracking (the PC's usage counts, section 5); UserDefaults for the app's own settings (reason `CA92.1`) | `app/ios/App/App/PrivacyInfo.xcprivacy` |
 
@@ -36,6 +38,12 @@ Extension, a later build; see [Later builds](#later-builds)).
    needs no key.
 
 ## 3. Build and upload (the owner, on his Mac with Xcode)
+
+Build 3 is prepared for the next upload. The last documented upload is version 1.0 build 2,
+submitted on 2026-10-24 ([docs/native-app.md](../../docs/native-app.md#phase-1-first-store-release),
+recorded in commit `54fdadc1`). Check App Store Connect before uploading in case a later build
+has already been uploaded. The App and OvisNotifications targets inherit the same project-level
+build number in Debug and Release.
 
 ```bash
 git switch main && git pull
@@ -155,7 +163,9 @@ refuse addresses that are not an Ovis server, which is an app change, not a form
 > to the user's own computer, so there is no account to give you. To review the whole app without
 > a computer, tap "Try the demo" on the first screen: it runs the full interface with made-up
 > agents and terminals, entirely on the phone. "Scan QR code" uses the camera only to read the
-> pairing code a computer shows.
+> pairing code a computer shows. The app uses the microphone for voice input the user chooses:
+> turning Voice input on in Settings briefly opens it to ask for access; the mic button or the
+> keyboard shortcut starts dictation.
 
 ## 8. Release checklist
 
@@ -180,4 +190,5 @@ connect screen, QR pairing, the bundled demo, and push notifications in a coming
   token goes to the push relay ("Device ID", app functionality, linked, as the relay keeps it per
   device, not tracking), and so does the privacy manifest.
 - Every upload: raise `CURRENT_PROJECT_VERSION`; raise `MARKETING_VERSION` for each public
-  release.
+  release. Both are the project's build settings, so the app and its extension keep one version
+  ([docs/native-app.md](../../docs/native-app.md#the-app-app)).

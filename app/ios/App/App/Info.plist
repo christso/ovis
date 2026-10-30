@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>OvisPushRelay</key>
+	<string>$(OVIS_PUSH_RELAY)</string>
+	<key>OvisPushKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)sh.ovis.app.push</string>
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
@@ -73,6 +77,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the QR code your PC shows under Settings, Phone &amp; devices.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictate messages and commands to your agents with voice input.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turn what you say into text for your agents when no OpenAI key is set.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoadsInWebContent</key>

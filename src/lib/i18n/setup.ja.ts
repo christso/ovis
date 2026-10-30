@@ -1,0 +1,38 @@
+/**
+ * Japanese for the keys only components/AgentSetupCard.tsx uses.
+ * Register and fixed terms follow ../i18n.ja.ts; a key another feature also uses goes there.
+ */
+export const SETUP_JA: Record<string, string> = {
+  "Open terminal": "ターミナルを開く",
+  "Set up {agent}": "{agent} をセットアップ",
+  "Uses the official installer, on this PC.": "公式インストーラーで、この PC にインストールします。",
+  "This can take a few minutes. You can keep using Ovis.": "数分かかることがあります。その間も Ovis を使えます。",
+  "Sign in to {agent}": "{agent} にサインイン",
+  "Installed. Sign in so it can use your plan.": "インストールしました。プランを使えるようにサインインしてください。",
+  "Installed. New terminal tabs will find it.": "インストールしました。新しく開くターミナルタブで見つかります。",
+  "Its folder is on PATH only for terminals opened after the install.": "このフォルダーが PATH に入るのは、インストール後に開いたターミナルだけです。",
+  "Finish signing in": "サインインを完了",
+  "Follow the steps in the sign-in tab, then come back here.": "サインインタブの手順に従ってから、ここに戻ってください。",
+  "Version {version}": "バージョン {version}",
+  "It did not finish": "完了しませんでした",
+  "{agent} does not start": "{agent} が起動しません",
+  "Skip": "スキップ",
+  "I've signed in": "サインインしました",
+  "Start {agent}": "{agent} を開始",
+  "Hide details": "詳細を隠す",
+  "Show details": "詳細を表示",
+  "Agents you can install": "インストールできるエージェント",
+  "Can be installed": "インストール可能",
+  "No other agents to install here.": "ここにインストールできるほかのエージェントはありません。",
+  "Install runs the maker's own installer in a terminal tab on this PC, where you can watch it.": "インストールでは、提供元の公式インストーラーをこのPCのターミナルタブで実行します。そのタブで進み具合を見られます。",
+  "None on this PC yet.": "このPCにはまだありません。",
+  "Ovis needs {version} or later.": "Ovisには{version}以降が必要です。",
+  "This PC's Ovis cannot install agents yet. Update it, then try again.": "このPCのOvisはまだエージェントをインストールできません。更新してから、もう一度お試しください。",
+  "It is on this PC, but it does not start. Install it again.": "この PC にありますが、起動しません。もう一度インストールしてください。",
+  "Installing {agent}…": "{agent} をインストール中…",
+  "Install {agent}": "{agent} をインストール",
+  "Installing {agent}… Open terminal": "{agent} をインストール中… ターミナルを開く",
+  "Try installing {agent} again": "{agent} をもう一度インストール",
+  "It took too long. Try again.": "時間がかかりすぎています。もう一度お試しください。",
+  "{agent} did not install. {reason}": "{agent} のインストールが終わりませんでした。{reason}",
+};

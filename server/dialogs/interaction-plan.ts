@@ -1,13 +1,16 @@
 import { KEY, type AnswerStep, type ParsedPrompt } from "./shared.ts";
 
 export interface InteractionPlan {
-  readonly identity: string;
   /** Position after the reversible moves sent so far, in the original drawing's rows. */
   cursor: number;
+  /** Tabs sent so far: each flips a switch beside the rows (Claude's Ultracode), and moves no cursor. */
+  toggles: number;
   moves(answer: number): AnswerStep[];
   matches(screen: string): boolean;
-  readonly commit: AnswerStep;
-  readonly terminalFallback: boolean;
+  /** The irreversible step that picks the answer's row, from that answer's own key sequence. */
+  commit(answer: number): AnswerStep;
+  /** Whether the answer's commit has no safe key and is left to the terminal. */
+  terminalFallback(answer: number): boolean;
 }
 
 /** Bind a reader's existing key sequences to its own row identity, not a card's viewport hash. */
@@ -15,25 +18,26 @@ export function pickerPlan(
   parsed: ParsedPrompt,
   read: (screen: string) => ParsedPrompt | null,
   sequences: AnswerStep[][],
-  rowIdentity: (prompt: ParsedPrompt, cursor: number) => string | undefined,
+  /** the row at `cursor`, with a switch beside the rows as `toggles` flips leave it: the drawing's own when 0 */
+  rowIdentity: (prompt: ParsedPrompt, cursor: number, toggles: number) => string | undefined,
 ): InteractionPlan {
   let seen = parsed;
   const plan: InteractionPlan = {
-    identity: parsed.id,
     cursor: parsed.selectedIndex,
+    toggles: 0,
     moves: (answer) => sequences[answer]?.slice(0, -1) ?? [],
     matches: (screen) => {
       const shown = read(screen);
-      if (!shown || rowIdentity(shown, shown.selectedIndex) !== rowIdentity(parsed, plan.cursor)) return false;
+      if (!shown || rowIdentity(shown, shown.selectedIndex, 0) !== rowIdentity(parsed, plan.cursor, plan.toggles)) return false;
       seen = shown;
       return true;
     },
     // Codex's footer belongs to the freshly highlighted row, not the row we started on.
-    get commit() {
-      const step = sequences[0]?.at(-1) ?? { pick: true };
+    commit: (answer) => {
+      const step = sequences[answer]?.at(-1) ?? { pick: true };
       return step.pick ? seen.rowKey ?? { pick: true } : step;
     },
-    get terminalFallback() { return plan.commit.pick === true; },
+    terminalFallback: (answer) => plan.commit(answer).pick === true,
   };
   return plan;
 }
@@ -59,12 +63,15 @@ export async function executeInteractionPlan(
   for (const step of plan.moves(answer)) {
     if (!io.active() || (walked && io.rereadMoves && !await matches())) return "prompt_changed";
     await io.send(step, false);
+    // only the arrows move the cursor; Tab flips a switch beside the rows instead
     for (const key of step.keys ?? []) {
-      plan.cursor = key === KEY.down || key === KEY.right ? plan.cursor + 1 : Math.max(0, plan.cursor - 1);
+      if (key === KEY.down || key === KEY.right) plan.cursor += 1;
+      else if (key === KEY.up || key === KEY.left) plan.cursor = Math.max(0, plan.cursor - 1);
+      else if (key === KEY.tab) plan.toggles += 1;
     }
     walked = true;
   }
-  if (!await matches() || !io.active() || io.cancelled() || plan.terminalFallback) return "prompt_changed";
-  await io.send(plan.commit, true);
+  if (!await matches() || !io.active() || io.cancelled() || plan.terminalFallback(answer)) return "prompt_changed";
+  await io.send(plan.commit(answer), true);
   return "answered";
 }

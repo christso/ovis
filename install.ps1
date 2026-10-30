@@ -100,8 +100,19 @@ if (-not $move -and (Find-Plugin $legacyId)) {
 }
 if ($legacy) {
     Write-Host "Ovis: moving the installed plugin to its Ovis id; its settings and token come along"
-    # stopped first: under both ids, each would start a server on herdr's next start
-    & bun (Join-Path $legacy.plugin_root 'scripts\plugin.ts') stop | Out-Null
+    # stopped first: under both ids, each would start a server on herdr's next start. Its stop is told the
+    # state dir herdr hands it (as scripts/plugin-state.ts finds herdr's): run from here without it, a
+    # release from before 0.4.13 looks for its pid in ~/.local/state, says it is not running, and its
+    # server, which can outlive herdr, keeps the old checkout's files open for the uninstall below
+    $herdrState = if ($null -ne $env:XDG_STATE_HOME) { [IO.Path]::Combine($env:XDG_STATE_HOME, 'herdr') }
+        elseif ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'herdr' }
+        else { Join-Path $env:USERPROFILE 'AppData\Local\herdr' }
+    $givenState = $env:HERDR_PLUGIN_STATE_DIR
+    $env:HERDR_PLUGIN_STATE_DIR = Join-Path $herdrState "plugins\$legacyId"
+    try { $stopped = & bun (Join-Path $legacy.plugin_root 'scripts\plugin.ts') stop }
+    finally { $env:HERDR_PLUGIN_STATE_DIR = $givenState }
+    # a server started by hand from the checkout keeps its pid in its own dir, which the given one hides
+    if ($LASTEXITCODE -eq 0 -and -not ($stopped -match '^stopped ')) { & bun (Join-Path $legacy.plugin_root 'scripts\plugin.ts') stop | Out-Null }
     # removed with its server up, the old checkout would keep serving, and the new id's start would
     # find the port answering and leave it
     if ($LASTEXITCODE -ne 0) { throw "Could not stop the server of the old id, so nothing was moved. Stop it (herdr plugin action invoke $legacyId.stop, or restart herdr), then run this again." }
@@ -208,7 +219,7 @@ function Invoke-GhApi([string]$Arguments) {
     if (-not $gh) { return }
     $job = [IntPtr]::Zero
     try {
-        if (-not ('HerdrWebUi.GhJob' -as [type])) {
+        if (-not ('Ovis.GhJob' -as [type])) {
             Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
@@ -216,7 +227,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
-namespace HerdrWebUi {
+namespace Ovis {
     public static class GhJob {
         [StructLayout(LayoutKind.Sequential)]
         struct BasicLimits {
@@ -356,7 +367,7 @@ namespace HerdrWebUi {
 }
 '@
         }
-        $job = [HerdrWebUi.GhJob]::Create()
+        $job = [Ovis.GhJob]::Create()
     } catch { $job = [IntPtr]::Zero } # taskkill fallback cannot find an orphan after its launcher exits
     $start = New-Object Diagnostics.ProcessStartInfo
     $ghArguments = "api --hostname github.com --include $Arguments"
@@ -376,9 +387,9 @@ namespace HerdrWebUi {
     $process = $null
     try {
         if ($job -ne [IntPtr]::Zero) {
-            $process = [HerdrWebUi.GhJob]::StartSuspended($start.FileName, $start.Arguments)
-            if (-not [HerdrWebUi.GhJob]::Assign($job, $process.Handle)) {
-                $null = [HerdrWebUi.GhJob]::CloseHandle($job); $job = [IntPtr]::Zero
+            $process = [Ovis.GhJob]::StartSuspended($start.FileName, $start.Arguments)
+            if (-not [Ovis.GhJob]::Assign($job, $process.Handle)) {
+                $null = [Ovis.GhJob]::CloseHandle($job); $job = [IntPtr]::Zero
             }
             $process.Resume()
         } else {
@@ -389,7 +400,7 @@ namespace HerdrWebUi {
         $null = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit(10000) -or -not $said.Wait(2000)) {
             # closing the job kills gh and every process it started, also one whose parent has exited
-            if ($job -ne [IntPtr]::Zero) { $null = [HerdrWebUi.GhJob]::CloseHandle($job); $job = [IntPtr]::Zero }
+            if ($job -ne [IntPtr]::Zero) { $null = [Ovis.GhJob]::CloseHandle($job); $job = [IntPtr]::Zero }
             try { & $env:ComSpec /d /c "taskkill /T /F /PID $($process.Id) >nul 2>&1" } catch { }
             return
         }
@@ -398,7 +409,7 @@ namespace HerdrWebUi {
         @{ code = $process.ExitCode; status = $status }
     } finally {
         # what gh left running after it answered ends here too
-        if ($job -ne [IntPtr]::Zero) { $null = [HerdrWebUi.GhJob]::CloseHandle($job) }
+        if ($job -ne [IntPtr]::Zero) { $null = [Ovis.GhJob]::CloseHandle($job) }
         if ($process) {
             # Dispose leaves the pipe readers open on .NET Framework; a reader still busy with its
             # ReadToEndAsync may refuse to close, and then the job has ended the writers already

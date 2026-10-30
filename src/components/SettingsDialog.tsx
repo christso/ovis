@@ -12,22 +12,26 @@ import { exactChordRisk, isReservedShortcutKey, parseExactChord } from "../lib/s
 import { WEB_LINK_TARGETS } from "../lib/webPanel.ts";
 import { FILE_OPEN_TARGETS } from "../lib/filePresentation.ts";
 import { CLAUDE_LAUNCH_MODES, CODEX_LAUNCH_MODES, type ClaudeLaunchMode, type CodexLaunchMode } from "../lib/agentLaunchMode.ts";
-import { CHAT_FONT_MAX, CHAT_FONT_MIN, CHAT_WIDTHS, chatFontSize, DEFAULT_SETTINGS, DIFF_STYLES, MARKDOWN_WIDTHS, QUICK_REPLIES_MAX, QUICK_REPLY_MAX_CHARS, TERMINAL_FONT_MAX, TERMINAL_FONT_MIN, TERMINAL_WHEEL_SPEED_MAX, TERMINAL_WHEEL_SPEED_MIN, DICTATION_LANGUAGES, VOICE_BUTTONS, useSettings, forgetPaneViews, uiFontSize, type DictationLanguage, type VoiceButton } from "../lib/settings.ts";
+import { CHAT_FONT_MAX, CHAT_FONT_MIN, CHAT_WIDTHS, chatFontSize, HISTORY_PROMPTS, DEFAULT_SETTINGS, DIFF_STYLES, MARKDOWN_WIDTHS, QUICK_REPLIES_MAX, QUICK_REPLY_MAX_CHARS, TERMINAL_FONT_MAX, TERMINAL_FONT_MIN, TERMINAL_WHEEL_SPEED_MAX, TERMINAL_WHEEL_SPEED_MIN, DICTATION_LANGUAGES, VOICE_BUTTONS, useSettings, forgetPaneViews, uiFontSize, type DictationLanguage, type VoiceButton } from "../lib/settings.ts";
 import { pickTheme, rowFor, THEME_IDS, type Mode, type ThemeId } from "../lib/themes.ts";
 import { LANGUAGE_NAMES, LANGUAGE_SETTINGS, useLocale, useT } from "../lib/i18n.ts";
+import { openSetupGuide } from "../lib/setupGuide.ts";
 import { useFocusTrap } from "../lib/useFocusTrap.ts";
 import { KeyBarSettings } from "./KeyBarSettings.tsx";
 import { onSettingsHistory, recordSettings, settingsEntry, settingsLevels, type SettingsLevel } from "../lib/settingsHistory.ts";
-import { Segmented, SettingsGroup, SettingsRow, Stepper, Toggle } from "./SettingsControls.tsx";
+import { Segmented, SettingsGroup, SettingsRow, SettingsSelect, Stepper, Toggle } from "./SettingsControls.tsx";
 import { FONT_FAMILY_MAX_CHARS, sanitizeFontFamily } from "../lib/fontFamily.ts";
-import { UI_FONT_MAX, UI_FONT_MIN } from "../lib/typography.ts";
+import { UI_FONT_MAX, UI_FONT_MIN, UI_FONT_PRESET_FAMILY, uiFontPreset, type UiFontPreset } from "../lib/typography.ts";
 import { canListInstalledFonts, filterFamilies, isMonospaceFamily, queryInstalledFonts } from "../lib/installedFonts.ts";
 import type { UpdatesModel } from "../lib/updates.ts";
 import type { UserError } from "../lib/userError.ts";
-import type { MachineSettings } from "../../shared/machines.ts";
+import type { Machine, MachineSettings } from "../../shared/machines.ts";
+import { canHideMachine, isMachineShown, setHiddenMachines, useHiddenMachines, withMachineHidden } from "../lib/hiddenMachines.ts";
 import { fetchRemoteAccess, fetchVoiceStatus, machineRequest, saveVoiceConfig } from "../lib/api.ts";
 import { isLoopbackHost, phonePlan } from "../lib/phone.ts";
+import type { PushActionResult } from "../lib/pushHealth.ts";
 import type { AgentIntegration, HealthAuth, PluginActions, RemoteAccess } from "../../shared/protocol.ts";
+import type { SecurityFacts } from "../lib/useAccess.ts";
 import { useMachineApi, useMachineId } from "../lib/machineContext.tsx";
 import { loadIntegrations, outcomeFor, type IntegrationsResult } from "../lib/integrations.ts";
 import type { VoiceStatus } from "../../shared/voice.ts";
@@ -42,6 +46,7 @@ import { previewAlertSound, unlockAlertSound } from "../lib/alertSound.ts";
 import { HerdrUpdateControls, UpdateControls } from "./UpdateControls.tsx";
 import { TelemetryControls } from "./TelemetryControls.tsx";
 import { UsageSettings } from "./UsageSettings.tsx";
+import { AgentCatalogSettings } from "./AgentCatalogSettings.tsx";
 import { useSheetSwipe } from "../lib/sheets.ts";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
 import { CrashProbe, RegionCrash } from "./AppCrash.tsx";
@@ -61,13 +66,17 @@ export interface SettingsDialogProps {
   onClose: () => void;
   /** Account login runs on this server's PC, even while another PC is selected. */
   onUsageLogin: (paneId: string) => void;
+  /** shows a pane of `machineId` in its terminal: an agent's install or sign-in tab, from Agent integrations */
+  onOpenPane: (machineId: string, paneId: string) => void;
   actions: AppActions;
   updates: UpdatesModel;
   /** how this browser got in, from the last health check */
   auth: HealthAuth | null;
   /** the herdr this app's server talks to, from the last health check */
   herdrVersion: string | null;
-  onEnableNotifications: () => Promise<boolean>;
+  /** what protects this server, from the last bridge health check: never an earlier answer once one fails */
+  security: SecurityFacts;
+  onEnableNotifications: () => Promise<PushActionResult>;
   /** the last change the server refused to save (lib/preferencesSync.ts); null once a save lands */
   saveError: UserError | null;
   /** three saves failed in a row: nothing is sent until Retry, a reconnect or a longer wait */
@@ -77,7 +86,15 @@ export interface SettingsDialogProps {
   onRetrySave: () => void;
   /** a file preview is open beneath: the dialog is drawn above it */
   overPreview?: boolean;
+  /** every PC of the roster, the hidden ones too: Remote PCs lists them with their Show in sidebar switch */
+  machines?: readonly Machine[];
 }
+
+/**
+ * The access facts as the app last heard them: `absent` is a server that answered without them
+ * (an older one), `error` one that did not answer. Neither is ever filled in from `auth` or from
+ * the missing LAN warning.
+ */
 
 function compactKeys(keys: readonly string[]): string {
   return formatKeys(keys).map((key) => ({ Shift: "⇧", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→" }[key] ?? (key.length === 1 ? key.toUpperCase() : key))).join("+");
@@ -85,13 +102,14 @@ function compactKeys(keys: readonly string[]): string {
 
 const FONT_LIST_LIMIT = 150;
 const FONT_FAMILY_PLACEHOLDER = 'D2Coding, "Cascadia Mono"';
+const UI_FONT_PLACEHOLDER = '"Noto Sans JP", "Segoe UI"';
 
 /**
  * A font family list, saved when the field is left, on Enter or when the dialog closes: saving
  * every keystroke would sanitize away the comma or space being typed, and each change of the
  * terminal's font refits the grid and resizes the pane.
  */
-function FontFamilyInput({ value, label, onCommit, fixedWidthFor = null }: { value: string; label: string; onCommit: (family: string) => void; /** the surface that needs every glyph on one advance: a proportional pick from the list is refused in its name */ fixedWidthFor?: "terminal" | null }) {
+function FontFamilyInput({ value, label, onCommit, placeholder = FONT_FAMILY_PLACEHOLDER, fixedWidthFor = null }: { value: string; label: string; onCommit: (family: string) => void; placeholder?: string; /** the surface that needs every glyph on one advance: a proportional pick from the list is refused in its name */ fixedWidthFor?: "terminal" | null }) {
   const t = useT();
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
@@ -145,7 +163,7 @@ function FontFamilyInput({ value, label, onCommit, fixedWidthFor = null }: { val
         <input
           className="input settings-font-input"
           value={draft}
-          placeholder={FONT_FAMILY_PLACEHOLDER}
+          placeholder={placeholder}
           maxLength={FONT_FAMILY_MAX_CHARS}
           aria-label={label}
           spellCheck={false}
@@ -254,6 +272,7 @@ const THEME_NAMES: Record<ThemeId, string> = {
   catppuccin: "Catppuccin",
   "catppuccin-latte": "Catppuccin Latte",
   "tokyo-night": "Tokyo Night",
+  "black": "Black",
   "tokyo-night-day": "Tokyo Night Day",
   gruvbox: "Gruvbox",
   "gruvbox-light": "Gruvbox Light",
@@ -285,13 +304,46 @@ function ThemeSelect({ side }: { side: Mode }) {
   const { settings, update } = useSettings();
   const t = useT();
   return (
-    <select id={`settings-theme-${side}`} className="select settings-select" value={side === "dark" ? settings.darkTheme : settings.lightTheme} onChange={(event) => update(pickTheme(settings, side, event.target.value as ThemeId))}>
+    <SettingsSelect id={`settings-theme-${side}`} value={side === "dark" ? settings.darkTheme : settings.lightTheme} onChange={(event) => update(pickTheme(settings, side, event.target.value as ThemeId))}>
       {themeGroups(side).map(({ kind, ids }) => (
         <optgroup key={kind} label={kind === "dark" ? t("Dark") : t("Light")}>
           {ids.map((id) => <option key={id} value={id}>{t(THEME_NAMES[id])}</option>)}
         </optgroup>
       ))}
-    </select>
+    </SettingsSelect>
+  );
+}
+
+/**
+ * Settings → Appearance → Interface font: the built-in stack, the device's own interface font, Noto Sans, or a
+ * list typed like the chat's. Custom opens the field and keeps what is drawn until a list is typed.
+ */
+function InterfaceFontRows() {
+  const { settings, update } = useSettings();
+  const t = useT();
+  const preset = uiFontPreset(settings.uiFontFamily);
+  const [customOpen, setCustomOpen] = useState(preset === "custom");
+  const custom = customOpen || preset === "custom";
+  const choose = (next: UiFontPreset | "custom"): void => {
+    setCustomOpen(next === "custom");
+    if (next !== "custom") update({ uiFontFamily: UI_FONT_PRESET_FAMILY[next] });
+  };
+  return (
+    <>
+      <SettingsRow label={t("Interface font")} description={t("Menus, lists, dialogs and the sidebar; the chat's text follows it until it has a font of its own. The terminal and code keep theirs. System is this device's own interface font.")} htmlFor="settings-ui-font">
+        <SettingsSelect id="settings-ui-font" value={custom ? "custom" : preset} onChange={(event) => choose(event.target.value as UiFontPreset | "custom")}>
+          <option value="default">{t("Default")}</option>
+          <option value="system">{t("System")}</option>
+          <option value="noto">Noto Sans</option>
+          <option value="custom">{t("Custom")}</option>
+        </SettingsSelect>
+      </SettingsRow>
+      {custom && (
+        <SettingsRow label={t("Custom interface font")} description={t("Comma-separated, tried in order, in front of the default. A font this device does not have falls back to the default.")} wide>
+          <FontFamilyInput value={settings.uiFontFamily} label={t("Custom interface font")} placeholder={UI_FONT_PLACEHOLDER} onCommit={(uiFontFamily) => update({ uiFontFamily })} />
+        </SettingsRow>
+      )}
+    </>
   );
 }
 
@@ -314,12 +366,15 @@ function AppearancePage() {
         <Segmented label={t("Density")} value={settings.density} onChange={(density) => update({ density })} options={[{ value: "comfortable", label: t("Comfortable") }, { value: "compact", label: t("Compact") }]} />
       </SettingsRow>
       <SettingsRow label={t("Language")} description={t("Follows the browser unless you choose one")} htmlFor="settings-language">
-        <select id="settings-language" className="select settings-select" value={settings.language} onChange={(event) => update({ language: event.target.value as typeof settings.language })}>
+        <SettingsSelect id="settings-language" value={settings.language} onChange={(event) => update({ language: event.target.value as typeof settings.language })}>
           {LANGUAGE_SETTINGS.map((language) => <option key={language} value={language}>{language === "system" ? t("System") : LANGUAGE_NAMES[language]}</option>)}
-        </select>
+        </SettingsSelect>
       </SettingsRow>
       <SettingsRow label={t("Sidebar rows")} description={t("Name each workspace on one line, or show what its agent is doing with the workspace under it")} wide>
         <Segmented label={t("Sidebar rows")} value={settings.sidebarRows} onChange={(sidebarRows) => update({ sidebarRows })} options={[{ value: "one", label: t("One line") }, { value: "two", label: t("Two lines") }]} />
+      </SettingsRow>
+      <SettingsRow label={t("Sidebar filter")} description={t("Show the Filter field above the sidebar's lists on this device. When off, Filter workspaces and agents in the command palette opens it.")}>
+        <Toggle label={t("Sidebar filter")} checked={settings.sidebarFilter} onChange={(sidebarFilter) => update({ sidebarFilter })} />
       </SettingsRow>
       <SettingsRow label={t("Agents order")} description={t("Activity keeps a waiting agent on top, then the one that changed last; herdr's own order is not changed")} wide>
         <Segmented label={t("Agents order")} value={settings.agentOrder} onChange={(agentOrder) => update({ agentOrder })} options={[{ value: "workspace", label: t("Workspaces") }, { value: "activity", label: t("Activity") }]} />
@@ -336,6 +391,7 @@ function AppearancePage() {
       <SettingsRow label={t("Interface font size")} description={t("Menus, lists, dialogs and the sidebar. The chat follows it until it has a size of its own; the terminal keeps its own.")}>
         <Stepper label={t("Interface font size")} value={uiFontSize(settings)} text={`${uiFontSize(settings)}px`} min={UI_FONT_MIN} max={UI_FONT_MAX} decreaseLabel={t("Decrease interface font size")} increaseLabel={t("Increase interface font size")} onChange={(size) => update({ uiFontSize: size })} />
       </SettingsRow>
+      <InterfaceFontRows />
     </SettingsGroup>
     </>
   );
@@ -370,6 +426,9 @@ function ChatPage() {
         <SettingsRow label={t("Chat font")} description={t("Message text; code stays monospace. Comma-separated, tried in order. A font this device does not have falls back to the default.")} wide>
           <FontFamilyInput value={settings.chatFontFamily} label={t("Chat font")} onCommit={(chatFontFamily) => update({ chatFontFamily })} />
         </SettingsRow>
+        <SettingsRow label={t("History page size")} description={t("Prompts per page; older turns load a page at a time as you scroll up. Hermes keeps its own page of messages")} wide>
+          <Segmented label={t("History page size")} value={String(settings.historyPrompts)} onChange={(value) => update({ historyPrompts: Number(value) })} options={HISTORY_PROMPTS.map((prompts) => ({ value: String(prompts), label: String(prompts) }))} />
+        </SettingsRow>
       </SettingsGroup>
 
       <SettingsGroup title={t("Composer")} section="composer">
@@ -385,6 +444,9 @@ function ChatPage() {
             <Toggle label={t("New tab button")} checked={settings.composerNewTabButton} onChange={(composerNewTabButton) => update({ composerNewTabButton })} />
           </SettingsRow>
         )}
+        <SettingsRow label={t("Artifacts chip")} description={t("A chip in a Claude Code pane's message box lists the pages its session published with the Artifact tool.")}>
+          <Toggle label={t("Artifacts chip")} checked={settings.composerArtifacts} onChange={(composerArtifacts) => update({ composerArtifacts })} />
+        </SettingsRow>
         {touch && (
           <SettingsRow label={t("Suggestion chip")} description={t("A chip above the message box puts the prompt Claude Code suggests next into the box. With a keyboard, Tab does it.")}>
             <Toggle label={t("Suggestion chip")} checked={settings.suggestionChip} onChange={(suggestionChip) => update({ suggestionChip })} />
@@ -461,9 +523,9 @@ function TerminalPage({ keyBarButtonRef, onEditKeyBar }: { keyBarButtonRef: RefO
       </SettingsRow>
       <SettingsRow label={t("Terminal input mode")} htmlFor="terminal-input-mode">
         {/* "auto", the stored default, types straight into the grid on every device: it reads as Direct typing */}
-        <select id="terminal-input-mode" className="select settings-select" value={settings.terminalInputMode === "line" ? "line" : "direct"} onChange={(event) => update({ terminalInputMode: event.target.value as "line" | "direct" })}>
+        <SettingsSelect id="terminal-input-mode" value={settings.terminalInputMode === "line" ? "line" : "direct"} onChange={(event) => update({ terminalInputMode: event.target.value as "line" | "direct" })}>
           <option value="direct">{t("Direct typing")}</option><option value="line">{t("Input line")}</option>
-        </select>
+        </SettingsSelect>
       </SettingsRow>
       <SettingsRow label={t("Key bar")} description={t("Keys, order and custom combinations for the terminal.")}>
         <button type="button" ref={keyBarButtonRef} className="btn" onClick={onEditKeyBar}>{t("Edit key bar")}</button>
@@ -471,17 +533,17 @@ function TerminalPage({ keyBarButtonRef, onEditKeyBar }: { keyBarButtonRef: RefO
       <SettingsRow label={t("Clipboard from a pane")} description={t("A program in a pane that copies (vim, tmux, Claude Code) puts its text on this device's clipboard, as a copy you made yourself would. Turn it off if a pane runs output you do not trust: it could replace what you paste next.")}>
         <Toggle label={t("Clipboard from a pane")} checked={settings.paneClipboard} onChange={(paneClipboard) => update({ paneClipboard })} />
       </SettingsRow>
-      <SettingsRow label={t("Use alongside herdr's own window")} description={t("Turn this on if this PC also shows herdr in a terminal window. A second after you switch to another window, this tab only watches the pane, so herdr's window keeps the pane at its own size instead of this window's. Click the tab to type again. While it watches, the pane is drawn at herdr's size and may not fill this window.")}>
+      <SettingsRow label={t("Use alongside herdr's own window")} description={t("Turn this on if herdr is also open in a terminal window, on this PC or another. A second after you switch to another window, or after 10 seconds without typing or clicking in a terminal you type straight into, this tab only watches the pane, so herdr's window keeps the pane at its own size instead of this window's. Type or click in the terminal to type again: what you type goes in once it is back. While it watches, the pane is drawn at herdr's size and may not fill this window.")}>
         <Toggle label={t("Use alongside herdr's own window")} checked={settings.releasePaneAway} onChange={(releasePaneAway) => update({ releasePaneAway })} />
       </SettingsRow>
-      <SettingsRow label={t("Follow herdr's focus")} description={t("When herdr moves to another pane, by a click in its window, a herdr command or a script, this device opens that pane too. Only on the PC open here, and only on this device.")}>
+      <SettingsRow label={t("Follow herdr's focus")} description={t("When herdr moves to another pane, by a click in its window, a herdr command or a script, this device opens that pane too. Only on the PC open here, and only on this device. A PC on Ovis older than 0.4.13 does not report herdr's focus: update it first.")}>
         <Toggle label={t("Follow herdr's focus")} checked={settings.followHerdrFocus} onChange={(followHerdrFocus) => update({ followHerdrFocus })} />
       </SettingsRow>
     </SettingsGroup>
   );
 }
 
-function AlertsPage({ onEnableNotifications }: { onEnableNotifications: () => Promise<boolean> }) {
+function AlertsPage({ onEnableNotifications }: { onEnableNotifications: () => Promise<PushActionResult> }) {
   const { settings, update } = useSettings();
   const t = useT();
   // the Sound switch as last set: the preview waits for the audio, and must not play once it is off
@@ -524,10 +586,10 @@ function DictationLanguageSelect() {
   const auto = languageName(names, dictationLocale("auto", settings.language, resolvedLanguage, navigator.languages));
   const choices = useMemo(() => DICTATION_LANGUAGES.map((tag) => ({ tag, name: languageName(names, tag) })).sort((a, b) => a.name.localeCompare(b.name, locale)), [names, locale]);
   return (
-    <select id="settings-voice-language" className="select settings-select" value={settings.voiceLanguage} onChange={(event) => update({ voiceLanguage: event.target.value as DictationLanguage })}>
+    <SettingsSelect id="settings-voice-language" value={settings.voiceLanguage} onChange={(event) => update({ voiceLanguage: event.target.value as DictationLanguage })}>
       <option value="auto">{t("Auto ({language})", { language: auto })}</option>
       {choices.map(({ tag, name }) => <option key={tag} value={tag}>{name}</option>)}
-    </select>
+    </SettingsSelect>
   );
 }
 
@@ -541,11 +603,15 @@ function VoicePage() {
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [micDenied, setMicDenied] = useState(false);
   useEffect(() => { fetchVoiceStatus().then(setVoice, () => setVoice(null)); }, []);
-  /** On asks now, so the first dictation does not stop at the browser's permission prompt */
+  /**
+   * On asks now, so the first dictation does not stop at the browser's permission prompt. Not in an
+   * iPhone home-screen app, which this request closed or reloaded (#2343): there the first tap of the mic asks.
+   */
   const chooseVoiceInput = async (voiceInput: VoiceButton) => {
     update({ voiceInput });
     setMicDenied(false);
-    if (voiceInput !== "on" || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) return;
+    const homeScreenApp = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (voiceInput !== "on" || homeScreenApp || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) return;
     try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach((track) => track.stop()); }
     catch { setMicDenied(true); }
   };
@@ -627,9 +693,19 @@ function VoicePage() {
  * herdr's own integrations (`integration.list`), read only: installing one writes into an agent's
  * hooks or settings, which this app leaves to the user, so a row shows the command to run instead.
  */
-function IntegrationsPage() {
+function IntegrationsPage({ watching, onOpenPane, onOpenGuide }: { watching: boolean; onOpenPane: (machineId: string, paneId: string) => void; /** Settings closes as the setup guide opens */ onOpenGuide: () => void }) {
+  const t = useT();
+  // the guide sets up this PC: a remote PC's page does not offer it
+  const local = useMachineId() === "local";
   return (
     <>
+      {/* the first-run guide again (lib/setupGuide.ts): a watching device is never shown it */}
+      {!watching && local && <SettingsGroup section="guide">
+        <SettingsRow label={t("Setup guide")}>
+          <button type="button" className="btn" onClick={() => { onOpenGuide(); openSetupGuide(); }}>{t("Open setup guide")}</button>
+        </SettingsRow>
+      </SettingsGroup>}
+      <AgentCatalogSettings watching={watching} onOpenPane={onOpenPane} />
       <LaunchModesGroup />
       <IntegrationsList />
     </>
@@ -651,14 +727,14 @@ function LaunchModesGroup() {
   return (
     <SettingsGroup title={t("New agents")} section="launch-modes" note={t("Applies to agents started from New workspace, New tab and New worktree. Agent default adds no flag, so the agent's own configuration decides.")}>
       <SettingsRow label="Claude Code" description={t("Permission mode")} htmlFor="settings-claude-launch-mode">
-        <select id="settings-claude-launch-mode" className="select settings-select" value={settings.claudeLaunchMode} onChange={(event) => update({ claudeLaunchMode: event.target.value as ClaudeLaunchMode })}>
+        <SettingsSelect id="settings-claude-launch-mode" value={settings.claudeLaunchMode} onChange={(event) => update({ claudeLaunchMode: event.target.value as ClaudeLaunchMode })}>
           {CLAUDE_LAUNCH_MODES.map((mode) => <option key={mode} value={mode}>{claudeModeName(mode, t)}</option>)}
-        </select>
+        </SettingsSelect>
       </SettingsRow>
       <SettingsRow label="Codex" description={t("Sandbox and approvals")} htmlFor="settings-codex-launch-mode">
-        <select id="settings-codex-launch-mode" className="select settings-select" value={settings.codexLaunchMode} onChange={(event) => update({ codexLaunchMode: event.target.value as CodexLaunchMode })}>
+        <SettingsSelect id="settings-codex-launch-mode" value={settings.codexLaunchMode} onChange={(event) => update({ codexLaunchMode: event.target.value as CodexLaunchMode })}>
           {CODEX_LAUNCH_MODES.map((mode) => <option key={mode} value={mode}>{codexModeName(mode, t)}</option>)}
-        </select>
+        </SettingsSelect>
       </SettingsRow>
     </SettingsGroup>
   );
@@ -815,7 +891,7 @@ function ShortcutsPage() {
                     update({ shortcutOverrides: { ...settings.shortcutOverrides, [confirming.id]: confirming.value } });
                   }}>{t("Save anyway")}</button>
                   <button type="button" className="btn" onClick={() => settlePending(confirming.id)}>{t("Cancel")}</button>
-                </> : <select className="select settings-select settings-shortcut-select" aria-label={t(shortcut.label)} value={Object.hasOwn(settings.shortcutOverrides, shortcut.id) ? settings.shortcutOverrides[shortcut.id] ?? (unbound ? "default" : "off") : "default"} onChange={(event) => {
+                </> : <SettingsSelect className="settings-shortcut-select" aria-label={t(shortcut.label)} value={Object.hasOwn(settings.shortcutOverrides, shortcut.id) ? settings.shortcutOverrides[shortcut.id] ?? (unbound ? "default" : "off") : "default"} onChange={(event) => {
                   const next = { ...settings.shortcutOverrides };
                   if (event.target.value === "default") delete next[shortcut.id];
                   else next[shortcut.id] = event.target.value === "off" ? null : event.target.value;
@@ -830,7 +906,7 @@ function ShortcutsPage() {
                     const reserved = isReservedShortcutKey(key, platformIsMac);
                     return <option key={key} value={key} disabled={conflict}>{compactKeys(["Mod", "Shift", key])}{reserved ? ` — ${t("Reserved")}` : ""}{conflict ? " — " + t("Already assigned") : ""}</option>;
                   })}
-                </select>}
+                </SettingsSelect>}
                 </span>
               )}
             </SettingsRow>
@@ -848,7 +924,50 @@ function ShortcutsPage() {
   );
 }
 
-function DevicesPage({ auth, onSignOut }: { auth: HealthAuth | null; onSignOut: (() => Promise<void>) | null }) {
+/**
+ * Read-only: each fact on its own line and none of them a verdict. Public reachability stays
+ * unknown unless this request proved it, since a proxy or router in front can expose any bind.
+ */
+function AccessFacts({ facts }: { facts: SecurityFacts }) {
+  const t = useT();
+  const fact = (label: string, value: string, description: string) => (
+    <SettingsRow key={label} label={label} description={description}><span className="settings-fact">{value}</span></SettingsRow>
+  );
+  if (facts.state !== "known") {
+    const text = facts.state === "loading" ? t("Loading…")
+      : facts.state === "error" ? t("The server did not answer, so these facts are unavailable. Nothing from an earlier check is shown. This page asks again by itself; if this message stays, check that the server is running and that this device can reach it.")
+      : t("This server does not report these facts. Updating it adds them.");
+    return (
+      <SettingsGroup title={t("Access")} section="access">
+        <p className="settings-item settings-description" role="status">{text}</p>
+      </SettingsGroup>
+    );
+  }
+  const { summary } = facts;
+  const gate = summary.pairing_gate;
+  const bind = summary.bind_scope;
+  const ingress = summary.observed_ingress;
+  return (
+    <SettingsGroup title={t("Access")} section="access" note={t("What this server reports about how it is reached. Each line is one fact, not a safety rating.")}>
+      {fact(t("Access token"), summary.token_configured ? t("Set") : t("Not set"), t("Whether the server has a token configured. Its value is never shown."))}
+      {fact(t("Pairing gate"), gate === "open" ? t("Not yet closed") : gate === "closed" ? t("Closed") : t("Unavailable"),
+        gate === "open" ? t("No device has been paired yet, so no pairing code is asked for.")
+          : gate === "closed" ? t("A new browser needs a pairing code or the token.")
+          : t("The device list cannot be read, so no new device can pair. This PC, the token and Tailscale sign-in still work."))}
+      {fact(t("Listens on"), bind === "loopback" ? t("Loopback") : bind === "tailnet" ? t("Tailscale address") : t("Other address"),
+        bind === "other" ? t("A network address, every interface or a host name: other devices on that network may reach it.")
+          : t("The address the server listens on. A proxy on this PC can still forward other traffic to it."))}
+      {fact(t("This connection"), ingress === "direct" ? t("No proxy seen") : ingress === "proxy" ? t("Through a proxy") : ingress === "tailscale" ? t("Through Tailscale") : ingress === "funnel" ? t("Through Tailscale Funnel") : t("Unknown"),
+        ingress === "direct" ? t("No proxy said it forwarded this browser's request. One that adds nothing, such as an SSH tunnel, looks the same.")
+          : t("How this browser's request arrived, not how every device reaches the server."))}
+      {fact(t("Public internet"), summary.public_exposure === "observed" ? t("Reachable") : t("Unknown"),
+        summary.public_exposure === "observed" ? t("This request came through Tailscale Funnel, which is open to the public internet.")
+          : t("The server cannot see whether a proxy, tunnel or router makes it reachable from the internet."))}
+    </SettingsGroup>
+  );
+}
+
+function DevicesPage({ auth, security, onSignOut, onRevokedAll }: { auth: HealthAuth | null; security: SecurityFacts; onSignOut: (() => Promise<void>) | null; onRevokedAll: () => void }) {
   const { settings, update } = useSettings();
   const t = useT();
   const installPrompt = useInstallPrompt();
@@ -887,7 +1006,7 @@ function DevicesPage({ auth, onSignOut }: { auth: HealthAuth | null; onSignOut: 
       <PortalPanel readOnly={auth?.role === "watch"} />
 
       <SettingsGroup title={t("Devices")} section="devices">
-        <div className="settings-item"><DevicesPanel pairUrl={pairUrl} auth={auth} /></div>
+        <div className="settings-item"><DevicesPanel pairUrl={pairUrl} auth={auth} onRevokedAll={onRevokedAll} /></div>
         {onSignOut && (
           <SettingsRow label={t("Sign out")} description={t("Forget this browser's sign-in. Getting back in takes the access token or a pairing code.")}>
             <button type="button" className="btn" onClick={() => setConfirmSignOut(true)}>{t("Sign out")}</button>
@@ -899,13 +1018,42 @@ function DevicesPage({ auth, onSignOut }: { auth: HealthAuth | null; onSignOut: 
             confirmLabel={t("Sign out")} onClose={() => setConfirmSignOut(false)} onConfirm={onSignOut} />
         )}
       </SettingsGroup>
+
+      <AccessFacts facts={security} />
     </>
   );
 }
 
-function RemotePcsPage({ actions, pcSettings, pcSettingsError, onPcSettings }: { actions: AppActions; pcSettings: MachineSettings | null; pcSettingsError: string | null; onPcSettings: (patch: Partial<MachineSettings>) => void }) {
+/**
+ * Which PCs this device shows in its sidebar, Agents list and command palette, the Host first. The
+ * choice stays in this browser; the last PC shown cannot be hidden (lib/hiddenMachines.ts).
+ */
+function SidebarPcsGroup({ machines }: { machines: readonly Machine[] }) {
+  const t = useT();
+  const hidden = useHiddenMachines();
+  if (machines.length < 2) return null;
+  const listed = [...machines].sort((a, b) => Number(b.kind === "local") - Number(a.kind === "local"));
+  return (
+    <SettingsGroup title={t("Show in sidebar")} section="sidebar-pcs" note={t("Only on this device. A hidden PC stays connected, and a link or an alert still opens its panes. One PC is always shown.")}>
+      {listed.map((machine) => {
+        const shown = isMachineShown(machines, hidden, machine.id);
+        return (
+          <SettingsRow key={machine.id} label={machine.name} description={machine.kind === "local" ? t("The Host: the computer this app runs on") : undefined}>
+            <Toggle label={t("Show {name} in sidebar", { name: machine.name })} checked={shown} disabled={shown && !canHideMachine(machines, hidden, machine.id)} onChange={(show) => setHiddenMachines(withMachineHidden(machines, hidden, machine.id, !show))} />
+          </SettingsRow>
+        );
+      })}
+    </SettingsGroup>
+  );
+}
+
+/** a set-aside copy of machines.json (the PCs added in this app), not of herdr-profile-state.json */
+const heldAddedPcs = (name: string): boolean => name.startsWith("machines.json.");
+
+function RemotePcsPage({ actions, machines, pcSettings, pcSettingsError, onPcSettings }: { actions: AppActions; machines: readonly Machine[]; pcSettings: MachineSettings | null; pcSettingsError: string | null; onPcSettings: (patch: Partial<MachineSettings>) => void }) {
   const t = useT();
   return (
+    <>
     <SettingsGroup>
       <SettingsRow label={t("Add PC")} description={t("Connect another PC over an SSH alias or user@host. Its workspaces join the sidebar.")}>
         <button type="button" className="btn" onClick={actions.openAddPc}><Monitor aria-hidden="true" />{t("Add PC")}</button>
@@ -916,8 +1064,18 @@ function RemotePcsPage({ actions, pcSettings, pcSettingsError, onPcSettings }: {
           <Toggle label={t("Update PC bridges automatically")} checked={pcSettings.auto_update_bridges} onChange={(auto_update_bridges) => onPcSettings({ auto_update_bridges })} />
         </SettingsRow>
       )}
+      {/* a crash can leave the saved PCs unreadable: the server set the file aside and started without them.
+          machines.json held the PCs added here; herdr-profile-state.json only the permission to connect to herdr's own */}
+      {pcSettings?.set_aside?.some(heldAddedPcs) && <p className="settings-item settings-hint">
+        {t("Saved PC data was damaged and could not be read when the app started. It was set aside as {files}; add any missing PC again.", { files: pcSettings.set_aside.filter(heldAddedPcs).join(", ") })}
+      </p>}
+      {pcSettings?.set_aside?.some((name) => !heldAddedPcs(name)) && <p className="settings-item settings-hint">
+        {t("The permission to connect to the PCs saved in herdr was damaged and could not be read when the app started. It was set aside as {files}; choose Connect on those PCs again.", { files: pcSettings.set_aside.filter((name) => !heldAddedPcs(name)).join(", ") })}
+      </p>}
       {pcSettingsError && <p className="settings-item settings-hint" role="alert">{pcSettingsError}</p>}
     </SettingsGroup>
+    <SidebarPcsGroup machines={machines} />
+    </>
   );
 }
 
@@ -1027,7 +1185,7 @@ function SaveFailure({ error, paused, retrying, onRetry }: { error: UserError; p
   </div>;
 }
 
-function OpenSettingsDialog({ section = null, linkPage = null, linkSection = null, onPage, onClose, onUsageLogin, actions, updates, auth, herdrVersion, onEnableNotifications, saveError, savePaused, saveRetrying, onRetrySave, overPreview = false }: SettingsDialogProps) {
+function OpenSettingsDialog({ section = null, linkPage = null, linkSection = null, onPage, onClose, onUsageLogin, onOpenPane, actions, updates, auth, herdrVersion, security, onEnableNotifications, saveError, savePaused, saveRetrying, onRetrySave, overPreview = false, machines = [] }: SettingsDialogProps) {
   const t = useT();
   const narrow = useNarrow();
   // opened by Forward, the dialog shows what that entry of the history showed
@@ -1035,10 +1193,11 @@ function OpenSettingsDialog({ section = null, linkPage = null, linkSection = nul
   // a phone opens on the list of pages; a wider dialog shows the list beside the first page. A
   // button that points at Updates opens on About whatever an entry still landing would restore
   const linked = PAGES.find((candidate) => candidate.id === linkPage)?.id ?? null;
-  // a page the command palette named opens first; the request is read, not taken, so a remount in development finds it again
+  // a page the command palette named opens first, on the group it named; the request is read, not
+  // taken, so a remount in development finds it again
   const [asked] = useState(requestedSettingsPage);
   useEffect(() => requestSettingsPage(null), []);
-  const [chosen, setChosen] = useState<SettingsPage | null>(section === "updates" ? "about" : asked ?? (restored ? restored.page : linked));
+  const [chosen, setChosen] = useState<SettingsPage | null>(section === "updates" ? "about" : asked?.page ?? (restored ? restored.page : linked));
   const page = chosen ?? (narrow ? null : PAGES[0]!.id);
   const [keyBarOpen, setKeyBarOpen] = useState(section === "updates" ? false : restored?.keyBar ?? false);
   // every step in is an entry of the history, so the system Back button takes one step out
@@ -1060,6 +1219,8 @@ function OpenSettingsDialog({ section = null, linkPage = null, linkSection = nul
   const surface = useFocusTrap<HTMLElement>(true, { initialFocus: backRef });
   useSheetSwipe(surface, onClose);
   const shown = useRef<{ page: SettingsPage | null; keyBar: boolean } | null>(null);
+  // the group a landing named, followed into view until the reader moves the page
+  const following = useRef<{ group: HTMLElement; page: SettingsPage | null } | null>(null);
   const label = (id: SettingsPage): string => t(id === "appearance" ? "Appearance" : id === "chat" ? "Chat" : id === "terminal" ? "Terminal" : id === "alerts" ? "Alerts" : id === "voice" ? "Voice input"
     : id === "usage" ? "Subscription usage" : id === "shortcuts" ? "Shortcuts" : id === "devices" ? "Phone & devices" : id === "remote" ? "Remote PCs" : id === "integrations" ? "Agent integrations" : "About");
   const openPage = (id: SettingsPage): void => { setKeyBarOpen(false); setChosen(id); };
@@ -1080,16 +1241,37 @@ function OpenSettingsDialog({ section = null, linkPage = null, linkSection = nul
       if (settingsBodyRef.current) settingsBodyRef.current.scrollTop = settingsScrollRef.current;
       keyBarButtonRef.current?.focus({ preventScroll: true });
     } else if (before === null) {
-      // a button that points at Updates opens on it, and the focus goes there too; so does a link to a group
-      const named = section === "updates" ? "updates" : linked && linkSection ? linkSection : null;
+      // a button that points at Updates opens on it, and the focus goes there too; so does a link
+      // to a group, and a group the palette named
+      const named = section === "updates" ? "updates" : asked?.section ?? (linked && linkSection ? linkSection : null);
       const pointed = named ? settingsBodyRef.current?.querySelector<HTMLElement>(`[data-section="${CSS.escape(named)}"]`) : null;
-      if (pointed) { pointed.focus({ preventScroll: true }); pointed.scrollIntoView(); }
-      else tab(page)?.focus();
+      if (pointed) {
+        pointed.focus({ preventScroll: true });
+        pointed.scrollIntoView();
+        following.current = { group: pointed, page };
+      } else tab(page)?.focus();
     } else if (before.page !== page && narrow) {
       // a phone shows one of the two: the focus follows into the page, and back onto its row
       if (page !== null) backRef.current?.focus();
       else tab(before.page)?.focus();
     }
+    // a group filled in after it opens (the OpenAI key's form waits for the server's answer) grows
+    // past the fold: it is brought back into view until the reader moves the page or leaves it.
+    // The subscription is made again whenever this runs, so development's replay of the effect
+    // keeps following; the reader's move or another page ends it for good
+    const follow = following.current;
+    if (follow === null || follow.page !== page || keyBarOpen) { following.current = null; return; }
+    const body = settingsBodyRef.current;
+    const observer = new ResizeObserver(() => follow.group.scrollIntoView());
+    const moves = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    const unsubscribe = (): void => {
+      observer.disconnect();
+      for (const move of moves) body?.removeEventListener(move, stop);
+    };
+    const stop = (): void => { following.current = null; unsubscribe(); };
+    observer.observe(follow.group);
+    for (const move of moves) body?.addEventListener(move, stop, { passive: true });
+    return unsubscribe;
   }, [page, keyBarOpen, narrow, section]);
   // server-side: the web server updates PC bridges, so it keeps this choice
   const [pcSettings, setPcSettings] = useState<MachineSettings | null>(null);
@@ -1136,11 +1318,12 @@ function OpenSettingsDialog({ section = null, linkPage = null, linkSection = nul
       case "terminal": return <TerminalPage keyBarButtonRef={keyBarButtonRef} onEditKeyBar={openKeyBar} />;
       case "alerts": return <AlertsPage onEnableNotifications={onEnableNotifications} />;
       case "voice": return <VoicePage />;
-      case "usage": return <UsageSettings onLocalLogin={onUsageLogin} />;
+      case "usage": return <UsageSettings onLocalLogin={onUsageLogin} watching={auth?.role === "watch"} />;
       case "shortcuts": return <ShortcutsPage />;
-      case "devices": return <DevicesPage auth={auth} onSignOut={actions.lock} />;
-      case "remote": return <RemotePcsPage actions={actions} pcSettings={pcSettings} pcSettingsError={pcSettingsError} onPcSettings={(patch) => void updatePcSettings(patch)} />;
-      case "integrations": return <IntegrationsPage />;
+      // after every device went, its own pairing included, a browser asks the server where it stands: the roster answers, or the gate does
+      case "devices": return <DevicesPage auth={auth} security={security} onSignOut={actions.lock} onRevokedAll={actions.refresh} />;
+      case "remote": return <RemotePcsPage actions={actions} machines={machines} pcSettings={pcSettings} pcSettingsError={pcSettingsError} onPcSettings={(patch) => void updatePcSettings(patch)} />;
+      case "integrations": return <IntegrationsPage watching={auth?.role === "watch"} onOpenPane={onOpenPane} onOpenGuide={onClose} />;
       case "about": return <AboutPage updates={updates} herdrVersion={herdrVersion} bridgesFollow={pcSettings?.auto_update_bridges === true} />;
       default: return null;
     }

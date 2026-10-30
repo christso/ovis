@@ -9,12 +9,12 @@ import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { MAX_LABEL_CHARS } from "../shared/labels.ts";
 import { firstMessageFault } from "../shared/launch-rules.ts";
-import type { DirectoryCreated, PendingMessage, ServerMessage, TabMoved, WorkspaceMoved } from "../shared/protocol.ts";
+import type { DirectoryCreated, PendingMessage, ServerMessage, TabMoved, TabMovedToWorkspace, WorkspaceMoved } from "../shared/protocol.ts";
 import type { MoveReceipt } from "./order-sequence.ts";
 import type { AgentLauncher } from "./agent-launchers.ts";
 import { agentFault, agentLaunch, type AgentPayload } from "./agent-launch.ts";
 import { createDirectory, listDirectories } from "./directories.ts";
-import { HerdrError, tabClose, tabCreate, tabMove, tabRename, workspaceClose, workspaceCreate, workspaceMove, workspaceRename, worktreeCreate, worktreeList, worktreeOpen, worktreeRemove } from "./herdr/client.ts";
+import { HerdrError, paneMoveToNewTab, sessionSnapshot, tabClose, tabCreate, tabMove, tabRename, workspaceClose, workspaceCreate, workspaceMove, workspaceRename, worktreeCreate, worktreeList, worktreeOpen, worktreeRemove } from "./herdr/client.ts";
 import { badRequest, conflictResponse, errorResponse, isJsonObject, jsonResponse, readJsonObject, setRequestRoute } from "./http.ts";
 import { paneContext } from "./pane-context.ts";
 import { repoDiffResponse } from "./repo-diff.ts";
@@ -77,7 +77,7 @@ export async function handleWorkspaceRequest(request: Request, url: URL, pathnam
     return listing === null ? badRequest("invalid_cwd", "path must be a directory this user can read") : jsonResponse(listing);
   }
 
-  if (pathname === "/api/workspace/diff/files" || pathname === "/api/workspace/diff/file") {
+  if (pathname === "/api/workspace/diff/files" || pathname === "/api/workspace/diff/file" || pathname === "/api/workspace/diff/refs") {
     setRequestRoute(pathname);
     if (request.method !== "GET") return badRequest("method_not_allowed", "use GET");
     // file contents, like /api/fs/file: this app reads them, another site's page does not
@@ -99,7 +99,7 @@ export async function handleWorkspaceRequest(request: Request, url: URL, pathnam
       cwd = expandedDirectory(relative ? resolve(base!, directory) : directory) ?? undefined;
     }
     if (cwd === undefined) return badRequest("invalid_cwd", "directory must be a directory this user can read");
-    return repoDiffResponse(pathname.endsWith("/files") ? "files" : "file", cwd, url.searchParams);
+    return repoDiffResponse(pathname.endsWith("/files") ? "files" : pathname.endsWith("/refs") ? "refs" : "file", cwd, url.searchParams);
   }
 
   // A tab is made the way a workspace is: herdr opens it with a shell in its root pane, and
@@ -157,7 +157,7 @@ export async function handleWorkspaceRequest(request: Request, url: URL, pathnam
       }
       // the process the launch brought up, when it says: the first message is bound to it
       let launchedPid: number | null = null;
-      const launched = await agentLaunch(created.root_pane.pane_id, payload.agent, (pid) => { launchedPid = pid; }, shellAgents, () => selectLaunch(payload.agent!));
+      const launched = await agentLaunch(created.root_pane.pane_id, payload.agent, (pid) => { launchedPid = pid; }, shellAgents, { resolveLaunch: () => selectLaunch(payload.agent!) });
       // the request's first message is the user's send: queued for the agent's first ready turn through the
       // bridge's pending path (server/core/pending.ts), never typed here; an agent that did not start gets none
       const firstMessage = launched.agent_started && typeof payload.first_message === "string"
@@ -270,7 +270,7 @@ export async function handleWorkspaceRequest(request: Request, url: URL, pathnam
         already_open: opened.already_open === true,
         path: opened.worktree.path,
         branch: opened.worktree.branch,
-        ...(agent ? await agentLaunch(opened.root_pane.pane_id, agent, undefined, shellAgents, () => selectLaunch(agent)) : {}),
+        ...(agent ? await agentLaunch(opened.root_pane.pane_id, agent, undefined, shellAgents, { resolveLaunch: () => selectLaunch(agent) }) : {}),
       });
     } catch (error) {
       // git's own words for a branch that has no commit yet (a folder just `git init`ed): with no
@@ -313,6 +313,34 @@ export async function handleWorkspaceRequest(request: Request, url: URL, pathnam
       // the collector's structure debounce, and the closed workspace stays on screen meanwhile
       if (pathname === "/api/workspace/close") broadcastAll({ type: "session-changed" });
       return jsonResponse({ ok: true });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  // herdr moves tabs only within their workspace: a one-pane tab goes as its pane, into a new tab there
+  if (pathname === "/api/tab/move-to-workspace") {
+    setRequestRoute(pathname);
+    if (request.method !== "POST") return badRequest("method_not_allowed", "use POST");
+    const payload = await readJsonObject<{ tab_id?: unknown; workspace_id?: unknown }>(request);
+    if (payload instanceof Response) return payload;
+    if (typeof payload.tab_id !== "string" || payload.tab_id.length === 0) return badRequest("missing_tab_id", "tab_id is required");
+    if (typeof payload.workspace_id !== "string" || payload.workspace_id.length === 0) return badRequest("missing_workspace_id", "workspace_id is required");
+    try {
+      const snapshot = await sessionSnapshot();
+      const tab = snapshot.tabs.find((candidate) => candidate.tab_id === payload.tab_id);
+      if (!tab) return jsonResponse({ error: { code: "tab_not_found", message: "no tab has that ID" } }, 404);
+      if (tab.workspace_id === payload.workspace_id) return conflictResponse("same_workspace", "the tab is already in that workspace");
+      const panes = snapshot.panes.filter((pane) => pane.tab_id === tab.tab_id);
+      if (panes.length !== 1 || !panes[0]) return conflictResponse("multi_pane_tab", "only a tab with one pane can move to another workspace");
+      // herdr names an unnamed tab by its place in the row, which it moves up when a tab before it
+      // closes while the tab keeps its number (src/lib/tabName.ts): that name is not carried over
+      const place = snapshot.tabs.filter((candidate) => candidate.workspace_id === tab.workspace_id).indexOf(tab) + 1;
+      const named = tab.label.trim();
+      const label = named === "" || named === String(place) ? null : named;
+      const moved = await paneMoveToNewTab(panes[0].pane_id, payload.workspace_id, label);
+      broadcastAll({ type: "session-changed" });
+      return jsonResponse({ ok: true, pane_id: moved.pane.pane_id, tab_id: moved.pane.tab_id } satisfies TabMovedToWorkspace);
     } catch (error) {
       return errorResponse(error);
     }

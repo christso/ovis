@@ -11,7 +11,8 @@ sleeps, wording, icons) are enforced by the `conventions.test.ts` files, whose f
 to change. Also read [server/AGENTS.md](server/AGENTS.md) and [src/AGENTS.md](src/AGENTS.md).
 
 ## Bridge traps
-- Never load node-pty inside Bun: it panics the runtime. PTY work goes through the Node sidecar.
+- Never load node-pty inside Bun: it panics the runtime. PTY work goes through the Rust PTY host
+  (`crates/pty-sidecar`), or the Node sidecar as its fallback, never in-process.
 - Never pass `--takeover` to `herdr terminal attach` on the server's own initiative; it cuts off
   whoever holds the pane. Only a user's explicit take-over request may.
 - One herdr RPC connection per call: herdr closes the socket after each answer. Only
@@ -20,7 +21,7 @@ to change. Also read [server/AGENTS.md](server/AGENTS.md) and [src/AGENTS.md](sr
 - `pane.process_info` takes `pane_id`, not `target` (with `target` herdr answers for the focused
   pane).
 - Keep xterm `scrollback: 0` and never rebuild an attached terminal from `pane.read`: the attach
-  stream is the truth. Only a mirrored pane (Windows, or no Node for the sidecar) is drawn from
+  stream is the truth. Only a mirrored pane (Windows, or no PTY host: neither the Rust host nor Node) is drawn from
   `pane.read`, so never assume a pty exists.
 - Nothing the user typed is sent automatically after a disconnect: it waits in a draft until the
   user sends or discards it.
@@ -37,7 +38,7 @@ to change. Also read [server/AGENTS.md](server/AGENTS.md) and [src/AGENTS.md](sr
   a `mkdtempSync` `stateDir` and `port: 0` for every `createServer`. Never run the real
   `herdr update` in a test.
 - Screenshots and recordings come from the demo or a test session, never the user's live one.
-- A web UI server an agent starts for someone to open (manual QA, a preview) binds to this PC's
+- An Ovis server an agent starts for someone to open (manual QA, a preview) binds to this PC's
   Tailscale address, not loopback: `HOST=$(tailscale ip -4) PORT=<free port> bun run server`,
   then hand over `http://<that address>:<port>`. A Tailscale-only bind stays inside the tailnet
   (`lanExposed` in `server/access.ts`); never bind `0.0.0.0` for it. Tests keep `port: 0` on
@@ -52,10 +53,13 @@ to change. Also read [server/AGENTS.md](server/AGENTS.md) and [src/AGENTS.md](sr
   and never stop it.
 - Mac and iOS Simulator checks run on the maintainer's test MacBook Air, `ssh eamac`, which stays
   awake for it. Never drive the MacBook Pro (`ssh macbook`, `ssh mymac`): it is the maintainer's
-  working machine, and automation there takes over their keyboard and focus. Native Windows
-  checks run on the maintainer's Windows 11 PC, `ssh home-window`, which never sleeps on AC. On
-  either box, run a PR's checks in a fresh `git clone` in a temporary directory (`/tmp` on eamac,
-  `%TEMP%` on Windows) and delete it afterwards. Leave their own checkouts alone.
+  working machine, and automation there takes over their keyboard and focus. On eamac, run a PR's
+  checks in a fresh `git clone` in `/tmp` and delete it afterwards; leave its own checkout alone.
+- Native Windows checks run in the Windows 11 VM on this PC, `ssh winvm`. Never use `home-window`:
+  it is the maintainer's own PC. This runs a PR's Windows CI steps in the VM's desktop session, in a
+  fresh `%TEMP%` clone that it deletes afterwards (one such run at a time):
+  `ssh winvm "pwsh -File C:\ProgramData\winvm\Invoke-InSession.ps1 -Command '& C:\ProgramData\winvm\pr-check.ps1 -Pr <N>'"`.
+  When a run leaves state behind, `winvm reset`, then `winvm start`.
 
 ## Maintainer workflow
 - A session that changes code, in any harness, stops at an open PR: only the maintainer's merge
@@ -86,6 +90,8 @@ to change. Also read [server/AGENTS.md](server/AGENTS.md) and [src/AGENTS.md](sr
   threads before merging (branch protection does not enforce it).
 - Run `bun run check fast` before every push, and push a PR's commits together: each push to a
   PR cancels its CI run in progress and starts every job again.
+- A handoff or a PR's Validation says which checks ran (`bun run check fast`, `full`, or which
+  single commands and files) and which were skipped. No pre-push hook stands in for this line.
 - CodeRabbit's reviews are rationed per PR author, and agents open their PRs as one account:
   opening a PR, a push and each `@coderabbitai review` spend one, and past about 80 in a week
   one comes back per hour. Open verified work ready for review, not as a draft: the merge pass

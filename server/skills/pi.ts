@@ -36,27 +36,27 @@ const PI_TERMINAL_BOUND = [
   "tree",
 ];
 const PI_FORMS: NonNullable<AgentCommandSource["forms"]> = {
-  model: [{ match: "bare", interaction: "dialog", dialog: "pi-model" }, { match: { sub: "*" }, interaction: "none" }],
-  thinking: [{ match: "bare", interaction: "dialog", dialog: "pi-model" }, { match: { sub: "*" }, interaction: "none" }],
+  model: [{ match: "bare", interaction: "dialog", dialog: "pi-model" }, { match: "other", interaction: "none" }],
+  thinking: [{ match: "bare", interaction: "dialog", dialog: "pi-thinking" }, { match: "other", interaction: "none" }],
   tree: [{ match: "bare", interaction: "terminal" }],
   fork: [{ match: "bare", interaction: "terminal" }],
   resume: [{ match: "bare", interaction: "terminal" }],
   settings: [{ match: "bare", interaction: "terminal" }],
   "scoped-models": [{ match: "bare", interaction: "terminal" }],
-  login: [{ match: "bare", interaction: "terminal" }, { match: { sub: "*" }, interaction: "terminal" }],
+  login: [{ match: "bare", interaction: "terminal" }, { match: "other", interaction: "terminal" }],
   compact: [{ match: "bare", interaction: "none" }],
   session: [{ match: "bare", interaction: "terminal" }],
   hotkeys: [{ match: "bare", interaction: "terminal" }],
   changelog: [{ match: "bare", interaction: "terminal" }],
   logout: [{ match: "bare", interaction: "terminal" }],
   new: [{ match: "bare", interaction: "unknown" }],
-  name: [{ match: "bare", interaction: "terminal" }, { match: { sub: "*" }, interaction: "none" }],
+  name: [{ match: "bare", interaction: "terminal" }, { match: "other", interaction: "none" }],
   clone: [{ match: "bare", interaction: "unknown" }],
-  import: [{ match: "bare", interaction: "terminal" }, { match: { sub: "*" }, interaction: "terminal" }],
+  import: [{ match: "bare", interaction: "terminal" }, { match: "other", interaction: "terminal" }],
   copy: [{ match: "bare", interaction: "terminal" }],
-  export: [{ match: "bare", interaction: "terminal" }, { match: { sub: "*" }, interaction: "terminal" }],
+  export: [{ match: "bare", interaction: "terminal" }, { match: "other", interaction: "terminal" }],
   share: [{ match: "bare", interaction: "terminal" }],
-  bug: [{ match: "bare", interaction: "terminal" }, { match: { sub: "*" }, interaction: "terminal" }],
+  bug: [{ match: "bare", interaction: "terminal" }, { match: "other", interaction: "terminal" }],
   trust: [{ match: "bare", interaction: "terminal" }],
   reload: [{ match: "bare", interaction: "terminal" }],
   quit: [{ match: "bare", interaction: "terminal" }],
@@ -67,9 +67,9 @@ const readJson = (path: string): unknown => { try { return JSON.parse(readFileSy
 const canonical = (path: string): string => { try { return realpathSync(path); } catch { return resolve(path); } };
 
 /** PI_CODING_AGENT_DIR from the pane's own environ first, then the server's, else ~/.pi/agent. */
-function agentDirectory(home: string, env: readonly string[] | null): string {
+function agentDirectory(home: string, env: readonly string[] | null, serverEnv: AgentCommandContext["serverEnv"]): string {
   const own = environValue(env, "PI_CODING_AGENT_DIR");
-  const dir = own || process.env["PI_CODING_AGENT_DIR"];
+  const dir = own || (serverEnv ?? process.env)["PI_CODING_AGENT_DIR"];
   if (!dir) return join(home, ".pi", "agent");
   return dir === "~" || dir.startsWith("~/") ? join(home, dir.slice(2)) : dir;
 }
@@ -142,14 +142,14 @@ function settingsSkills(home: string, agentDir: string, settings: Record<string,
   return { added, forced, excluded };
 }
 
-function discoverSkills({ home, cwd, env }: AgentCommandContext): SlashCommand[] {
-  const agentDir = agentDirectory(home, env);
+function discoverSkills({ home, cwd, env, serverEnv }: AgentCommandContext): SlashCommand[] {
+  const agentDir = agentDirectory(home, env, serverEnv);
   const settings = plainObject(readJson(join(agentDir, "settings.json")));
   const listed = settingsSkills(home, agentDir, settings);
   const user = [...recursive(join(agentDir, "skills")), ...recursive(join(home, ".agents", "skills")), ...listed.added].filter((skill) => !listed.excluded(skill.path));
   const result = asCommands([...user, ...listed.forced], "user");
   if (cwd && projectTrusted(agentDir, settings, cwd)) {
-    for (const directory of ancestorsToRepoRoot(cwd)) {
+    for (const directory of ancestorsToRepoRoot(cwd, home)) {
       result.push(...asCommands(recursive(join(directory, ".pi", "skills")), "project"), ...asCommands(recursive(join(directory, ".agents", "skills")), "project"));
     }
   }
@@ -169,7 +169,7 @@ export const source: AgentCommandSource = {
     // pi's packages and extension commands stay out: no file scan can know them, and they are in
     // the terminal's own `/` menu either way
     const { home, cwd } = ctx;
-    const agentDir = agentDirectory(home, ctx.env);
+    const agentDir = agentDirectory(home, ctx.env, ctx.serverEnv);
     const trusted = cwd !== null && cwd !== undefined && projectTrusted(agentDir, plainObject(readJson(join(agentDir, "settings.json"))), cwd);
     return [
       ...piTemplates(join(agentDir, "prompts"), "user"),

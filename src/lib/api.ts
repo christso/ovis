@@ -1,6 +1,7 @@
 import { apiFetch as fetch } from "./api-request-id.ts";
 import type { PreferencesChange, SharedPreferences } from "../../shared/preferences.ts";
 import type { SeenFinish } from "../../shared/seen.ts";
+import type { AgentCatalogResponse, AgentTabStarted } from "../../shared/agent-catalog.ts";
 import { resumeConnectionTraces } from "./connectionTrace.ts";
 import { machinePath, type BridgeHealth, type HerdrIdentity, type Machine, type MachineRoster, type SetupAction, type SetupJob, type SetupRequest } from "../../shared/machines.ts";
 import type {
@@ -15,6 +16,7 @@ import type {
   CreateWorktreeRequest,
   CreateTabRequest,
   CreateWorkspaceRequest,
+  DevicesRevokedAll,
   DirectoryCreated,
   DirectoryListing,
   FileInfo,
@@ -22,10 +24,15 @@ import type {
   HealthAuth,
   IntegrationsResponse,
   LanExposure,
+  SecuritySummary,
   InteractivePrompt,
   MoveTabRequest,
+  MoveTabToWorkspaceRequest,
   TabMoved,
+  TabMovedToWorkspace,
   OmoActivity,
+  ClaudeArtifact,
+  PaneBackgroundAgentDetail,
   OpenWorktreeRequest,
   PairedDevice,
   PairingCode,
@@ -35,8 +42,10 @@ import type {
   PanePromptResponse,
   PaneReadResult,
   PaneResized,
+  RepoBranchComparison,
   RepoDiffFileList,
   RepoDiffFilePatch,
+  RepoDiffRefs,
   RepoDiffScope,
   PaneSplit,
   PaneSwapped,
@@ -47,6 +56,7 @@ import type {
   ProjectFavicon,
   PromptAnswer,
   PushKey,
+  PushSubscriptionStatus,
   PortalStatus,
   RemoteAccess,
   RemoveWorktreeRequest,
@@ -63,7 +73,7 @@ import type {
   SwapPaneRequest,
   TabCreated,
   UpdateInstallRequest,
-  UsageReport,
+  StatuslineState, UsageReport,
   WorkspaceCreated,
   PluginActionRequest,
   PluginActionResult,
@@ -83,6 +93,7 @@ import type { VoiceConfigUpdate, VoiceStatus } from "../../shared/voice.ts";
 import { MAX_ATTACHMENT_BYTES } from "../../shared/attachments.ts";
 import { t } from "./i18n.ts";
 import { chatReadDeadlineMs, withChatReadDeadline } from "./chatReadDeadline.ts";
+import { movingHerdrFocus } from "./followFocus.ts";
 import type { UsageLoginAccounts, UsageLoginProvider, UsageLoginRequest, UsageLoginStarted } from "../../shared/usage-login.ts";
 
 export function fetchUsageLoginProviders(signal: AbortSignal): Promise<{ providers: readonly UsageLoginProvider[] }> {
@@ -107,6 +118,16 @@ export function fetchRemoteAccess(): Promise<RemoteAccess> {
 /** The sidebar's plan meters; `refresh` asks the providers again instead of the server's recent answer. */
 export function fetchUsage(refresh = false): Promise<UsageReport> {
   return getJson<UsageReport>(refresh ? "/api/usage?refresh=1" : "/api/usage");
+}
+
+/** Settings → Subscription usage: whether Claude's limits are read from its status line on the server's PC. */
+export function fetchStatusline(): Promise<StatuslineState> {
+  return getJson<StatuslineState>("/api/usage/statusline", { cache: "no-store" });
+}
+
+/** Turns that on or off; the server decides what it installs and where, so only the switch is sent. */
+export async function setStatusline(enabled: boolean): Promise<StatuslineState> {
+  return await (await sendJson("/api/usage/statusline", "POST", { enabled })).json() as StatuslineState;
 }
 
 /** Local server's CLIProxyAPI controls; secrets are only ever sent, never read back. */
@@ -206,13 +227,16 @@ export class ApiError extends Error {
   readonly code: string | null;
   /** the server's own words, without the URL and status the message starts with */
   readonly detail: string;
+  /** how long the server asked to wait before trying again (`Retry-After` in seconds), in ms; null when it did not say */
+  readonly retryAfterMs: number | null;
 
-  constructor(url: string, status: number, detail: string, code: string | null) {
+  constructor(url: string, status: number, detail: string, code: string | null, retryAfterMs: number | null = null) {
     super(`${url} failed (${status}): ${detail}`);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.detail = detail;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -243,7 +267,10 @@ async function errorFrom(url: string, response: Response): Promise<ApiError> {
     /* non-JSON error body */
   }
   if (code !== null && Object.hasOwn(UNUSABLE_ANSWER, code)) detail = UNUSABLE_ANSWER[code]!();
-  return new ApiError(url, response.status, detail, code);
+  // only the seconds form (the server's `retry-after: 1`); an HTTP date is not one this API sends
+  const retryAfter = response.headers.get("retry-after");
+  const seconds = retryAfter !== null && /^\d+$/.test(retryAfter.trim()) ? Number(retryAfter.trim()) : null;
+  return new ApiError(url, response.status, detail, code, seconds === null ? null : seconds * 1000);
 }
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -283,7 +310,15 @@ export async function fetchPaneTranscript(paneId: string, lines: number, machine
 }
 
 /** Which turns (ConversationResponse.cursor): the page `before` a cursor, not past `since`; the newest ones `from` a held start. */
-export type ConversationPageQuery = { before?: string; since?: string; from?: string; /** Revalidate a new finish without borrowing another key's 304. */ fresh?: boolean };
+export type ConversationPageQuery = {
+  before?: string; since?: string; from?: string;
+  /** History currently displayed, even if its cached response was evicted. */
+  history_id?: string;
+  /** Prompts per page: the chat's history-page setting, kept in the URL so its cache key matches. */
+  prompts?: number;
+  /** Revalidate a new finish without borrowing another key's 304. */
+  fresh?: boolean;
+};
 
 /**
  * The last answer per newest-page conversation URL and its ETag. The chat reads it again on
@@ -303,11 +338,41 @@ interface ConversationAnswer {
   body: ConversationResponse;
   /** the body's rough size: what the count cap alone cannot bound */
   bytes: number;
+  /** the pane the answer belongs to: a pane the chat has open keeps every page size it read */
+  pane: string;
+}
+
+/** The pane alone, without the page query: one pane can hold several sizes and cursors at once. */
+function paneKey(paneId: string, machineId: string): string {
+  return `${machineId}\u0000${paneId}`;
 }
 const conversationAnswers = new Map<string, ConversationAnswer>();
-const CONVERSATION_ANSWERS_KEPT = 16;
-/** …and this much of them, about four ordinary conversation pages each. */
-const CONVERSATION_ANSWERS_BYTES = 8 * 1024 * 1024;
+export const CONVERSATION_ANSWERS_KEPT = 24;
+/** …and this much of them: enough for the panes of ten open tabs at the default page size. */
+export const CONVERSATION_ANSWERS_BYTES = 64 * 1024 * 1024;
+/** One pane's page is a page, not a session: past this a page is fetched again rather than kept. */
+export const CONVERSATION_ANSWER_MAX_BYTES = 8 * 1024 * 1024;
+/** The panes of the tabs the chat has open: their answers go last when the cache must make room. */
+const pinnedConversations = new Set<string>();
+
+/**
+ * The UTF-8 length of a body's JSON, counted without encoding a copy of it. `String.length` counts
+ * UTF-16 code units, which under-reports CJK and emoji by up to three times; a page's cap is bytes.
+ */
+function utf8Length(text: string): number {
+  let bytes = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    // a well-formed pair is four bytes as one character; a lone surrogate is escaped by JSON.stringify
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      bytes += 4;
+      index += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
 
 /**
  * The body a cache entry carries: the server's own count when it sends one for the body as it is,
@@ -317,19 +382,39 @@ export function conversationAnswerBytes(body: ConversationResponse, contentLengt
   const declared = Number(contentLength);
   const identity = contentEncoding === null || contentEncoding.trim().toLowerCase() === "identity";
   if (identity && Number.isFinite(declared) && declared > 0) return declared;
-  return JSON.stringify(body)?.length ?? 0;
+  return utf8Length(JSON.stringify(body) ?? "");
 }
 
-/** Drops the least recently used answers until the cache is back inside both caps. */
+/**
+ * Drops the least recently used answers until the cache is back inside both caps. An answer the
+ * chat still has a pane open for is dropped only once no unpinned one is left. The pane, not its
+ * URL, is what is pinned: the chat reads its newest page at the page size the setting names, so a
+ * pin taken on the URL alone would never match the entry the open pane actually holds.
+ */
 function trimConversationAnswers(keep: string): void {
   let total = 0;
   for (const answer of conversationAnswers.values()) total += answer.bytes;
-  while (conversationAnswers.size > CONVERSATION_ANSWERS_KEPT || total > CONVERSATION_ANSWERS_BYTES) {
-    const oldest = conversationAnswers.keys().next().value;
-    if (oldest === undefined || oldest === keep) break;
-    total -= conversationAnswers.get(oldest)!.bytes;
-    conversationAnswers.delete(oldest);
+  const over = (): boolean => conversationAnswers.size > CONVERSATION_ANSWERS_KEPT || total > CONVERSATION_ANSWERS_BYTES;
+  while (over()) {
+    let victim: string | undefined;
+    for (const [url, answer] of conversationAnswers) {
+      if (url === keep) continue;
+      if (!pinnedConversations.has(answer.pane)) { victim = url; break; }
+      victim ??= url;
+    }
+    if (victim === undefined) break;
+    total -= conversationAnswers.get(victim)!.bytes;
+    conversationAnswers.delete(victim);
   }
+}
+
+/** The chat's open pane keeps its pages: `pin`ed panes are evicted last. */
+export function pinPaneConversation(paneId: string, machineId = "local"): void {
+  pinnedConversations.add(paneKey(paneId, machineId));
+}
+
+export function unpinPaneConversation(paneId: string, machineId = "local"): void {
+  pinnedConversations.delete(paneKey(paneId, machineId));
 }
 
 function conversationUrl(paneId: string, machineId: string, page: ConversationPageQuery): string {
@@ -337,6 +422,7 @@ function conversationUrl(paneId: string, machineId: string, page: ConversationPa
   if (page.before !== undefined) query.set("before", page.before);
   if (page.since !== undefined) query.set("since", page.since);
   if (page.from !== undefined) query.set("from", page.from);
+  if (page.prompts !== undefined) query.set("prompts", String(page.prompts));
   return machinePath(machineId, `pane/conversation?${query.toString()}`);
 }
 
@@ -344,8 +430,8 @@ function conversationUrl(paneId: string, machineId: string, page: ConversationPa
  * The newest page last answered for this pane (no page query), without asking the server: a chat
  * that mounts draws it at once while its read revalidates it. It leaves the cache order alone.
  */
-export function peekPaneConversation(paneId: string, machineId = "local"): ConversationResponse | undefined {
-  return conversationAnswers.get(conversationUrl(paneId, machineId, {}))?.body;
+export function peekPaneConversation(paneId: string, machineId = "local", prompts?: number): ConversationResponse | undefined {
+  return conversationAnswers.get(conversationUrl(paneId, machineId, prompts === undefined ? {} : { prompts }))?.body;
 }
 
 /** GET /api/pane/conversation: structured turns, or scrollback fallback; `page` as ConversationResponse.cursor describes. */
@@ -353,12 +439,20 @@ export async function fetchPaneConversation(paneId: string, machineId = "local",
   const url = conversationUrl(paneId, machineId, page);
   const polled = page.before === undefined;
   const known = polled ? conversationAnswers.get(url) : undefined;
+  const requestUrl = page.history_id === undefined ? url : `${url}&history_id=${encodeURIComponent(page.history_id)}`;
   const { response, body } = await withChatReadDeadline(async (signal) => {
-    const response = await fetch(url, { cache: "no-store", signal, ...(known && !page.fresh ? { headers: { "if-none-match": known.etag } } : {}) });
+    const response = await fetch(requestUrl, { cache: "no-store", signal, ...(known && !page.fresh ? { headers: { "if-none-match": known.etag } } : {}) });
     if (response.status === 304 && known) return { response, body: known.body };
     if (!response.ok) throw await errorFrom(url, response);
     return { response, body: (await response.json()) as ConversationResponse };
-  }, chatReadDeadlineMs(machineId));
+  }, chatReadDeadlineMs(machineId)).catch((cause: unknown) => {
+    // a rejected history is the pane's, whatever page size it was read at: none of its pages may draw again
+    if (cause instanceof ApiError && cause.status === 409) {
+      const pane = paneKey(paneId, machineId);
+      for (const [cached, answer] of conversationAnswers) if (cached === url || answer.pane === pane) conversationAnswers.delete(cached);
+    }
+    throw cause;
+  });
   // Cache changes occur after the bounded read: a late, aborted answer cannot replace it.
   if (response.status === 304 && known) {
     conversationAnswers.delete(url);
@@ -369,8 +463,11 @@ export async function fetchPaneConversation(paneId: string, machineId = "local",
   if (!polled) return body;
   conversationAnswers.delete(url);
   if (etag !== null) {
-    conversationAnswers.set(url, { etag, body, bytes: conversationAnswerBytes(body, response.headers.get("content-length"), response.headers.get("content-encoding")) });
-    trimConversationAnswers(url);
+    const bytes = conversationAnswerBytes(body, response.headers.get("content-length"), response.headers.get("content-encoding"));
+    if (bytes <= CONVERSATION_ANSWER_MAX_BYTES) {
+      conversationAnswers.set(url, { etag, body, bytes, pane: paneKey(paneId, machineId) });
+      trimConversationAnswers(url);
+    }
   }
   return body;
 }
@@ -383,6 +480,8 @@ export interface HealthInfo {
   auth?: HealthAuth;
   /** present only while this server is reachable beyond this PC with no token and nothing paired */
   lan_exposure?: LanExposure;
+  /** authenticated only; absent from an older server, which the summary shows as unavailable */
+  security?: SecuritySummary;
 }
 
 export async function fetchHealth(): Promise<HealthInfo> {
@@ -425,6 +524,15 @@ export async function renameDevice(id: string, label: string): Promise<PairedDev
 
 export async function revokeDevice(id: string): Promise<void> {
   await sendJson(`/api/devices/${encodeURIComponent(id)}`, "DELETE", {});
+}
+
+/**
+ * POST /api/devices/revoke-all: every paired device loses its pairing access in one durable step,
+ * this browser's own included (the answer clears its device cookie). The access token, the PC
+ * itself and its Tailscale login get in as before.
+ */
+export async function revokeAllDevices(): Promise<DevicesRevokedAll> {
+  return (await sendJson("/api/devices/revoke-all", "POST", {})).json();
 }
 
 /** DELETE /api/auth: clears the session and device cookies, so the next health check reports the gate again. */
@@ -562,12 +670,14 @@ export async function renameAgent(paneId: string, name: string | null, machineId
 
 /**
  * POST /api/pane/split: a new pane beside this one in herdr (its prefix+v / prefix+-), answered as
- * herdr lists it. herdr's focus stays put unless `focus` asks for the new pane; the sidebar and the
- * tab strip learn of it from the server's session-changed broadcast.
+ * herdr lists it. herdr's focus stays put unless `focus` asks for the new pane, which the caller then
+ * opens itself (movingHerdrFocus); the sidebar and the tab strip learn of it from the server's
+ * session-changed broadcast.
  */
 export async function splitPane(paneId: string, direction: SplitPaneDirection, focus = false, machineId = "local"): Promise<PaneInfo> {
-  const response = await sendJson(machinePath(machineId, "pane/split"), "POST", { pane_id: paneId, direction, ...(focus ? { focus: true } : {}) } satisfies SplitPaneRequest);
-  return ((await response.json()) as PaneSplit).pane;
+  const request = sendJson(machinePath(machineId, "pane/split"), "POST", { pane_id: paneId, direction, ...(focus ? { focus: true } : {}) } satisfies SplitPaneRequest)
+    .then(async (response) => ((await response.json()) as PaneSplit).pane);
+  return focus ? movingHerdrFocus(machineId, request) : request;
 }
 
 /** POST /api/pane/zoom: herdr's prefix+z on that pane; `zoomed` is the tab's state after it. */
@@ -582,10 +692,11 @@ export async function swapPane(paneId: string, direction: PaneDirection, machine
   return (await response.json()) as PaneSwapped;
 }
 
-/** POST /api/pane/swap: swap this pane with an explicit pane, keeping herdr's same-tab rule. */
+/** POST /api/pane/swap: an explicit same-tab swap; leave its temporary focus events to the caller. */
 export async function swapPaneWith(paneId: string, targetPaneId: string, machineId = "local"): Promise<PaneSwapped> {
-  const response = await sendJson(machinePath(machineId, "pane/swap"), "POST", { pane_id: paneId, target_pane_id: targetPaneId } satisfies SwapPaneRequest);
-  return (await response.json()) as PaneSwapped;
+  const request = sendJson(machinePath(machineId, "pane/swap"), "POST", { pane_id: paneId, target_pane_id: targetPaneId } satisfies SwapPaneRequest)
+    .then(async (response) => (await response.json()) as PaneSwapped);
+  return movingHerdrFocus(machineId, request);
 }
 
 /** POST /api/layout/ratio: set the split identified by its binary path to the dragged ratio. */
@@ -629,6 +740,22 @@ export async function saveAgentLauncher(input: SavedAgentLauncherInput, id?: str
 export async function deleteAgentLauncher(id: string, machineId = "local"): Promise<SavedAgentLauncher[]> {
   const response = await sendJson(machinePath(machineId, `agents/launchers?id=${encodeURIComponent(id)}`), "DELETE", {});
   return (await response.json() as { launchers: SavedAgentLauncher[] }).launchers;
+}
+
+/** GET /api/agent-catalog: every agent Ovis can install, with that PC's commands and what it has installed. */
+export async function fetchAgentCatalog(machineId = "local", signal?: AbortSignal): Promise<AgentCatalogResponse> {
+  return getJson<AgentCatalogResponse>(machinePath(machineId, "agent-catalog"), { signal, cache: "no-store" });
+}
+
+/** POST /api/agent-catalog/install: opens a tab on that PC and types the agent's official command there. */
+export async function startAgentInstall(agent: string, machineId = "local", alternative?: number): Promise<AgentTabStarted> {
+  const response = await sendJson(machinePath(machineId, "agent-catalog/install"), "POST", alternative === undefined ? { agent } : { agent, alternative });
+  return (await response.json()) as AgentTabStarted;
+}
+
+/** POST /api/agent-catalog/sign-in: opens a tab on that PC running the agent's own sign-in. */
+export async function startAgentSignIn(agent: string, machineId = "local"): Promise<AgentTabStarted> {
+  return (await (await sendJson(machinePath(machineId, "agent-catalog/sign-in"), "POST", { agent })).json()) as AgentTabStarted;
 }
 
 /** GET /api/integrations: herdr's agent integrations on that PC and whether each is installed. */
@@ -679,25 +806,36 @@ export function fileUrl(path: string, paneId: string | null, machineId = "local"
 
 /**
  * Which repository and which two of its states: the pane's folder (or `directory`, read when the
- * pane is gone), and the working tree against the index, the index against HEAD, or two commits.
+ * pane is gone), and the working tree against the index, the index against HEAD, two commits, or
+ * the working tree against the merge base of a chosen base and HEAD.
  */
 export interface RepoDiffQuery {
   paneId: string | null;
   directory: string | null;
   scope: RepoDiffScope;
-  /** `commit` only: the list's hashes, so a file is read from the same comparison */
+  /** `commit`: the list's hashes, so a file is read from the same comparison; `branch`: the base to list from */
   base: string | null;
   head: string | null;
+  /** `branch` only: the identity the list answered with, which a patch is read from instead of the base's name */
+  comparison: RepoBranchComparison | null;
 }
 
 function repoDiffQuery(query: RepoDiffQuery): URLSearchParams {
+  const pinned = query.scope === "branch" && query.comparison !== null;
   return new URLSearchParams({
     ...(query.paneId ? { pane_id: query.paneId } : {}),
     ...(query.directory ? { directory: query.directory } : {}),
     scope: query.scope,
-    ...(query.scope === "commit" && query.base ? { base: query.base } : {}),
+    ...((query.scope === "commit" || query.scope === "branch") && !pinned && query.base ? { base: query.base } : {}),
     ...(query.scope === "commit" && query.head ? { head: query.head } : {}),
+    ...(pinned ? { comparison: JSON.stringify(query.comparison) } : {}),
   });
+}
+
+/** GET /api/workspace/diff/refs: the repository's branches, for choosing a base; nothing is fetched. */
+export async function fetchRepoDiffRefs(query: Pick<RepoDiffQuery, "paneId" | "directory">, machineId = "local"): Promise<RepoDiffRefs> {
+  const params = new URLSearchParams({ ...(query.paneId ? { pane_id: query.paneId } : {}), ...(query.directory ? { directory: query.directory } : {}) });
+  return getJson<RepoDiffRefs>(machinePath(machineId, `workspace/diff/refs?${params.toString()}`));
 }
 
 /** GET /api/workspace/diff/files: the files a comparison changed, with their status and counts. */
@@ -745,6 +883,10 @@ export async function openWorktree(request: OpenWorktreeRequest, machineId = "lo
 /**
  * GET /api/sessions/history: the earlier sessions of `agent` in the workspace's folder, newest first;
  * never cached. `paneId` is the pane the list was asked for from: Claude's are that pane's store's.
+ * Pi reads refused by their deadline, reader limit or a changed transcript throw ApiError 503
+ * `session_history_busy` (with retryAfterMs). The dialog retries while keeping its loading state,
+ * then offers Retry, never incomplete rows. The server reuses only stat-keyed completed labels,
+ * never an unfinished scan.
  */
 export function fetchSessionHistory(workspaceId: string, agent: SessionHistoryAgent, machineId = "local", paneId: string | null = null): Promise<SessionHistoryResponse> {
   const query = new URLSearchParams({ workspace_id: workspaceId, agent, ...(paneId === null ? {} : { pane_id: paneId }) });
@@ -785,6 +927,13 @@ export async function moveTab(tabId: string, insertIndex: number, machineId = "l
   const request: MoveTabRequest = { tab_id: tabId, insert_index: insertIndex };
   const response = await sendJson(machinePath(machineId, "tab/move"), "POST", request);
   return (await response.json()) as TabMoved;
+}
+
+/** A one-pane tab into a new tab of another workspace; its pane answers under its new ID. */
+export async function moveTabToWorkspace(tabId: string, workspaceId: string, machineId = "local"): Promise<TabMovedToWorkspace> {
+  const request: MoveTabToWorkspaceRequest = { tab_id: tabId, workspace_id: workspaceId };
+  const response = await sendJson(machinePath(machineId, "tab/move-to-workspace"), "POST", request);
+  return (await response.json()) as TabMovedToWorkspace;
 }
 
 /** POST /api/tab/close: the tab and every pane in it; a workspace's last tab takes the workspace with it. */
@@ -832,10 +981,26 @@ export async function fetchAgentCommands(agent: string, cwd: string | null, mach
 }
 
 /** GET /api/pane/omo-tasks: the background tasks and workflows the pane's OmO session started, and that PC's clock. */
-export async function fetchPaneOmoActivity(paneId: string, machineId = "local"): Promise<{ tasks: OmoActivity["tasks"]; runs: OmoActivity["runs"]; serverTime: string | null }> {
+export async function fetchPaneOmoActivity(paneId: string, machineId = "local"): Promise<{ tasks: OmoActivity["tasks"]; runs: OmoActivity["runs"]; serverTime: string | null; moreRunning: number }> {
   const activity = await getJson<Partial<OmoActivity>>(machinePath(machineId, `pane/omo-tasks?pane_id=${encodeURIComponent(paneId)}`));
-  // a bridge from before workflows answers tasks only
-  return { tasks: activity.tasks ?? [], runs: activity.runs ?? [], serverTime: activity.server_time ?? null };
+  // a bridge from before workflows answers tasks only; one from before the running list was cut, every running one
+  return { tasks: activity.tasks ?? [], runs: activity.runs ?? [], serverTime: activity.server_time ?? null, moreRunning: typeof activity.more_running === "number" && activity.more_running > 0 ? activity.more_running : 0 };
+}
+
+/**
+ * GET /api/pane/background-agent: what a running Claude Code subagent's own transcript holds now,
+ * read-only and bounded (its dispatch prompt, its prose and the tools it called), for the
+ * background-task list's detail sheet. The PC resolves the session and the files: the caller
+ * names a pane and the agent id the list gave it, nothing else.
+ */
+export async function fetchPaneBackgroundAgent(paneId: string, agentId: string, machineId = "local"): Promise<PaneBackgroundAgentDetail> {
+  const query = new URLSearchParams({ pane_id: paneId, agent_id: agentId });
+  return await getJson<PaneBackgroundAgentDetail>(machinePath(machineId, `pane/background-agent?${query.toString()}`));
+}
+
+/** GET /api/pane/artifacts: the pages the pane's Claude Code session published, newest first. */
+export async function fetchPaneArtifacts(paneId: string, machineId = "local"): Promise<ClaudeArtifact[]> {
+  return (await getJson<{ artifacts: ClaudeArtifact[] }>(machinePath(machineId, `pane/artifacts?pane_id=${encodeURIComponent(paneId)}`))).artifacts;
 }
 
 /** GET /api/pane/plan: the plan the pane's Claude Code or Codex session keeps, and that PC's clock. */
@@ -888,6 +1053,21 @@ export async function unregisterPushSubscription(endpoint: string): Promise<void
 /** One confirmation push to this device only; ApiError 502 `push_failed` when the push service refused it. */
 export async function sendTestPush(endpoint: string): Promise<void> {
   await sendJson("/api/push/test", "POST", { endpoint });
+}
+
+/**
+ * POST /api/push/status: what the server knows of this browser's own subscription (the one its
+ * PushManager holds, never the selected PC's), once it has proven the keys. `null` when the
+ * server does not know it: another owner's, a stranger's or never registered are one answer.
+ * A server from before the route throws its 404 `not_found` (`routeMissing`).
+ */
+export async function fetchPushSubscriptionStatus(subscription: PushSubscriptionJSON): Promise<PushSubscriptionStatus | null> {
+  try {
+    return await (await sendJson("/api/push/status", "POST", { subscription })).json() as PushSubscriptionStatus;
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "subscription_not_found") return null;
+    throw error;
+  }
 }
 
 export function fetchBridgeHealth(): Promise<BridgeHealth> { return getJson("/api/health?scope=bridge"); }

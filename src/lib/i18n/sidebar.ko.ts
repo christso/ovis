@@ -6,6 +6,9 @@
 export const SIDEBAR_KO: Record<string, string> = {
   "Pin agent": "에이전트 고정",
   "Unpin agent": "에이전트 고정 해제",
+  "Mute alerts": "알림 끄기",
+  "Unmute alerts": "알림 켜기",
+  "Alerts muted": "알림 꺼짐",
   "Pin workspace": "워크스페이스 고정",
   "Unpin workspace": "워크스페이스 고정 해제",
   "Pinned": "고정됨",
@@ -14,7 +17,6 @@ export const SIDEBAR_KO: Record<string, string> = {
   "Agent {status}": "에이전트 {status}",
   "Loading agents…": "에이전트 불러오는 중…",
   "Herdr workspaces": "herdr 워크스페이스",
-  "Agents": "에이전트",
   "No agents running": "실행 중인 에이전트가 없습니다",
   "Expand worktrees of {name}": "{name}의 워크트리 펼치기",
   "Collapse worktrees of {name}": "{name}의 워크트리 접기",
