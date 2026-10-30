@@ -142,6 +142,13 @@ The dialog offers the update itself: a connect or reconnect that is refused on t
 
 The update runs on the server, not in a dialog: closing the dialog after approval, or never opening one, does not stop it, and **Cancel update** does. The sidebar and the header show the step (download, upload to the PC, verify and install, restart), the bytes, and roughly how long is left. The connection server keeps the verified bundle under `<stateDir>/bundles/<sha256>.tgz` (the newest four), downloads each checksum once even for PCs updating together, and streams the file to the PC instead of holding it in memory.
 
+When both servers include the fork's pending-receipt recovery, a returning browser can recover
+the exact outcome of a delivered or discarded message through a remote PC too. The connection
+server replaces the browser's receipt identity with an opaque identity bound to that server,
+PC, authenticated device and browser. Watch-only connections cannot recover these receipts.
+Recovery never submits terminal input. Receipts are bounded to ten minutes and 1024 outcomes;
+a missing receipt, or a restart of either server, leaves the saved message unconfirmed.
+
 A verified runtime is installed into a checksum-addressed directory before the selected managed bridge is restarted. Existing runtime directories remain available to other running bridges. The updater authenticates the old bridge and checks its socket, managed ownership and PID before stopping it. An approved replacement may have a different bridge protocol, but the new bridge must match the current protocol and bundle version before connecting; herdr itself is left running. A separately managed server must use its own update controls. The connection server's own app update (Settings → Updates) is separate from these bridge updates.
 
 An independently managed server is detected before downloading or installing a remote bundle, and

@@ -64,9 +64,22 @@ The fixed run's events and assertions are in [result-fixed.json](result-fixed.js
 the reproduced receipt-loss case. A bridge restart or a receipt that predates retention cannot
 be reconstructed; an old uncertain copy still needs review and manual dismissal.
 
-Receipt resumption keeps Ovis's existing direct-bridge limit: the remote-PC relay strips the
-browser resume ID because its shared bridge token does not identify the originating device.
-Routed remote sessions therefore keep the existing conservative behavior. A stale tab can also
+Remote-PC relays now replace the browser resume ID with an opaque ID scoped to the connection
+server, remote-PC registration, authenticated device and browser. The raw browser ID never crosses
+the shared-token boundary. The same browser can recover its exact sent/discarded receipts after
+reconnecting through the relay; other devices and watch-only connections cannot recover them.
+Both the connection server and the remote bridge must run the fork's receipt-recovery code. An
+official runtime bundle without that code does not gain it merely by reconnecting.
+
+The relay regression uses two real Ovis servers and a real Herdr recorder in an isolated test
+session. It covers sent, discarded and late Enter-reply outcomes, paired-device/browser isolation,
+watch-only access and unchanged terminal input:
+
+```sh
+bun run check run bun test --timeout 30000 ./server/pending-input.contract.test.ts -t 'recovers a relayed Codex'
+```
+
+A restart of either server or receipt expiry still leaves the message uncertain. A stale tab can also
 write an old saved copy after another tab settled it; after a reload and expiry of the server's
 receipt, that copy remains uncertain rather than being guessed delivered.
 

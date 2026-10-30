@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Server, ServerWebSocket } from "bun";
-import { MachineRelay, RelayStallClock, upstreamCloseCode } from "./machine-relay.ts";
+import { MachineRelay, RelayReceiptIds, RelayStallClock, upstreamCloseCode } from "./machine-relay.ts";
 import type { MachineManager } from "./machines.ts";
 import { OUTPUT_HARD_BYTES, OUTPUT_HIGH_BYTES, OUTPUT_STALL_MS } from "./output-window.ts";
 import { OUTPUT_STALLED_CLOSE_CODE } from "../shared/terminal-flow.ts";
 import { agentRowTokens, snapshotWithoutHiddenTokens } from "./herdr-sidebar.ts";
 import type { SessionSnapshot } from "../shared/protocol.ts";
+import { RECEIPT_RESUME_ID } from "../shared/receipt-resume.ts";
 
 /** Samples every 100 ms like the relay's timer, returning the first close code. */
 function run(clock: RelayStallClock, buffered: (at: number) => number, from: number, until: number): number {
@@ -52,8 +53,23 @@ describe("upstreamCloseCode", () => {
 });
 
 describe("MachineRelay receipt isolation", () => {
-  for (const readOnly of [false, true]) {
-    test(`strips receipt resume IDs from every attach while preserving other fields (observe=${readOnly})`, async () => {
+  test("receipt IDs survive reconnects only within their server, PC, device and browser scope", () => {
+    const ids = new RelayReceiptIds(), browser = crypto.randomUUID();
+    const owner = ids.scope("pc-a", "device-a", browser)!;
+    expect(owner).toMatch(RECEIPT_RESUME_ID);
+    expect(owner).not.toBe(browser);
+    expect(ids.scope("pc-a", "device-a", browser)).toBe(owner);
+    expect(ids.scope("pc-b", "device-a", browser)).not.toBe(owner);
+    expect(ids.scope("pc-a", "device-b", browser)).not.toBe(owner);
+    expect(ids.scope("pc-a", undefined, browser)).not.toBe(owner);
+    expect(ids.scope("pc-a", "device-a", crypto.randomUUID())).not.toBe(owner);
+    expect(new RelayReceiptIds().scope("pc-a", "device-a", browser)).not.toBe(owner);
+    expect(ids.scope("pc-a", "device-a", "not-a-uuid")).toBeUndefined();
+    expect(ids.scope("pc-a", "device-a", "x".repeat(4096))).toBeUndefined();
+  });
+
+  for (const readOnly of [false, true]) for (const scoped of [false, true]) {
+    test(`only forwards scoped receipt IDs for interact clients (observe=${readOnly}, scoped=${scoped})`, async () => {
       const received: Record<string, unknown>[] = [];
       let resolve!: () => void;
       const delivered = new Promise<void>((done) => { resolve = done; });
@@ -73,7 +89,9 @@ describe("MachineRelay receipt isolation", () => {
         endpoint: () => ({ url: `http://127.0.0.1:${upstream.port}`, token: "shared-bridge-token" }),
         trackTerminal: () => () => {},
       } as unknown as MachineManager;
-      const relay = new MachineRelay(manager, "pc", readOnly, (snapshot) => snapshot);
+      const ids = new RelayReceiptIds();
+      const relay = new MachineRelay(manager, "pc", readOnly, (snapshot) => snapshot,
+        scoped ? (browser) => ids.scope("pc", "device", browser) : undefined);
       try {
         await relay.ready;
         const attach = { type: "attach", pane_id: "p", cols: 93, rows: 37, flow_control: "ack", keep_size: true };
@@ -81,9 +99,9 @@ describe("MachineRelay receipt isolation", () => {
         relay.message(JSON.stringify(withResume));
         relay.message(Buffer.from(JSON.stringify(withResume)));
         await delivered;
-        expect(received).toEqual([attach, attach]);
-        // Neither initial nor repeated remote attach can claim a retained receipt.
-        expect(received.map((message) => message.receipt_resume_id)).toEqual([undefined, undefined]);
+        const expected = scoped && !readOnly ? { ...attach, receipt_resume_id: ids.scope("pc", "device", withResume.receipt_resume_id) } : attach;
+        expect(received).toEqual([expected, expected]);
+        expect(received.every((message) => message.receipt_resume_id !== withResume.receipt_resume_id)).toBe(true);
       } finally {
         relay.close();
         upstream.stop(true);
