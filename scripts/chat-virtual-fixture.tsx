@@ -5,6 +5,8 @@ import { ChatView } from "../src/components/ChatView.tsx";
 import { MachineContext } from "../src/lib/machineContext.tsx";
 import { SettingsProvider } from "../src/lib/settings.ts";
 import { OpenFileContext } from "../src/lib/filePaths.ts";
+import { useWaitingSends } from "../src/components/SentWaiting.tsx";
+import { rememberWaitingSend, waitingBaseline, waitingKey } from "../src/lib/sentWaiting.ts";
 
 declare global {
   interface Window {
@@ -13,20 +15,33 @@ declare global {
       page: (direction: -1 | 1) => void;
       resize: (height: number) => void;
       machine: (machine: string) => void;
+      siblingConnection: (connected: boolean | null) => void;
+      send: (text: string) => void;
     };
   }
+}
+
+function SiblingConnection({ connected }: { connected: boolean }) {
+  useWaitingSends("local", "sibling-pane", connected);
+  return null;
 }
 
 function Fixture() {
   const [refresh, setRefresh] = useState(0);
   const [height, setHeight] = useState(window.innerHeight);
   const [machine, setMachine] = useState("local");
+  const [sibling, setSibling] = useState<boolean | null>(null);
   const pageScroll = useRef<((direction: -1 | 1) => void) | null>(null);
   window.chatQa = {
     refresh: () => setRefresh((value) => value + 1),
     page: (direction) => pageScroll.current?.(direction),
     resize: setHeight,
     machine: setMachine,
+    siblingConnection: setSibling,
+    send: (text) => {
+      const key = waitingKey(machine, "same-pane");
+      rememberWaitingSend(key, text, Date.now(), waitingBaseline(key));
+    },
   };
   return <div className="terminal-host"><div className="terminal-stack is-chat" style={{ position: "relative", height, width: "100%" }}>
     <MachineContext.Provider value={machine}>
@@ -38,6 +53,7 @@ function Fixture() {
         </OpenFileContext.Provider>
       </Profiler>
     </MachineContext.Provider>
+    {sibling !== null && <SiblingConnection connected={sibling} />}
   </div></div>;
 }
 

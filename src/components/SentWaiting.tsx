@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "reac
 import { Clock } from "lucide-react";
 
 import { useT } from "../lib/i18n.ts";
-import { currentWaitingSends, forgetMachineWaitingSends, subscribeWaitingSends, WAITING_HINT_MS, waitingKey, type WaitingSend } from "../lib/sentWaiting.ts";
+import { clearMachineWaitingSends, currentWaitingSends, subscribeWaitingSends, WAITING_HINT_MS, waitingKey, type WaitingSend } from "../lib/sentWaiting.ts";
 
 /**
  * The sends this browser made to a pane that its transcript does not hold yet. A lost connection
@@ -12,7 +12,7 @@ import { currentWaitingSends, forgetMachineWaitingSends, subscribeWaitingSends, 
 export function useWaitingSends(machineId: string, paneId: string, connected: boolean): readonly WaitingSend[] {
   const key = waitingKey(machineId, paneId);
   useLayoutEffect(() => {
-    if (!connected) forgetMachineWaitingSends(machineId);
+    if (!connected) clearMachineWaitingSends(machineId);
   }, [connected, machineId]);
   return useSyncExternalStore(subscribeWaitingSends, () => currentWaitingSends(key));
 }
