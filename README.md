@@ -41,6 +41,8 @@ with the CLI’s profile arguments.
 The [dated, pinned comparison](docs/fork/status.md) lists every product delta from
 upstream, with [canonical JSON](docs/fork/status.json) and a
 [portable refresh/render tool](scripts/fork-status.py).
+The [upstream candidate log](docs/fork/upstream-candidates.md) tracks reproductions,
+dogfooding evidence and readiness to propose each change upstream.
 
 The website, demo, releases and installation commands below belong to upstream.
 They install upstream, not this fork. For source development, use this fork's

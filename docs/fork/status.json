@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-18T05:37:13.110012+00:00",
+  "generated_at": "2026-10-31T09:16:37.736538+00:00",
   "fork": {
-    "repository": "christso/herdr-web-ui",
-    "ref": "origin/christso/main",
-    "sha": "4e8eaf3241568c51289185cc570ca7621f8c3e47"
+    "repository": "christso/ovis",
+    "ref": "HEAD",
+    "sha": "f78083aba289aee1eaaa89f90330a019e53e3584"
   },
   "upstream": {
-    "repository": "devswha/herdr-web-ui",
-    "ref": "upstream/main",
-    "sha": "f1491383275c11d37d1f11bbd826009972d72f4d"
+    "repository": "devswha/ovis",
+    "ref": "3c679791",
+    "sha": "3c6797913ce711b5dd870f3016e72ebde95b6a8f"
   },
   "scope": {
     "method": "Git tree diff, no renames; binary numstats are null",
@@ -17,35 +17,78 @@
       "README.md",
       "docs/fork/status.json",
       "docs/fork/status.md",
+      "docs/fork/upstream-candidates.md",
       "scripts/fork-status.py"
     ],
     "reason": "Exclude the whole English README (including the fork introduction) and the fork reporting files/tool, so reporting does not count itself as product work. All other changed paths, including documentation, tests and changelog fragments, count.",
-    "excluded_changed_files": []
+    "excluded_changed_files": [
+      {
+        "path": "README.md",
+        "status": "M",
+        "added": 25,
+        "removed": 0
+      },
+      {
+        "path": "docs/fork/status.json",
+        "status": "A",
+        "added": 538,
+        "removed": 0
+      },
+      {
+        "path": "docs/fork/status.md",
+        "status": "A",
+        "added": 136,
+        "removed": 0
+      },
+      {
+        "path": "scripts/fork-status.py",
+        "status": "A",
+        "added": 232,
+        "removed": 0
+      }
+    ]
   },
   "comparison": {
-    "fork_only_commits": 39,
+    "fork_only_commits": 61,
     "upstream_only_commits": 0,
     "upstream_included": true,
-    "product_files": 46,
+    "product_files": 102,
     "unclassified_paths": []
   },
-  "upstream_context": "PR/issue links are context, not proof of coverage. Issue #1197 was open on 2026-10-18; this report does not claim it resolved.",
+  "upstream_context": "PR/issue links are historical context, not proof of coverage or current status. See docs/fork/upstream-candidates.md for dogfooding and submission readiness. The comparison applies only to the selected source pins; inclusion and ahead/behind counts are reported above.",
   "pull_requests": {
     "status": "complete",
     "state": "open",
     "pagination": "all pages",
     "queries": [
       {
-        "repository": "devswha/herdr-web-ui",
+        "repository": "devswha/ovis",
         "author": "christso",
-        "queried_at": "2026-10-18T05:37:13.622135+00:00",
+        "queried_at": "2026-10-31T09:16:38.492388+00:00",
         "pull_requests": []
       },
       {
-        "repository": "christso/herdr-web-ui",
+        "repository": "christso/ovis",
         "author": null,
-        "queried_at": "2026-10-18T05:37:14.128829+00:00",
-        "pull_requests": []
+        "queried_at": "2026-10-31T09:16:39.005013+00:00",
+        "pull_requests": [
+          {
+            "number": 3,
+            "title": "docs: trace review risks beyond changed lines",
+            "url": "https://github.com/christso/ovis/pull/3",
+            "draft": false,
+            "base_ref": "christso/main",
+            "head_sha": "763e3829c485797b13808857f99dbc5a6637101e"
+          },
+          {
+            "number": 10,
+            "title": "fix(chat): clear stale sent bubbles after pane connection changes",
+            "url": "https://github.com/christso/ovis/pull/10",
+            "draft": false,
+            "base_ref": "christso/main",
+            "head_sha": "f78083aba289aee1eaaa89f90330a019e53e3584"
+          }
+        ]
       }
     ]
   },
@@ -66,8 +109,6 @@
       "related_upstream_issues": [],
       "files": [
         "server/omp-process.test.ts",
-        "server/omp-process.ts",
-        "server/omp.contract.test.ts",
         "server/omp.test.ts",
         "server/omp.ts"
       ]
@@ -110,7 +151,10 @@
         "scripts/ci-browser.sh",
         "scripts/ci-browser.test.ts",
         "changelog.d/creation-link-machine.md",
-        "changelog.d/worktree-phone-selection.md"
+        "changelog.d/worktree-phone-selection.md",
+        "scripts/phone-worktree-sheet-regression.ts",
+        "src/lib/useAddressBar.ts",
+        "src/lib/useSelection.ts"
       ],
       "related_upstream_prs": [],
       "related_upstream_issues": [],
@@ -118,11 +162,13 @@
         "changelog.d/creation-link-machine.md",
         "changelog.d/worktree-phone-selection.md",
         "scripts/ci-browser.sh",
-        "scripts/ci-browser.test.ts",
         "scripts/deep-link-demo-regression.ts",
         "scripts/palette-machines-demo-regression.ts",
+        "scripts/phone-worktree-sheet-regression.ts",
         "scripts/worktree-selection-demo-regression.ts",
-        "src/App.tsx"
+        "src/App.tsx",
+        "src/lib/useAddressBar.ts",
+        "src/lib/useSelection.ts"
       ]
     },
     {
@@ -145,10 +191,10 @@
       ]
     },
     {
-      "id": "native-launch-profiles",
-      "title": "Native profiles and launchers",
+      "id": "saved-launchers",
+      "title": "Saved launchers and executable search",
       "kind": "Retained functionality",
-      "summary": "Discover and revalidate native profiles and installed shell launchers in workspace, tab and worktree dialogs. Keep separate Profile and Launcher fields; Profile is conditional on native choices with Default selected.",
+      "summary": "Save native agent commands and arguments, validate and search executables on the selected PC, and use launchers in workspace, tab and worktree creation. Earlier profile-picker code has been replaced; its changelog fragment is historical.",
       "classified_paths": [
         "server/agent-launch.ts",
         "server/agent-profiles.contract.test.ts",
@@ -161,7 +207,6 @@
         "server/workspace-routes.ts",
         "server/index.ts",
         "server/api.contract.test.ts",
-        "shared/protocol.ts",
         "src/components/AgentLaunchPicker.tsx",
         "src/components/NewSessionDialog.tsx",
         "src/components/WorktreeDialog.tsx",
@@ -175,49 +220,227 @@
         "scripts/ui-regression.ts",
         "docs/agent-profiles.md",
         "docs/development.md",
-        "changelog.d/agent-launch-profiles.md"
+        "changelog.d/agent-launch-profiles.md",
+        "changelog.d/launcher-autocomplete.md",
+        "changelog.d/launcher-editor-search.md",
+        "changelog.d/saved-agent-launchers.md",
+        "docs/agent-launchers.md",
+        "scripts/new-session-skills-browser-qa.ts",
+        "server/agent-launchers.contract.test.ts",
+        "server/agent-launchers.test.ts",
+        "server/agent-launchers.ts",
+        "server/agents-routes.test.ts",
+        "server/agents-routes.ts",
+        "server/launcher-search.test.ts",
+        "server/launcher-search.ts",
+        "server/saved-launcher-start.ts",
+        "server/saved-launchers.contract.test.ts",
+        "server/saved-launchers.test.ts",
+        "server/saved-launchers.ts",
+        "shared/agent-launchers.ts",
+        "shared/agents.ts",
+        "shared/workspace-lifecycle.ts",
+        "src/components/AgentLaunchPicker.css",
+        "src/components/AgentLaunchPicker.test.ts",
+        "src/components/NewSessionDialog.test.tsx",
+        "src/lib/agentLaunchers.ts",
+        "src/lib/i18n/settings.ja.ts",
+        "src/lib/i18n/settings.ko.ts",
+        "src/lib/i18n/settings.zh.ts",
+        "src/lib/i18n/usage.ja.ts",
+        "src/lib/i18n/usage.ko.ts",
+        "src/lib/i18n/usage.zh.ts",
+        "src/lib/machineContext.tsx",
+        "src/lib/newSession.test.ts",
+        "src/lib/newSession.ts"
       ],
       "related_upstream_prs": [],
-      "related_upstream_issues": [
-        1197
-      ],
+      "related_upstream_issues": [],
       "files": [
         "changelog.d/agent-launch-profiles.md",
-        "docs/agent-profiles.md",
+        "changelog.d/launcher-autocomplete.md",
+        "changelog.d/launcher-editor-search.md",
+        "changelog.d/saved-agent-launchers.md",
+        "docs/agent-launchers.md",
         "docs/development.md",
         "scripts/demo-agent-launch.test.ts",
+        "scripts/new-session-skills-browser-qa.ts",
         "scripts/ui-regression.ts",
         "server/agent-launch.ts",
-        "server/agent-profiles.contract.test.ts",
-        "server/agent-profiles.test.ts",
-        "server/agent-profiles.ts",
+        "server/agent-launchers.contract.test.ts",
+        "server/agent-launchers.test.ts",
+        "server/agent-launchers.ts",
+        "server/agents-routes.test.ts",
+        "server/agents-routes.ts",
         "server/api.contract.test.ts",
         "server/index.ts",
+        "server/launcher-search.test.ts",
+        "server/launcher-search.ts",
+        "server/saved-launcher-start.ts",
+        "server/saved-launchers.contract.test.ts",
+        "server/saved-launchers.test.ts",
+        "server/saved-launchers.ts",
         "server/shell-agent.test.ts",
-        "server/shell-agent.ts",
         "server/start-screen.test.ts",
         "server/start-screen.ts",
         "server/workspace-routes.ts",
-        "shared/protocol.ts",
+        "shared/agent-launchers.ts",
+        "shared/agents.ts",
+        "shared/workspace-lifecycle.ts",
         "site/demo/transport.ts",
+        "src/components/AgentLaunchPicker.css",
+        "src/components/AgentLaunchPicker.test.ts",
         "src/components/AgentLaunchPicker.tsx",
+        "src/components/NewSessionDialog.test.tsx",
         "src/components/NewSessionDialog.tsx",
         "src/components/WorktreeDialog.tsx",
+        "src/lib/agentLaunchers.ts",
         "src/lib/api.test.ts",
         "src/lib/api.ts",
         "src/lib/i18n.ja.ts",
         "src/lib/i18n.ko.ts",
-        "src/lib/i18n.zh.ts"
+        "src/lib/i18n.zh.ts",
+        "src/lib/i18n/settings.ja.ts",
+        "src/lib/i18n/settings.ko.ts",
+        "src/lib/i18n/settings.zh.ts",
+        "src/lib/i18n/usage.ja.ts",
+        "src/lib/i18n/usage.ko.ts",
+        "src/lib/i18n/usage.zh.ts",
+        "src/lib/machineContext.tsx",
+        "src/lib/newSession.test.ts",
+        "src/lib/newSession.ts"
+      ]
+    },
+    {
+      "id": "pending-receipts",
+      "title": "Exact pending-message receipt recovery",
+      "kind": "Bug fix and reproduction evidence",
+      "summary": "Retain and recover exact sent/discarded outcomes after reconnect, including relayed PCs, without resending terminal input. Includes fictional-transcript reproduction evidence and remote bridge deployment requirements.",
+      "classified_paths": [
+        "changelog.d/pending-receipt-recovery.md",
+        "changelog.d/remote-pending-receipts.md",
+        "docs/codex-unconfirmed/README.md",
+        "docs/codex-unconfirmed/codex-confirmed.png",
+        "docs/codex-unconfirmed/codex-not-confirmed.png",
+        "docs/codex-unconfirmed/openclaw-research.md",
+        "docs/codex-unconfirmed/reproduce.ts",
+        "docs/codex-unconfirmed/result-fixed.json",
+        "docs/codex-unconfirmed/result.json",
+        "docs/remote-pcs.md",
+        "server/core/pending.test.ts",
+        "server/core/pending.ts",
+        "server/machine-api.ts",
+        "server/machine-relay.test.ts",
+        "server/machine-relay.ts",
+        "server/pending-input.contract.test.ts",
+        "server/pending-receipts.test.ts",
+        "server/pending-receipts.ts",
+        "shared/protocol.ts",
+        "src/lib/pendingMessages.test.ts",
+        "src/lib/pendingMessages.ts"
+      ],
+      "related_upstream_prs": [],
+      "related_upstream_issues": [],
+      "files": [
+        "changelog.d/pending-receipt-recovery.md",
+        "changelog.d/remote-pending-receipts.md",
+        "docs/codex-unconfirmed/README.md",
+        "docs/codex-unconfirmed/codex-confirmed.png",
+        "docs/codex-unconfirmed/codex-not-confirmed.png",
+        "docs/codex-unconfirmed/openclaw-research.md",
+        "docs/codex-unconfirmed/reproduce.ts",
+        "docs/codex-unconfirmed/result-fixed.json",
+        "docs/codex-unconfirmed/result.json",
+        "docs/remote-pcs.md",
+        "server/core/pending.test.ts",
+        "server/core/pending.ts",
+        "server/machine-api.ts",
+        "server/machine-relay.test.ts",
+        "server/machine-relay.ts",
+        "server/pending-input.contract.test.ts",
+        "server/pending-receipts.test.ts",
+        "server/pending-receipts.ts",
+        "shared/protocol.ts",
+        "src/lib/pendingMessages.test.ts",
+        "src/lib/pendingMessages.ts"
+      ]
+    },
+    {
+      "id": "sent-waiting-baseline",
+      "title": "Sent waiting-bubble reconciliation",
+      "kind": "Bug fix and regression coverage",
+      "summary": "Preserve loaded transcript baselines during connection cleanup so a disconnected sibling and browser clock skew do not strand a faded duplicate. Full Herdr retirement still clears both baselines and provisional sends.",
+      "classified_paths": [
+        "changelog.d/chat-waiting-baseline.md",
+        "scripts/chat-virtual-fixture.tsx",
+        "scripts/sent-waiting-browser-qa.ts",
+        "src/components/SentWaiting.test.tsx",
+        "src/components/SentWaiting.tsx",
+        "src/lib/sentWaiting.test.ts",
+        "src/lib/sentWaiting.ts"
+      ],
+      "related_upstream_prs": [],
+      "related_upstream_issues": [],
+      "files": [
+        "changelog.d/chat-waiting-baseline.md",
+        "scripts/chat-virtual-fixture.tsx",
+        "scripts/sent-waiting-browser-qa.ts",
+        "src/components/SentWaiting.test.tsx",
+        "src/components/SentWaiting.tsx",
+        "src/lib/sentWaiting.test.ts",
+        "src/lib/sentWaiting.ts"
+      ]
+    },
+    {
+      "id": "fixture-isolation",
+      "title": "Host-independent installer fixture",
+      "kind": "Test tooling",
+      "summary": "Keep the installer fallback test PATH inside its owned fixture instead of inheriting a host Node installation.",
+      "classified_paths": [
+        "scripts/install-node-fallback.test.ts"
+      ],
+      "related_upstream_prs": [],
+      "related_upstream_issues": [],
+      "files": [
+        "scripts/install-node-fallback.test.ts"
+      ]
+    },
+    {
+      "id": "shared-design-notes",
+      "title": "Shared fork design notes",
+      "kind": "Documentation",
+      "summary": "Document fork launcher choices alongside the upstream design. Shared integration files are classified once in their primary area; a file count is not an exclusive ownership claim.",
+      "classified_paths": [
+        "DESIGN.md"
+      ],
+      "related_upstream_prs": [],
+      "related_upstream_issues": [],
+      "files": [
+        "DESIGN.md"
       ]
     }
   ],
   "files": [
     {
+      "path": "DESIGN.md",
+      "status": "M",
+      "added": 45,
+      "removed": 0,
+      "group": "shared-design-notes"
+    },
+    {
       "path": "changelog.d/agent-launch-profiles.md",
       "status": "A",
-      "added": 8,
+      "added": 9,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
+    },
+    {
+      "path": "changelog.d/chat-waiting-baseline.md",
+      "status": "A",
+      "added": 3,
+      "removed": 0,
+      "group": "sent-waiting-baseline"
     },
     {
       "path": "changelog.d/codex-profile-chat-start.md",
@@ -234,11 +457,46 @@
       "group": "selection-navigation"
     },
     {
+      "path": "changelog.d/launcher-autocomplete.md",
+      "status": "A",
+      "added": 4,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "changelog.d/launcher-editor-search.md",
+      "status": "A",
+      "added": 4,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
       "path": "changelog.d/native-working-chat.md",
       "status": "A",
       "added": 2,
       "removed": 0,
       "group": "working-regression"
+    },
+    {
+      "path": "changelog.d/pending-receipt-recovery.md",
+      "status": "A",
+      "added": 4,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "changelog.d/remote-pending-receipts.md",
+      "status": "A",
+      "added": 3,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "changelog.d/saved-agent-launchers.md",
+      "status": "A",
+      "added": 5,
+      "removed": 0,
+      "group": "saved-launchers"
     },
     {
       "path": "changelog.d/worktree-phone-selection.md",
@@ -248,18 +506,74 @@
       "group": "selection-navigation"
     },
     {
-      "path": "docs/agent-profiles.md",
+      "path": "docs/agent-launchers.md",
       "status": "A",
-      "added": 59,
+      "added": 117,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
+    },
+    {
+      "path": "docs/codex-unconfirmed/README.md",
+      "status": "A",
+      "added": 96,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "docs/codex-unconfirmed/codex-confirmed.png",
+      "status": "A",
+      "added": null,
+      "removed": null,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "docs/codex-unconfirmed/codex-not-confirmed.png",
+      "status": "A",
+      "added": null,
+      "removed": null,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "docs/codex-unconfirmed/openclaw-research.md",
+      "status": "A",
+      "added": 34,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "docs/codex-unconfirmed/reproduce.ts",
+      "status": "A",
+      "added": 121,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "docs/codex-unconfirmed/result-fixed.json",
+      "status": "A",
+      "added": 120,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "docs/codex-unconfirmed/result.json",
+      "status": "A",
+      "added": 85,
+      "removed": 0,
+      "group": "pending-receipts"
     },
     {
       "path": "docs/development.md",
       "status": "M",
       "added": 2,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
+    },
+    {
+      "path": "docs/remote-pcs.md",
+      "status": "M",
+      "added": 7,
+      "removed": 0,
+      "group": "pending-receipts"
     },
     {
       "path": "scripts/chat-browser-qa.ts",
@@ -269,17 +583,17 @@
       "group": "working-regression"
     },
     {
-      "path": "scripts/ci-browser.sh",
+      "path": "scripts/chat-virtual-fixture.tsx",
       "status": "M",
-      "added": 1,
+      "added": 16,
       "removed": 0,
-      "group": "selection-navigation"
+      "group": "sent-waiting-baseline"
     },
     {
-      "path": "scripts/ci-browser.test.ts",
+      "path": "scripts/ci-browser.sh",
       "status": "M",
       "added": 2,
-      "removed": 1,
+      "removed": 0,
       "group": "selection-navigation"
     },
     {
@@ -292,9 +606,23 @@
     {
       "path": "scripts/demo-agent-launch.test.ts",
       "status": "A",
-      "added": 48,
+      "added": 80,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
+    },
+    {
+      "path": "scripts/install-node-fallback.test.ts",
+      "status": "M",
+      "added": 1,
+      "removed": 1,
+      "group": "fixture-isolation"
+    },
+    {
+      "path": "scripts/new-session-skills-browser-qa.ts",
+      "status": "M",
+      "added": 5,
+      "removed": 3,
+      "group": "saved-launchers"
     },
     {
       "path": "scripts/palette-machines-demo-regression.ts",
@@ -304,11 +632,25 @@
       "group": "selection-navigation"
     },
     {
+      "path": "scripts/phone-worktree-sheet-regression.ts",
+      "status": "M",
+      "added": 23,
+      "removed": 0,
+      "group": "selection-navigation"
+    },
+    {
+      "path": "scripts/sent-waiting-browser-qa.ts",
+      "status": "A",
+      "added": 67,
+      "removed": 0,
+      "group": "sent-waiting-baseline"
+    },
+    {
       "path": "scripts/ui-regression.ts",
       "status": "M",
       "added": 4,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
     },
     {
       "path": "scripts/worktree-selection-demo-regression.ts",
@@ -320,49 +662,63 @@
     {
       "path": "server/agent-launch.ts",
       "status": "M",
-      "added": 17,
-      "removed": 8,
-      "group": "native-launch-profiles"
+      "added": 14,
+      "removed": 5,
+      "group": "saved-launchers"
     },
     {
-      "path": "server/agent-profiles.contract.test.ts",
+      "path": "server/agent-launchers.contract.test.ts",
       "status": "A",
-      "added": 257,
+      "added": 262,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
     },
     {
-      "path": "server/agent-profiles.test.ts",
+      "path": "server/agent-launchers.test.ts",
       "status": "A",
-      "added": 108,
+      "added": 31,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
     },
     {
-      "path": "server/agent-profiles.ts",
+      "path": "server/agent-launchers.ts",
       "status": "A",
-      "added": 118,
+      "added": 13,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
+    },
+    {
+      "path": "server/agents-routes.test.ts",
+      "status": "M",
+      "added": 7,
+      "removed": 1,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "server/agents-routes.ts",
+      "status": "M",
+      "added": 14,
+      "removed": 3,
+      "group": "saved-launchers"
     },
     {
       "path": "server/api.contract.test.ts",
       "status": "M",
-      "added": 8,
-      "removed": 2,
-      "group": "native-launch-profiles"
+      "added": 15,
+      "removed": 4,
+      "group": "saved-launchers"
     },
     {
       "path": "server/codex-processes.test.ts",
       "status": "M",
-      "added": 80,
-      "removed": 3,
+      "added": 82,
+      "removed": 8,
       "group": "codex-profile-stores"
     },
     {
       "path": "server/codex.ts",
       "status": "M",
-      "added": 51,
+      "added": 53,
       "removed": 18,
       "group": "codex-profile-stores"
     },
@@ -381,31 +737,66 @@
       "group": "codex-profile-stores"
     },
     {
+      "path": "server/core/pending.test.ts",
+      "status": "M",
+      "added": 42,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "server/core/pending.ts",
+      "status": "M",
+      "added": 33,
+      "removed": 2,
+      "group": "pending-receipts"
+    },
+    {
       "path": "server/index.ts",
       "status": "M",
-      "added": 9,
+      "added": 19,
+      "removed": 6,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "server/launcher-search.test.ts",
+      "status": "A",
+      "added": 49,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "server/launcher-search.ts",
+      "status": "A",
+      "added": 54,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "server/machine-api.ts",
+      "status": "M",
+      "added": 1,
       "removed": 1,
-      "group": "native-launch-profiles"
+      "group": "pending-receipts"
+    },
+    {
+      "path": "server/machine-relay.test.ts",
+      "status": "M",
+      "added": 25,
+      "removed": 7,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "server/machine-relay.ts",
+      "status": "M",
+      "added": 23,
+      "removed": 4,
+      "group": "pending-receipts"
     },
     {
       "path": "server/omp-process.test.ts",
       "status": "M",
       "added": 2,
       "removed": 2,
-      "group": "omp-custom-root"
-    },
-    {
-      "path": "server/omp-process.ts",
-      "status": "M",
-      "added": 1,
-      "removed": 1,
-      "group": "omp-custom-root"
-    },
-    {
-      "path": "server/omp.contract.test.ts",
-      "status": "M",
-      "added": 3,
-      "removed": 1,
       "group": "omp-custom-root"
     },
     {
@@ -418,121 +809,331 @@
     {
       "path": "server/omp.ts",
       "status": "M",
-      "added": 12,
-      "removed": 6,
+      "added": 8,
+      "removed": 4,
       "group": "omp-custom-root"
+    },
+    {
+      "path": "server/pending-input.contract.test.ts",
+      "status": "M",
+      "added": 128,
+      "removed": 3,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "server/pending-receipts.test.ts",
+      "status": "A",
+      "added": 33,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "server/pending-receipts.ts",
+      "status": "A",
+      "added": 34,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "server/saved-launcher-start.ts",
+      "status": "A",
+      "added": 67,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "server/saved-launchers.contract.test.ts",
+      "status": "A",
+      "added": 292,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "server/saved-launchers.test.ts",
+      "status": "A",
+      "added": 73,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "server/saved-launchers.ts",
+      "status": "A",
+      "added": 115,
+      "removed": 0,
+      "group": "saved-launchers"
     },
     {
       "path": "server/shell-agent.test.ts",
       "status": "M",
       "added": 32,
-      "removed": 1,
-      "group": "native-launch-profiles"
-    },
-    {
-      "path": "server/shell-agent.ts",
-      "status": "M",
-      "added": 58,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
     },
     {
       "path": "server/start-screen.test.ts",
       "status": "M",
-      "added": 17,
+      "added": 16,
       "removed": 1,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
     },
     {
       "path": "server/start-screen.ts",
       "status": "M",
       "added": 11,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
     },
     {
       "path": "server/workspace-routes.ts",
       "status": "M",
-      "added": 10,
-      "removed": 3,
-      "group": "native-launch-profiles"
+      "added": 14,
+      "removed": 4,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "shared/agent-launchers.ts",
+      "status": "A",
+      "added": 27,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "shared/agents.ts",
+      "status": "M",
+      "added": 7,
+      "removed": 1,
+      "group": "saved-launchers"
     },
     {
       "path": "shared/protocol.ts",
       "status": "M",
-      "added": 7,
-      "removed": 3,
-      "group": "native-launch-profiles"
+      "added": 16,
+      "removed": 2,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "shared/workspace-lifecycle.ts",
+      "status": "M",
+      "added": 2,
+      "removed": 2,
+      "group": "saved-launchers"
     },
     {
       "path": "site/demo/transport.ts",
       "status": "M",
-      "added": 22,
-      "removed": 2,
-      "group": "native-launch-profiles"
+      "added": 52,
+      "removed": 4,
+      "group": "saved-launchers"
     },
     {
       "path": "src/App.tsx",
       "status": "M",
-      "added": 15,
-      "removed": 5,
+      "added": 2,
+      "removed": 2,
       "group": "selection-navigation"
+    },
+    {
+      "path": "src/components/AgentLaunchPicker.css",
+      "status": "A",
+      "added": 74,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/components/AgentLaunchPicker.test.ts",
+      "status": "A",
+      "added": 293,
+      "removed": 0,
+      "group": "saved-launchers"
     },
     {
       "path": "src/components/AgentLaunchPicker.tsx",
       "status": "A",
-      "added": 26,
+      "added": 292,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/components/NewSessionDialog.test.tsx",
+      "status": "M",
+      "added": 2,
+      "removed": 0,
+      "group": "saved-launchers"
     },
     {
       "path": "src/components/NewSessionDialog.tsx",
       "status": "M",
-      "added": 24,
-      "removed": 8,
-      "group": "native-launch-profiles"
+      "added": 31,
+      "removed": 9,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/components/SentWaiting.test.tsx",
+      "status": "M",
+      "added": 19,
+      "removed": 1,
+      "group": "sent-waiting-baseline"
+    },
+    {
+      "path": "src/components/SentWaiting.tsx",
+      "status": "M",
+      "added": 2,
+      "removed": 2,
+      "group": "sent-waiting-baseline"
     },
     {
       "path": "src/components/WorktreeDialog.tsx",
       "status": "M",
-      "added": 28,
-      "removed": 10,
-      "group": "native-launch-profiles"
+      "added": 35,
+      "removed": 12,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/agentLaunchers.ts",
+      "status": "A",
+      "added": 8,
+      "removed": 0,
+      "group": "saved-launchers"
     },
     {
       "path": "src/lib/api.test.ts",
       "status": "M",
-      "added": 23,
-      "removed": 1,
-      "group": "native-launch-profiles"
+      "added": 21,
+      "removed": 0,
+      "group": "saved-launchers"
     },
     {
       "path": "src/lib/api.ts",
       "status": "M",
-      "added": 1,
-      "removed": 1,
-      "group": "native-launch-profiles"
+      "added": 25,
+      "removed": 2,
+      "group": "saved-launchers"
     },
     {
       "path": "src/lib/i18n.ja.ts",
       "status": "M",
-      "added": 3,
-      "removed": 0,
-      "group": "native-launch-profiles"
+      "added": 31,
+      "removed": 4,
+      "group": "saved-launchers"
     },
     {
       "path": "src/lib/i18n.ko.ts",
       "status": "M",
-      "added": 3,
-      "removed": 0,
-      "group": "native-launch-profiles"
+      "added": 31,
+      "removed": 4,
+      "group": "saved-launchers"
     },
     {
       "path": "src/lib/i18n.zh.ts",
       "status": "M",
-      "added": 3,
+      "added": 31,
+      "removed": 4,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/i18n/settings.ja.ts",
+      "status": "M",
+      "added": 1,
+      "removed": 1,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/i18n/settings.ko.ts",
+      "status": "M",
+      "added": 1,
+      "removed": 1,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/i18n/settings.zh.ts",
+      "status": "M",
+      "added": 1,
+      "removed": 1,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/i18n/usage.ja.ts",
+      "status": "M",
+      "added": 1,
+      "removed": 1,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/i18n/usage.ko.ts",
+      "status": "M",
+      "added": 1,
+      "removed": 1,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/i18n/usage.zh.ts",
+      "status": "M",
+      "added": 1,
+      "removed": 1,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/machineContext.tsx",
+      "status": "M",
+      "added": 4,
       "removed": 0,
-      "group": "native-launch-profiles"
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/newSession.test.ts",
+      "status": "M",
+      "added": 8,
+      "removed": 0,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/newSession.ts",
+      "status": "M",
+      "added": 7,
+      "removed": 4,
+      "group": "saved-launchers"
+    },
+    {
+      "path": "src/lib/pendingMessages.test.ts",
+      "status": "M",
+      "added": 22,
+      "removed": 0,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "src/lib/pendingMessages.ts",
+      "status": "M",
+      "added": 11,
+      "removed": 12,
+      "group": "pending-receipts"
+    },
+    {
+      "path": "src/lib/sentWaiting.test.ts",
+      "status": "M",
+      "added": 19,
+      "removed": 1,
+      "group": "sent-waiting-baseline"
+    },
+    {
+      "path": "src/lib/sentWaiting.ts",
+      "status": "M",
+      "added": 9,
+      "removed": 0,
+      "group": "sent-waiting-baseline"
+    },
+    {
+      "path": "src/lib/useAddressBar.ts",
+      "status": "M",
+      "added": 14,
+      "removed": 4,
+      "group": "selection-navigation"
+    },
+    {
+      "path": "src/lib/useSelection.ts",
+      "status": "M",
+      "added": 5,
+      "removed": 4,
+      "group": "selection-navigation"
     }
   ]
 }
