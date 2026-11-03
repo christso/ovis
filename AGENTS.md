@@ -33,6 +33,16 @@ to change. Also read [server/AGENTS.md](server/AGENTS.md) and [src/AGENTS.md](sr
   `src/lib/themes.generated.ts` or the generated copies in DESIGN.md, index.html and
   `public/manifest.webmanifest`; run `bun run generate:themes`.
 
+## Before opening a PR
+- Follow the changed behavior from the code that starts it through the functions it calls.
+  Read the code outside the diff too, including work that finishes later or data other code uses.
+- Check that time and resource limits and permission checks still protect each operation that
+  reads or changes data. Check when saved results need to be refreshed, and what happens when
+  the operation succeeds, fails or runs again.
+- For a bug fix, check that the regression test fails before the fix and passes afterward.
+  Set up the test so it reaches the behavior being fixed. An unrelated check that rejects the
+  operation first can hide the bug.
+
 ## Tests and QA
 - Tests never touch the user's herdr session or real state: they use the isolated test session,
   a `mkdtempSync` `stateDir` and `port: 0` for every `createServer`. Never run the real
