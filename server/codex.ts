@@ -2759,12 +2759,17 @@ async function withoutOtherCodexStores(
 ): Promise<HerdrPane[]> {
   if (process === undefined
     || process.argv?.some((arg) => arg === "--remote" || arg.startsWith("--remote="))) return panes;
+  const databaseIdentity = (home: string): string | null => {
+    const file = statSync(realpathSync(join(home, "state_5.sqlite")), { bigint: true });
+    return file.isFile() ? `${file.dev}:${file.ino}` : null;
+  };
   let store: string;
   try {
     const named = await certainProcessCodexHome(process.pid, process.argv ?? []);
     if (named === null) return panes;
-    store = realpathSync(named);
-    if (!sameDirectory(store, realpathSync(home))) return panes;
+    const actual = databaseIdentity(named);
+    if (actual === null || actual !== databaseIdentity(home)) return panes;
+    store = actual;
   } catch { return panes; }
   const kept = await Promise.all(panes.map(async (pane) => {
     if (pane.pane_id === paneId || resolveAgent(pane).agent !== "codex"
@@ -2774,8 +2779,9 @@ async function withoutOtherCodexStores(
       if (peer === undefined
         || peer.argv?.some((arg) => arg === "--remote" || arg.startsWith("--remote="))) return pane;
       const named = await certainProcessCodexHome(peer.pid, peer.argv ?? []);
-      if (named === null || !(await isCodexHomeDir(named))) return pane;
-      return !sameDirectory(store, realpathSync(named)) ? null : pane;
+      if (named === null) return pane;
+      const theirs = databaseIdentity(named);
+      return theirs !== null && theirs !== store ? null : pane;
     } catch { return pane; }
   }));
   return kept.filter((pane) => pane !== null);
