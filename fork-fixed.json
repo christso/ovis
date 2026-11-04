@@ -1,0 +1,24 @@
+{
+  "classification": "synthetic browser fixture; not native-agent dogfooding",
+  "upstreamBase": "v0.4.22",
+  "results": [
+    {
+      "mode": "fork-fixed",
+      "width": 390,
+      "waitingCopies": 0,
+      "transcriptUserTurns": 2,
+      "clockOffsetMs": 2000,
+      "siblingConnected": false,
+      "screenshot": "fork-fixed-390.png"
+    },
+    {
+      "mode": "fork-fixed",
+      "width": 1280,
+      "waitingCopies": 0,
+      "transcriptUserTurns": 2,
+      "clockOffsetMs": 2000,
+      "siblingConnected": false,
+      "screenshot": "fork-fixed-1280.png"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "sourceCommit": "6e09c56e42bdafac7619b4a7bb95e0e755fed740",
+  "upstreamTag": "v0.4.22",
+  "classification": "automated isolated tests, not native-agent dogfooding",
+  "checkedAt": "2026-11-04T00:57:18.713Z",
+  "sourceUnchangedDuringChecks": true,
+  "toolchain": {
+    "bunVersion": "1.4.3",
+    "nodeVersion": "v22.23.2",
+    "herdrVersion": "herdr 0.9.5",
+    "herdrTestShards": 2,
+    "platform": "linux",
+    "arch": "x64",
+    "ci": false
+  },
+  "unit": {
+    "pass": 10611,
+    "fail": 0,
+    "skip": 41
+  },
+  "integration": {
+    "pass": 1022,
+    "fail": 0,
+    "skip": 23
+  },
+  "browser": {
+    "scripts": 138,
+    "pass": 138,
+    "fail": 0
+  },
+  "infrastructure": {
+    "recoveryTests": 4,
+    "adminLaunchTests": 11,
+    "fail": 0
+  },
+  "review": {
+    "status": "complete",
+    "localReviewers": 9,
+    "findings": 0,
+    "externalReview": "not run; provider initialization failed before code egress"
+  },
+  "steps": [
+    {
+      "name": "workflow syntax",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 16
+    },
+    {
+      "name": "generated types are fresh",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 19
+    },
+    {
+      "name": "generated themes are fresh",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 277
+    },
+    {
+      "name": "typecheck",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 5153
+    },
+    {
+      "name": "build",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 3143
+    },
+    {
+      "name": "unit tests",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 292250
+    },
+    {
+      "name": "lanes",
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 1422240
+    }
+  ]
+}

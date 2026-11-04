@@ -1,0 +1,24 @@
+{
+  "classification": "synthetic browser fixture; not native-agent dogfooding",
+  "upstreamBase": "v0.4.22",
+  "results": [
+    {
+      "mode": "upstream-v0.4.22",
+      "width": 390,
+      "waitingCopies": 1,
+      "transcriptUserTurns": 2,
+      "clockOffsetMs": 2000,
+      "siblingConnected": false,
+      "screenshot": "upstream-v0.4.22-390.png"
+    },
+    {
+      "mode": "upstream-v0.4.22",
+      "width": 1280,
+      "waitingCopies": 1,
+      "transcriptUserTurns": 2,
+      "clockOffsetMs": 2000,
+      "siblingConnected": false,
+      "screenshot": "upstream-v0.4.22-1280.png"
+    }
+  ]
+}
