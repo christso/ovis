@@ -48,5 +48,9 @@ See [verification](create-link-selection/verification.md),
 [desktop after](create-link-selection/green/creation-link-desktop.png) and
 [phone after](create-link-selection/green/creation-link-phone.png).
 
+All three final fast checks passed, including typecheck, build, workflow syntax and generated-file
+freshness. Unit counts were 10,938 for waiting bubbles, 10,943 for separate Codex stores, and
+10,936 for creation links; each had zero failures and 42 skips.
+
 Native macOS and Windows checks have not been run locally. Application PRs carry their
 regression tests and changelog fragments; this branch holds screenshots and supporting output.

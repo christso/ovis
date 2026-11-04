@@ -1,0 +1,35 @@
+{
+  "upstream_base": "74dfea3e72de1f26a07e9028aef77d8f77396e67",
+  "fixtures": "fictional automated browser fixtures and isolated owned-process tests; not native-agent dogfooding",
+  "fast": {
+    "waiting-baseline": {
+      "passed": 10938,
+      "failed": 0,
+      "skipped": 42,
+      "workflow_syntax": "pass",
+      "generated_freshness": "pass",
+      "typecheck": "pass",
+      "build": "pass"
+    },
+    "codex-store-peers": {
+      "passed": 10943,
+      "failed": 0,
+      "skipped": 42,
+      "workflow_syntax": "pass",
+      "generated_freshness": "pass",
+      "typecheck": "pass",
+      "build": "pass"
+    },
+    "create-link-selection": {
+      "passed": 10936,
+      "failed": 0,
+      "skipped": 42,
+      "workflow_syntax": "pass",
+      "generated_freshness": "pass",
+      "typecheck": "pass",
+      "build": "pass"
+    }
+  },
+  "full_integration_browser_suites": "not run in this PR pass",
+  "native_macos_windows": "not run locally"
+}
