@@ -1,0 +1,37 @@
+{
+  "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+  "faultInjected": "successful real Enter followed by a 2000 ms delayed acknowledgement error",
+  "transcriptFixture": true,
+  "nativeAgent": false,
+  "submitCount": 1,
+  "enterWrites": 1,
+  "terminalBytes": 45,
+  "pendingState": "uncertain",
+  "cardText": "<fixture message>\nNot confirmed. Check the terminal before sending again.",
+  "pendingFrames": [
+    {
+      "states": [
+        {
+          "state": "queued"
+        }
+      ]
+    },
+    {
+      "states": [
+        {
+          "state": "sending"
+        }
+      ]
+    },
+    {
+      "states": [
+        {
+          "state": "uncertain",
+          "code": "submit_changed"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "video": "uncertain-after-enter.mp4"
+}
