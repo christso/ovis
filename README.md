@@ -22,3 +22,11 @@ Run `bun /path/to/reproduce.ts --upstream` and `bun /path/to/reproduce.ts` from 
 ## Verification
 
 `verification-summary.json` records the completed full check run: 10,611 unit tests, 1,022 integration tests and 138 browser scripts passed. The source remained unchanged during that run. The two existing infrastructure suites also passed all 15 tests.
+
+## Deployment
+
+The verified fork commit `6e09c56e42bdafac7619b4a7bb95e0e755fed740` was deployed after [PR #11](https://github.com/christso/ovis/pull/11) merged. The merge commit is `e6f3016d3e2e8f912a3c87570b2f9211a0844e82`; its application tree matches the deployed commit.
+
+The central server and both managed remote bridges are connected. Each remote has fork bundle 41, with ten critical source files verified against the deployed checkout. Existing launcher definitions, paired devices and pane identities survived. A fresh admin launch and reuse of its cookie passed; the temporary verification pairing was then removed. HTTPS health also passed from a separate host.
+
+`deployment-summary.json` records these checks without private runtime configuration. `hosted-checks.json` records the hosted check snapshot; the Linux jobs were still pending while the complete Linux suite had passed locally.

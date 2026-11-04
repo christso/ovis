@@ -1,0 +1,146 @@
+[
+  {
+    "bucket": "skipping",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228876/job/126318322014",
+    "name": "release",
+    "state": "SKIPPED"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751351229/job/126316914806",
+    "name": "Pull request title",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228876/job/126316884607",
+    "name": "smoke-windows",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228933/job/126316852360",
+    "name": "manifest",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316599152",
+    "name": "Native Windows install",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316599201",
+    "name": "herdr-core live contract",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316599195",
+    "name": "Rust PTY host",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316599079",
+    "name": "Native macOS session identity",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pending",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316598975",
+    "name": "Fast checks",
+    "state": "QUEUED"
+  },
+  {
+    "bucket": "pending",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316599198",
+    "name": "Browser regression (other scripts)",
+    "state": "QUEUED"
+  },
+  {
+    "bucket": "pending",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316599208",
+    "name": "Browser regression (ui-regression)",
+    "state": "QUEUED"
+  },
+  {
+    "bucket": "pending",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316599145",
+    "name": "Integration tests",
+    "state": "QUEUED"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228876/job/126316517287",
+    "name": "bundle (ubuntu-24.04-arm, linux-arm64)",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228933/job/126316516941",
+    "name": "build (linux-arm64)",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228876/job/126316517382",
+    "name": "bundle (macos-15, darwin-universal)",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228933/job/126316516555",
+    "name": "build (darwin-universal)",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228876/job/126316518545",
+    "name": "bundle (macos-15-intel, darwin-universal)",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228876/job/126316517392",
+    "name": "ssh",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751229032/job/126316517093",
+    "name": "Detect changes",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228843/job/126316516585",
+    "name": "Real Windows install",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228876/job/126316517416",
+    "name": "bundle (ubuntu-24.04, linux-x64)",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228884/job/126316517020",
+    "name": "Native Windows mirrored terminal",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228933/job/126316516921",
+    "name": "build (linux-x64)",
+    "state": "SUCCESS"
+  },
+  {
+    "bucket": "pass",
+    "link": "https://github.com/christso/ovis/actions/runs/41751228876/job/126316517088",
+    "name": "bundle-windows",
+    "state": "SUCCESS"
+  }
+]

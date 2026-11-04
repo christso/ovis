@@ -74,6 +74,7 @@ try {
       assert.equal(waitingCopies, upstream ? 1 : 0);
       await page.locator(".chat-turn-user").filter({ hasText: message }).first().scrollIntoViewIfNeeded();
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      assert.ok(await page.locator(".chat-turn-user").filter({ hasText: message }).first().evaluate(node => node.getBoundingClientRect().height > 0));
       const screenshot = `${mode}-${width}.png`;
       await page.screenshot({ path: join(evidence, screenshot), fullPage: true });
       results.push({ mode, width, waitingCopies, transcriptUserTurns: 2, clockOffsetMs: 2000, siblingConnected: false, screenshot });

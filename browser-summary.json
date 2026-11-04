@@ -1,0 +1,699 @@
+{
+  "workers": 4,
+  "seconds": 1417.188,
+  "passed": 138,
+  "total": 138,
+  "flaky": [],
+  "scripts": [
+    {
+      "script": "scripts/ui-regression.ts",
+      "seconds": 414.498,
+      "code": 0
+    },
+    {
+      "script": "scripts/ui-contexts-regression.ts",
+      "seconds": 485.692,
+      "code": 0
+    },
+    {
+      "script": "scripts/workspace-rows-regression.ts",
+      "seconds": 6.697,
+      "code": 0
+    },
+    {
+      "script": "scripts/pending-pane-switch-regression.ts",
+      "seconds": 21.575,
+      "code": 0
+    },
+    {
+      "script": "scripts/lan-exposure-notice-regression.ts",
+      "seconds": 8.779,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-dispose-browser-qa.ts",
+      "seconds": 1.58,
+      "code": 0
+    },
+    {
+      "script": "scripts/herdr-restart-regression.ts",
+      "seconds": 11.827,
+      "code": 0
+    },
+    {
+      "script": "scripts/sticky-modifiers-regression.ts",
+      "seconds": 26.192,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-switch-regression.ts",
+      "seconds": 23.994,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-switch-resize-regression.ts",
+      "seconds": 12.087,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-view-replay-demo-regression.ts",
+      "seconds": 7.137,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-release-no-watch-demo-regression.ts",
+      "seconds": 4.67,
+      "code": 0
+    },
+    {
+      "script": "scripts/pane-lifetime-regression.ts",
+      "seconds": 7.987,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-arrows-clicks-regression.ts",
+      "seconds": 14.526,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-viewport-regression.ts",
+      "seconds": 31.564,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-touch-burst-regression.ts",
+      "seconds": 146.279,
+      "code": 0
+    },
+    {
+      "script": "scripts/omo-question-wheel-regression.ts",
+      "seconds": 7.546,
+      "code": 0
+    },
+    {
+      "script": "scripts/mirror-scroll-demo-regression.ts",
+      "seconds": 7.143,
+      "code": 0
+    },
+    {
+      "script": "scripts/mirror-fold-demo-regression.ts",
+      "seconds": 15.292,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-cjk-punctuation-regression.ts",
+      "seconds": 2.596,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-late-faces-regression.ts",
+      "seconds": 3.228,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-hangul-seam-regression.ts",
+      "seconds": 30.728,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-sync-output-regression.ts",
+      "seconds": 24.686,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-bundled-mono-regression.ts",
+      "seconds": 19.105,
+      "code": 0
+    },
+    {
+      "script": "scripts/application-paging-regression.ts",
+      "seconds": 5.429,
+      "code": 0
+    },
+    {
+      "script": "scripts/pane-paging-demo-regression.ts",
+      "seconds": 32.391,
+      "code": 0
+    },
+    {
+      "script": "scripts/link-menu-demo-regression.ts",
+      "seconds": 32.233,
+      "code": 0
+    },
+    {
+      "script": "scripts/key-bar-customization-demo-regression.ts",
+      "seconds": 28.187,
+      "code": 0
+    },
+    {
+      "script": "scripts/key-bar-hold-repeat-regression.ts",
+      "seconds": 12.199,
+      "code": 0
+    },
+    {
+      "script": "scripts/settings-pages-demo-regression.ts",
+      "seconds": 261.511,
+      "code": 0
+    },
+    {
+      "script": "scripts/agent-entry-points-demo-regression.ts",
+      "seconds": 30.582,
+      "code": 0
+    },
+    {
+      "script": "scripts/agents-sign-in-demo-regression.ts",
+      "seconds": 48.073,
+      "code": 0
+    },
+    {
+      "script": "scripts/interface-font-demo-regression.ts",
+      "seconds": 14.352,
+      "code": 0
+    },
+    {
+      "script": "scripts/theme-first-paint-demo-regression.ts",
+      "seconds": 74.566,
+      "code": 0
+    },
+    {
+      "script": "scripts/boot-loading-demo-regression.ts",
+      "seconds": 8.36,
+      "code": 0
+    },
+    {
+      "script": "scripts/old-safari-demo-regression.ts",
+      "seconds": 5.852,
+      "code": 0
+    },
+    {
+      "script": "scripts/security-summary-demo-regression.ts",
+      "seconds": 60.391,
+      "code": 0
+    },
+    {
+      "script": "scripts/push-health-demo-regression.ts",
+      "seconds": 48.519,
+      "code": 0
+    },
+    {
+      "script": "scripts/device-security-demo-regression.ts",
+      "seconds": 137.302,
+      "code": 0
+    },
+    {
+      "script": "scripts/cliproxy-settings-regression.ts",
+      "seconds": 7.35,
+      "code": 0
+    },
+    {
+      "script": "scripts/pane-input-focus-demo-regression.ts",
+      "seconds": 12.981,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-keyboard-demo-regression.ts",
+      "seconds": 17.259,
+      "code": 0
+    },
+    {
+      "script": "scripts/shortcut-exact-modifiers-demo-regression.ts",
+      "seconds": 5.907,
+      "code": 0
+    },
+    {
+      "script": "scripts/portal-regression.ts",
+      "seconds": 12.813,
+      "code": 0
+    },
+    {
+      "script": "scripts/deep-link-demo-regression.ts",
+      "seconds": 61.619,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-history-browser-qa.ts",
+      "seconds": 13.292,
+      "code": 0
+    },
+    {
+      "script": "scripts/session-history-browser-qa.ts",
+      "seconds": 67.312,
+      "code": 0
+    },
+    {
+      "script": "scripts/new-session-skills-browser-qa.ts",
+      "seconds": 65.195,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-virtual-browser-qa.ts",
+      "seconds": 115.431,
+      "code": 0
+    },
+    {
+      "script": "scripts/sent-waiting-browser-qa.ts",
+      "seconds": 4.793,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-gjc-streaming-browser-qa.ts",
+      "seconds": 68.842,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-scroll-padding-regression.ts",
+      "seconds": 16.795,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-selection-copy-regression.ts",
+      "seconds": 4.936,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-fallback-browser-qa.ts",
+      "seconds": 8.448,
+      "code": 0
+    },
+    {
+      "script": "scripts/grok-chat-browser-qa.ts",
+      "seconds": 11.042,
+      "code": 0
+    },
+    {
+      "script": "scripts/copilot-chat-browser-qa.ts",
+      "seconds": 17.191,
+      "code": 0
+    },
+    {
+      "script": "scripts/omo-chat-browser-qa.ts",
+      "seconds": 17.628,
+      "code": 0
+    },
+    {
+      "script": "scripts/omo-plan-browser-regression.ts",
+      "seconds": 21.231,
+      "code": 0
+    },
+    {
+      "script": "scripts/plan-chip-demo-regression.ts",
+      "seconds": 25.946,
+      "code": 0
+    },
+    {
+      "script": "scripts/agent-skill-menu-demo-regression.ts",
+      "seconds": 117.27,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-autoswitch-demo-regression.ts",
+      "seconds": 87.839,
+      "code": 0
+    },
+    {
+      "script": "scripts/agy-chat-browser-qa.ts",
+      "seconds": 12.036,
+      "code": 0
+    },
+    {
+      "script": "scripts/gjc-status-browser-regression.ts",
+      "seconds": 15.277,
+      "code": 0
+    },
+    {
+      "script": "scripts/math-browser-qa.ts",
+      "seconds": 10.502,
+      "code": 0
+    },
+    {
+      "script": "scripts/claude-image-browser-qa.ts",
+      "seconds": 3.215,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-markdown-images-browser-qa.ts",
+      "seconds": 3.545,
+      "code": 0
+    },
+    {
+      "script": "scripts/pi-image-browser-qa.ts",
+      "seconds": 7.377,
+      "code": 0
+    },
+    {
+      "script": "scripts/omp-codex-image-browser-qa.ts",
+      "seconds": 7.118,
+      "code": 0
+    },
+    {
+      "script": "scripts/grok-image-browser-qa.ts",
+      "seconds": 4.665,
+      "code": 0
+    },
+    {
+      "script": "scripts/copilot-image-browser-qa.ts",
+      "seconds": 4.911,
+      "code": 0
+    },
+    {
+      "script": "scripts/file-viewer-regression.ts",
+      "seconds": 168.114,
+      "code": 0
+    },
+    {
+      "script": "scripts/web-panel-mobile-regression.ts",
+      "seconds": 5.098,
+      "code": 0
+    },
+    {
+      "script": "scripts/pwa-update-browser-qa.ts",
+      "seconds": 11.726,
+      "code": 0
+    },
+    {
+      "script": "scripts/install-state-demo-regression.ts",
+      "seconds": 15.983,
+      "code": 0
+    },
+    {
+      "script": "scripts/revision-bound-update-demo-regression.ts",
+      "seconds": 31.115,
+      "code": 0
+    },
+    {
+      "script": "scripts/file-preview-text-browser-qa.ts",
+      "seconds": 16.004,
+      "code": 0
+    },
+    {
+      "script": "scripts/virtual-source-browser-qa.ts",
+      "seconds": 19.071,
+      "code": 0
+    },
+    {
+      "script": "scripts/repo-diff-browser-qa.ts",
+      "seconds": 94.701,
+      "code": 0
+    },
+    {
+      "script": "scripts/diff-find-demo-regression.ts",
+      "seconds": 30.636,
+      "code": 0
+    },
+    {
+      "script": "scripts/keyboard-viewport-regression.ts",
+      "seconds": 4.089,
+      "code": 0
+    },
+    {
+      "script": "scripts/file-viewer-mobile-regression.ts",
+      "seconds": 22.93,
+      "code": 0
+    },
+    {
+      "script": "scripts/droplet-demo-regression.ts",
+      "seconds": 14.109,
+      "code": 0
+    },
+    {
+      "script": "scripts/phone-glass-header-demo-regression.ts",
+      "seconds": 2.98,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-greeting-demo-regression.ts",
+      "seconds": 7.757,
+      "code": 0
+    },
+    {
+      "script": "scripts/restored-draft-demo-regression.ts",
+      "seconds": 60.245,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-local-send-follow-demo-regression.ts",
+      "seconds": 37.093,
+      "code": 0
+    },
+    {
+      "script": "scripts/reply-comments-demo-regression.ts",
+      "seconds": 7.241,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-select-quote-demo-regression.ts",
+      "seconds": 5.646,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-quote-selection-end-regression.ts",
+      "seconds": 9.28,
+      "code": 0
+    },
+    {
+      "script": "scripts/diff-line-notes-demo-regression.ts",
+      "seconds": 25.894,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-tool-paths-demo-regression.ts",
+      "seconds": 17.755,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-list-markers-demo-regression.ts",
+      "seconds": 10.347,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-svg-figures-demo-regression.ts",
+      "seconds": 8.826,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-math-demo-regression.ts",
+      "seconds": 8.697,
+      "code": 0
+    },
+    {
+      "script": "scripts/terminal-paste-insert-demo-regression.ts",
+      "seconds": 13.98,
+      "code": 0
+    },
+    {
+      "script": "scripts/composer-fit-demo-regression.ts",
+      "seconds": 216.362,
+      "code": 0
+    },
+    {
+      "script": "scripts/held-rows-demo-regression.ts",
+      "seconds": 9.864,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-working-line-demo-regression.ts",
+      "seconds": 7.946,
+      "code": 0
+    },
+    {
+      "script": "scripts/replay-clipboard-demo-regression.ts",
+      "seconds": 26.489,
+      "code": 0
+    },
+    {
+      "script": "scripts/todo-snapshots-demo-regression.ts",
+      "seconds": 92.337,
+      "code": 0
+    },
+    {
+      "script": "scripts/command-outcome-demo-regression.ts",
+      "seconds": 86.623,
+      "code": 0
+    },
+    {
+      "script": "scripts/chat-outcome-note-browser-qa.ts",
+      "seconds": 15.041,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-activity-demo-regression.ts",
+      "seconds": 153.755,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-filter-demo-regression.ts",
+      "seconds": 109.052,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-declutter-demo-regression.ts",
+      "seconds": 72.393,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-spacing-demo-regression.ts",
+      "seconds": 8.997,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-machine-layout-demo-regression.ts",
+      "seconds": 27.539,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-machine-removal-demo-regression.ts",
+      "seconds": 14.452,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-selection-contrast-demo-regression.ts",
+      "seconds": 39.868,
+      "code": 0
+    },
+    {
+      "script": "scripts/hide-pc-demo-regression.ts",
+      "seconds": 12.15,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-branch-line-demo-regression.ts",
+      "seconds": 8.149,
+      "code": 0
+    },
+    {
+      "script": "scripts/sidebar-tokens-demo-regression.ts",
+      "seconds": 8.07,
+      "code": 0
+    },
+    {
+      "script": "scripts/pane-mute-demo-regression.ts",
+      "seconds": 83.985,
+      "code": 0
+    },
+    {
+      "script": "scripts/workspace-touch-reorder-demo-regression.ts",
+      "seconds": 28.657,
+      "code": 0
+    },
+    {
+      "script": "scripts/prompt-dock-demo-regression.ts",
+      "seconds": 144.255,
+      "code": 0
+    },
+    {
+      "script": "scripts/prompt-card-timing-demo-regression.ts",
+      "seconds": 9,
+      "code": 0
+    },
+    {
+      "script": "scripts/opencode-prompt-regression.ts",
+      "seconds": 85.052,
+      "code": 0
+    },
+    {
+      "script": "scripts/pi-questionnaire-browser-regression.ts",
+      "seconds": 28.112,
+      "code": 0
+    },
+    {
+      "script": "scripts/files-prompt-regression.ts",
+      "seconds": 37.014,
+      "code": 0
+    },
+    {
+      "script": "scripts/plugin-actions-demo-regression.ts",
+      "seconds": 8.876,
+      "code": 0
+    },
+    {
+      "script": "scripts/background-agent-detail-demo-regression.ts",
+      "seconds": 290.042,
+      "code": 0
+    },
+    {
+      "script": "scripts/artifacts-browser-regression.ts",
+      "seconds": 3.639,
+      "code": 0
+    },
+    {
+      "script": "scripts/palette-machines-demo-regression.ts",
+      "seconds": 10.336,
+      "code": 0
+    },
+    {
+      "script": "scripts/worktree-selection-demo-regression.ts",
+      "seconds": 4.001,
+      "code": 0
+    },
+    {
+      "script": "scripts/health-flap-demo-regression.ts",
+      "seconds": 19.305,
+      "code": 0
+    },
+    {
+      "script": "scripts/narrow-pane-demo-regression.ts",
+      "seconds": 3.693,
+      "code": 0
+    },
+    {
+      "script": "scripts/touch-long-press-demo-regression.ts",
+      "seconds": 3.765,
+      "code": 0
+    },
+    {
+      "script": "scripts/context-menu-inputs-demo-regression.ts",
+      "seconds": 4.798,
+      "code": 0
+    },
+    {
+      "script": "scripts/render-crash-demo-regression.ts",
+      "seconds": 22.981,
+      "code": 0
+    },
+    {
+      "script": "scripts/phone-split-grid-demo-regression.ts",
+      "seconds": 18.483,
+      "code": 0
+    },
+    {
+      "script": "scripts/recent-folders-regression.ts",
+      "seconds": 85.488,
+      "code": 0
+    },
+    {
+      "script": "scripts/phone-worktree-sheet-regression.ts",
+      "seconds": 5.919,
+      "code": 0
+    },
+    {
+      "script": "scripts/preferences-sync-regression.ts",
+      "seconds": 37.529,
+      "code": 0
+    },
+    {
+      "script": "scripts/machine-dialog-regression.ts",
+      "seconds": 6.154,
+      "code": 0
+    },
+    {
+      "script": "scripts/machine-conflict-regression.ts",
+      "seconds": 4.378,
+      "code": 0
+    },
+    {
+      "script": "scripts/machine-own-ovis-regression.ts",
+      "seconds": 7.194,
+      "code": 0
+    },
+    {
+      "script": "scripts/herdr-profiles-browser-qa.ts",
+      "seconds": 26.556,
+      "code": 0
+    },
+    {
+      "script": "scripts/relay-e2e-regression.ts",
+      "seconds": 119.838,
+      "code": 0
+    }
+  ]
+}

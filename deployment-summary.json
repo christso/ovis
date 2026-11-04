@@ -1,0 +1,18 @@
+{
+  "revision": "6e09c56e42bdafac7619b4a7bb95e0e755fed740",
+  "bundle_version": "41",
+  "bundle_sha256": "49a63dd30e81df0f4c3406847a10814b2292430edd337af411a9d1bd211f1091",
+  "healthy": true,
+  "allMachinesConnected": true,
+  "savedLaunchersPreserved": true,
+  "pairedDevicesPreserved": true,
+  "sessionIdentitiesPreserved": true,
+  "adminLaunchVerified": true,
+  "remoteSourceVerified": true,
+  "independentHTTPSVerified": true,
+  "version": "0.4.22",
+  "remoteMachines": 2,
+  "savedLaunchers": 7,
+  "mergeCommit": "e6f3016d3e2e8f912a3c87570b2f9211a0844e82",
+  "pullRequest": "https://github.com/christso/ovis/pull/11"
+}
