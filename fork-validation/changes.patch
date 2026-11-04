@@ -1,0 +1,80 @@
+diff --git a/server/machine-relay.test.ts b/server/machine-relay.test.ts
+index 31f15b7b..cd4b5c3e 100644
+--- a/server/machine-relay.test.ts
++++ b/server/machine-relay.test.ts
+@@ -66,6 +66,8 @@ describe("MachineRelay receipt isolation", () => {
+     expect(new RelayReceiptIds().scope("pc-a", "device-a", browser)).not.toBe(owner);
+     expect(ids.scope("pc-a", "device-a", "not-a-uuid")).toBeUndefined();
+     expect(ids.scope("pc-a", "device-a", "x".repeat(4096))).toBeUndefined();
++    expect(ids.scope("pc-a", "device-a", browser.toUpperCase())).toBeUndefined();
++    expect(ids.scope("pc-a", "device-a", "12345678-1234-1234-8234-123456789abc")).toBeUndefined();
+   });
+ 
+   for (const readOnly of [false, true]) for (const scoped of [false, true]) {
+@@ -81,7 +83,7 @@ describe("MachineRelay receipt isolation", () => {
+             const message = JSON.parse(String(raw));
+             if (message.type !== "attach") return;
+             received.push(message);
+-            if (received.length === 2) resolve();
++            if (received.length === 6) resolve();
+           },
+         },
+       });
+@@ -98,9 +100,12 @@ describe("MachineRelay receipt isolation", () => {
+         const withResume = { ...attach, receipt_resume_id: "12345678-1234-4234-8234-123456789abc" };
+         relay.message(JSON.stringify(withResume));
+         relay.message(Buffer.from(JSON.stringify(withResume)));
++        for (const invalid of ["not-a-uuid", "x".repeat(4096), 123, null]) {
++          relay.message(JSON.stringify({ ...attach, receipt_resume_id: invalid }));
++        }
+         await delivered;
+         const expected = scoped && !readOnly ? { ...attach, receipt_resume_id: ids.scope("pc", "device", withResume.receipt_resume_id) } : attach;
+-        expect(received).toEqual([expected, expected]);
++        expect(received).toEqual([expected, expected, attach, attach, attach, attach]);
+         expect(received.every((message) => message.receipt_resume_id !== withResume.receipt_resume_id)).toBe(true);
+       } finally {
+         relay.close();
+diff --git a/server/pending-input.contract.test.ts b/server/pending-input.contract.test.ts
+index 8a0f01bd..633ed0af 100644
+--- a/server/pending-input.contract.test.ts
++++ b/server/pending-input.contract.test.ts
+@@ -14,7 +14,6 @@ import * as claudeStore from "./claude-store.ts";
+ import * as agentLaunchModule from "./agent-launch.ts";
+ import * as piModule from "./pi.ts";
+ import { MachineManager } from "./machines.ts";
+-import { descriptorPath } from "./bridge.ts";
+ import { DeviceStore } from "./devices.ts";
+ import { DEVICE_COOKIE } from "./auth.ts";
+ 
+@@ -231,12 +230,11 @@ async function setup(label: string, agent = "claude", screen = "› Message\n",
+ 
+ describe("resumable pending dispositions", () => {
+   it.each(["sent", "discarded", "late"] as const)("recovers a relayed Codex %s receipt without typing again or sharing it with another device", async (outcome) => {
+-    const f = await setup("remote-codex-resume", "codex", "› Message\n", { registerBridge: true, machines: false });
+-    const descriptor = JSON.parse(readFileSync(descriptorPath(), "utf8")) as { token: string };
++    const f = await setup("remote-codex-resume", "codex", "› Message\n", { bridgeToken: "fixture-bridge-token", machines: false });
+     const endpoint = MachineManager.prototype.endpoint;
+     const remoteId = "receipt-test-remote";
+     const remote = spyOn(MachineManager.prototype, "endpoint").mockImplementation(function (this: MachineManager, id: string) {
+-      return id === remoteId ? { url: `http://127.0.0.1:${f.port}`, token: descriptor.token } : endpoint.call(this, id);
++      return id === remoteId ? { url: `http://127.0.0.1:${f.port}`, token: "fixture-bridge-token" } : endpoint.call(this, id);
+     });
+     const stateDir = join(root, `remote-receipt-central-${outcome}`);
+     const devices = new DeviceStore(stateDir);
+@@ -271,7 +269,7 @@ describe("resumable pending dispositions", () => {
+       }
+       const expected = outcome === "discarded" ? "discarded" : "sent";
+       if (outcome !== "late") await f.removed(row.id, expected, browser);
+-      const bytes = f.bytes();
++      const bytes = f.bytes(), writes = herdrWrites.slice();
+       await browser.disconnect();
+       if (outcome !== "late") {
+         // A guessed browser UUID cannot recover another authenticated device's receipts.
+@@ -288,6 +286,7 @@ describe("resumable pending dispositions", () => {
+       const replay = await f.removed(row.id, expected, resumed);
+       expect(replay.removed).toContainEqual({ id: row.id, outcome: expected, resumed: true });
+       expect(f.bytes()).toBe(bytes);
++      expect(herdrWrites).toEqual(writes);
+     } finally {
+       keyReplyHold = null; release.resolve();
+       for (const socket of sockets) socket.close();

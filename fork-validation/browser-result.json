@@ -1,0 +1,25 @@
+{
+  "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+  "isolated": true,
+  "nativeAgent": false,
+  "simulatedRemoteTransport": "MachineManager endpoint and roster route to a real loopback bridge",
+  "droppedExactSentReceipt": true,
+  "terminalBytesBeforeReconnect": 51,
+  "terminalBytesAfterReconnect": 51,
+  "submitCountBeforeReconnect": 1,
+  "submitCountAfterReconnect": 1,
+  "recoveredOutcome": [
+    {
+      "id": "6fe68116-69f1-4111-aebb-817b6837bf27",
+      "outcome": "sent",
+      "resumed": true
+    }
+  ],
+  "draftPreserved": true,
+  "pageErrors": [],
+  "screenshots": [
+    "01-queued-remote-follow-up.png",
+    "02-lost-receipt-not-confirmed.png",
+    "03-recovered-no-resend.png"
+  ]
+}
