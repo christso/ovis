@@ -12,6 +12,7 @@ import { SETUP_KO } from "./i18n/setup.ko.ts";
 import { GUIDE_KO } from "./i18n/guide.ko.ts";
 import { UPDATES_KO } from "./i18n/updates.ko.ts";
 import { PALETTE_KO } from "./i18n/palette.ko.ts";
+import { RELAY_KO } from "./i18n/relay.ko.ts";
 
 /**
  * Korean for every `t("…")` in src/ that no part in lib/i18n/ holds: keys more than one feature
@@ -212,6 +213,7 @@ const BASE: Record<string, string> = {
   "New code": "새 코드",
   "Paired: {name}.": "페어링됨: {name}.",
   "QR code that pairs a phone with code {code}": "코드 {code}로 폰을 페어링하는 QR 코드",
+  "Connect a phone": "폰 연결",
   "Pairing code": "페어링 코드",
   "Open this address on your phone": "폰에서 이 주소를 여세요",
   "{agent} is ready": "{agent} 준비 완료",
@@ -328,6 +330,7 @@ const BASE: Record<string, string> = {
   // t3code ports (a)
   // t3code ports (d)
   "Change PC": "PC 바꾸기",
+  "Forget this PC": "이 PC 잊기",
   "Selected": "선택됨",
   // Recover unsent text (components/UnsentText.tsx)
   "Unsent text": "보내지 않은 글",
@@ -338,6 +341,21 @@ const BASE: Record<string, string> = {
   "Terminal line": "터미널 입력 줄",
   "Held message": "보관한 메시지",
   "Held input": "보관한 입력",
+  "Other accounts": "다른 계정",
+  "Plan limits": "요금제 한도",
+  "Auto": "자동",
+  "Hub request failed": "허브 요청에 실패했어요",
+  "On this PC": "이 PC",
+  "Hub": "허브",
+  "Add account": "계정 추가",
+  "Check the hub connection": "허브 연결을 확인하세요",
+  "Meters show": "미터 표시",
+  "Limit shown": "표시할 한도",
+  "Show plan limits": "요금제 한도 표시",
+  "Session": "세션",
+  "Weekly": "주간",
+  "Open terminal": "터미널 열기",
+  "Sign in to {agent}": "{agent}에 로그인",
 };
 
 /** The parts KO is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */
@@ -357,6 +375,7 @@ export const KO_PARTS: Record<string, Record<string, string>> = {
   guide: GUIDE_KO,
   updates: UPDATES_KO,
   palette: PALETTE_KO,
+  relay: RELAY_KO,
 };
 
 export const KO: Record<string, string> = Object.assign({}, ...Object.values(KO_PARTS));

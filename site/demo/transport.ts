@@ -16,9 +16,9 @@
  */
 import { NO_AGENT_MESSAGE } from "../../shared/submit-outcome.ts";
 import type { AgentKind } from "../../shared/agents.ts";
-import type { AgentIntegration, AgentStatus, CommandForm, CommandOutcome, ConversationTurn, DevicePairedEvent, DevicesRevokedAll, HealthAuth, IntegrationsResponse, Machine, MachineEvent, OmoActivity, OmoTask, PairedDevice, PairingCode, PaneBackgroundAgentDetail, PaneDirection, PaneFindMatch, PaneFindRequest, PanePlan, PaneResized, PaneSplit, PaneSwapped, PaneZoomed, PendingMessage, PlanStep, PluginActionResult, PluginActions, PluginActionsResponse, PortalStatus, SecuritySummary, ServerMessage, SessionSnapshot, SlashCommand, TabMoved, TabMovedToWorkspace, UsageReport, WorkspaceCreated, WorkspaceInfo, WorktreeEntry, WorktreeListing, WorktreeOpened, WorktreeRemoved } from "../../shared/protocol.ts";
+import type { AgentIntegration, AgentStatus, CommandForm, CommandOutcome, ConversationTurn, DevicePairedEvent, DevicesRevokedAll, HealthAuth, IntegrationsResponse, Machine, MachineEvent, OmoActivity, OmoTask, PairedDevice, PairingCode, PaneBackgroundAgentDetail, PaneDirection, PaneFindMatch, PaneFindRequest, PanePlan, PaneResized, PaneSplit, PaneSwapped, PaneZoomed, PendingMessage, PlanStep, PluginActionResult, PluginActions, PluginActionsResponse, PortalStatus, RelayStatus, SecuritySummary, ServerMessage, SessionSnapshot, SlashCommand, TabMoved, TabMovedToWorkspace, UsageReport, WorkspaceCreated, WorkspaceInfo, WorktreeEntry, WorktreeListing, WorktreeOpened, WorktreeRemoved } from "../../shared/protocol.ts";
 import type { PushSubscriptionStatus, RepoBranchComparison, RepoDiffFile, RepoDiffFileList, RepoDiffFilePatch, RepoDiffRefs, RepoDiffRepository, RepoDiffScope, SessionHistoryAgent, SessionHistoryResponse, SessionResumeResponse } from "../../shared/protocol.ts";
-import { normalizeThemeChange, sharedPreferencesBody, type SharedPreferences } from "../../shared/preferences.ts";
+import { nextTabLabels, normalizeThemeChange, sharedPreferencesBody, type SharedPreferences } from "../../shared/preferences.ts";
 import { SAVED_LAUNCHER_KINDS, savedLauncherInput, type SavedAgentLauncher } from "../../shared/agent-launchers.ts";
 import { withSavedLaunchers } from "../../src/lib/agentLaunchers.ts";
 import { VOICE_DEFAULTS, type VoiceStatus } from "../../shared/voice.ts";
@@ -26,6 +26,7 @@ import { isAgentName } from "../../shared/agent-name.ts";
 import { skillSyntax } from "../../shared/skill-syntax.ts";
 import { firstMessageFault } from "../../shared/launch-rules.ts";
 import { insertTextProblem } from "../../shared/terminal-insert.ts";
+import { encodeOffer } from "../../shared/relay-offer.ts";
 import { neighborPane } from "../../src/lib/layoutMap.ts";
 import { closeLayoutPane, resizeLayout, setLayoutSplitRatio, splitLayout, swapLayoutPanes } from "../../src/lib/layoutTree.ts";
 import { rollupStatus } from "../../src/lib/status.ts";
@@ -92,7 +93,7 @@ const CHAT_ANSWER_MS = 2400;
 const OUTCOME_PREVIEW_MS = 600;
 /** the recording's gaps, capped so the replay stays brisk */
 const MAX_FRAME_GAP_MS = 500;
-/** Settings → Agent integrations: one of each state, in herdr's order */
+/** Settings → Agents' session resume: one of each state, in herdr's order */
 const integrationsFixture: AgentIntegration[] = [
   ["pi", "pi", true, "not_installed"], ["omp", "omp", false, "not_installed"], ["claude", "claude", true, "current"],
   ["codex", "codex", true, "outdated"], ["copilot", "copilot", false, "not_installed"], ["opencode", "opencode", true, "not_installed"],
@@ -389,10 +390,13 @@ let preferences: SharedPreferences = { revision: 0, settings: {}, muted_panes: [
 
 function changePreferences(raw: unknown): Response {
   const change = sharedPreferencesBody(raw);
-  if (change === null) return error("invalid_body", "Send { settings: object, pins?: string[], muted_panes?: string[] }", 400);
+  if (change === null) return error("invalid_body", "Send { settings: object, pins?: string[], muted_panes?: string[], tab_labels?: { [pane|terminal]: string }, tab_labels_removed?: string[] }", 400);
   const { settings } = normalizeThemeChange(preferences.settings, change);
   const pins = change.pins ?? preferences.pins;
-  preferences = { revision: preferences.revision + 1, settings: { ...preferences.settings, ...settings }, ...(pins === undefined ? {} : { pins }), muted_panes: change.muted_panes ?? preferences.muted_panes ?? [] };
+  const merged = { ...preferences.settings, ...settings };
+  const labels = nextTabLabels(preferences.tab_labels, change, merged);
+  const kept = labels !== undefined && Object.keys(labels).length > 0 ? labels : undefined;
+  preferences = { revision: preferences.revision + 1, settings: merged, ...(pins === undefined ? {} : { pins }), muted_panes: change.muted_panes ?? preferences.muted_panes ?? [], ...(kept === undefined ? {} : { tab_labels: kept }) };
   emitSse({ type: "preferences", preferences });
   return json(preferences, 200, { "cache-control": "no-store" });
 }
@@ -1027,14 +1031,24 @@ const DEMO_BRANCH_DIFF: { file: RepoDiffFile; patch: string | null }[] = [
 ].sort((left, right) => (left.file.path < right.file.path ? -1 : 1));
 
 /**
- * Settings → Subscription usage's "Read Claude's limits from its status line" on the demo: off until
+ * Settings → Agents' "Read Claude's limits from its status line" on the demo: off until
  * turned on. `?demo_usage=refused` starts Claude refused as a blocked network refuses it (a 403 to a
  * token that has not expired), offering the status line until it is turned on.
  */
 let demoStatusline = false;
 const USAGE_STATE = new URLSearchParams(location.search).get("demo_usage");
 
-/** Settings → Subscription usage on the demo: plans as the workstation's CLIs might report them, resets counted from now. */
+/** Settings → Agents' accounts on the demo: plans as the workstation's CLIs might report them, resets counted from now. */
+/**
+ * `?demo_sign_in=1`: the in-browser sign-in plays the flows recorded from Claude Code 2.1.312 and
+ * codex-cli 0.163.0 (server/fixtures/usage-login): Claude starts with no account, so its row offers
+ * Sign in; its page wants a code pasted back, and a sent code signs it in. Codex shows its device page
+ * and code, and signs in after a few reads. Without the switch the demo runs no login.
+ */
+const SIGN_IN_DEMO = new URLSearchParams(location.search).get("demo_sign_in") === "1";
+const signInDemo = { panes: new Map<string, { provider: "claude" | "codex"; reads: number; code: boolean }>(), signedIn: new Set<string>(), next: 1 };
+const CLAUDE_SIGN_IN_URL = "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&scope=user%3Ainference&code_challenge=demo&code_challenge_method=S256&state=demo";
+
 function usageReport(): UsageReport {
   const now = Date.now();
   const at = (hours: number) => new Date(now + hours * 3_600_000).toISOString();
@@ -1042,7 +1056,7 @@ function usageReport(): UsageReport {
   const session = (hours: number) => ({ resets_at: at(hours), starts_at: at(hours - 5) });
   const week = (hours: number) => ({ resets_at: at(hours), starts_at: at(hours - 168) });
   const checked = new Date(now).toISOString();
-  return { providers: [
+  const report: UsageReport = { providers: [
     USAGE_STATE === "refused" && !demoStatusline
       ? { id: "claude", key: "claude:demo-claude", account: "sam@example.com", plan: "max", problem: "expired", checked_at: null, windows: [], statusline_offer: true }
       : { id: "claude", key: "claude:demo-claude", account: "sam@example.com", plan: "max", problem: null, checked_at: checked, windows: [
@@ -1069,6 +1083,8 @@ function usageReport(): UsageReport {
       { kind: "month", scope: null, used_percent: 15, resets_at: at(520), starts_at: null },
     ] },
   ] };
+  // with `demo_usage=refused` Claude keeps its expired account, so its row offers Sign in again instead
+  return SIGN_IN_DEMO && USAGE_STATE !== "refused" && !signInDemo.signedIn.has("claude") ? { providers: report.providers.filter((usage) => usage.id !== "claude") } : report;
 }
 
 // ---- paired devices (Settings → Phone & devices) ----------------------------------------------
@@ -1112,9 +1128,21 @@ const demoAuth: HealthAuth = DEVICE_STATE === "watch" ? { required: false, authe
 let demoPairings = 0;
 // what a server answers when the registry write fails (server/http.ts): a log reference, nothing more
 const registryUnwritable = () => error("internal_error", "internal error (d3m0f41l0001)", 500);
+/**
+ * The one pending pairing code, as the server keeps it (server/devices.ts): started by the Devices
+ * group or the relay panel's New code, carried by the relay offer while it lasts, gone once the
+ * fictional phone enters it. The code itself never changes: the demo's captures show one code.
+ */
+let demoPairing: PairingCode | null = null;
+function startDemoPairing(): PairingCode {
+  demoPairing = { code: "482913", expires_at: new Date(Date.now() + 10 * 60_000).toISOString() };
+  return demoPairing;
+}
+const activeDemoPairing = (): PairingCode | null => demoPairing !== null && Date.parse(demoPairing.expires_at) > Date.now() ? demoPairing : null;
 /** The fictional phone that enters the code: a device more, and the event every window hears. */
 function demoDevicePairs(): void {
   demoPairings += 1;
+  demoPairing = null;
   const device: PairedDevice = { id: `${demoPairings.toString(16).padStart(4, "0")}9e2d1c0b7a6f`, label: demoPairings === 1 ? "Living-room iPad" : `Phone ${demoPairings}`, role: "drive", created_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), current: false };
   demoDevices.push(device);
   emitSse({ type: "device-paired", event_id: `d${demoPairings.toString(16).padStart(15, "0")}`, device_id: device.id, label: device.label, enrolled_at: device.created_at } satisfies DevicePairedEvent);
@@ -1132,7 +1160,31 @@ const PLUGINS: PluginActions[] = [
   ] },
 ];
 
-const NO_PORTAL: PortalStatus = { supported: false, version: null, min_version: "v2.6.1", usable: false, phase: "idle", relay: null, url: null, blocked: null, error: null, output: null };
+const NO_PORTAL: PortalStatus = { supported: false, version: null, min_version: "v2.6.1", usable: false, phase: "idle", relay: null, url: null, blocked: null, error: null, output: null, auth: { method: "none", allow: [], issuer: null, client_id: null }, auth_methods: [], oidc_secret: false };
+
+// ---- the Ovis relay (Settings → Phone & devices → Connect a phone) ------------------
+
+/**
+ * A fictional relay link, so the demo shows the panel's online state: the switch turns it on and
+ * off, no phone is ever connected, the pairing offer is a real offer URL (shared/relay-offer.ts)
+ * around a made-up server identity and key, and a reset gives the PC the next made-up identity.
+ * Nothing here opens a socket or holds a credential.
+ */
+const DEMO_RELAY = "wss://relay.ovis.sh";
+const DEMO_RELAY_APP = "https://app.ovis.sh";
+/** 32 made-up key bytes, in the canonical base64 the offer's validator accepts */
+const DEMO_RELAY_PUBLIC_KEY = btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, index) => (index * 37 + 11) & 0xff)));
+let demoRelayOnline = false;
+let demoRelayIdentities = 1;
+const demoRelayServerId = (): string => `${demoRelayIdentities.toString(16).padStart(4, "0")}5e1f1d0ff3ab1e0ff3ab1e5e1f1d`;
+const demoRelayStatus = (): RelayStatus => ({ phase: demoRelayOnline ? "online" : "off", relay: DEMO_RELAY, app: DEMO_RELAY_APP, sessions: 0, blocked: null, error: null });
+/** POST /api/relay/offer: the pending code inside an offer for the fictional identity, as the server reuses it */
+function demoRelayOffer(): Response {
+  if (!demoRelayOnline) return error("relay_off", "Start the relay before pairing.", 409);
+  const pairing = activeDemoPairing() ?? startDemoPairing();
+  const url = encodeOffer({ v: 1, server_id: demoRelayServerId(), server_public_key: DEMO_RELAY_PUBLIC_KEY, relay: DEMO_RELAY, code: pairing.code }, DEMO_RELAY_APP);
+  return json({ url, expires_at: pairing.expires_at }, 200, { "cache-control": "no-store" });
+}
 /**
  * The demo opens no public address, so its Portal section stays hidden. A QA script may stage a
  * fictional status (a recovering Portal, say) as JSON in sessionStorage["ovis:demo-portal"]
@@ -1161,24 +1213,28 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
     if (query.get("scope") === "bridge") {
       if (variant === "loading") return await new Promise<Response>(() => undefined);
       if (variant === "error") return error("server_unavailable", "The demo server is not answering.", 503);
-      return json({ ok: true, auth, bridge_protocol: 1, ...facts }, 200, { "cache-control": "no-store" });
+      return json({ ok: true, auth, bridge_protocol: 1, relay: demoRelayStatus(), ...facts }, 200, { "cache-control": "no-store" });
     }
     // the LAN warning is drawn only where a real server would send it: an other-address bind, no token, nothing paired
     const lan = variant === "unknown" ? { lan_exposure: { host: "0.0.0.0" } } : {};
-    return json({ ok: true, herdr: { version: "0.9.0", protocol: 22, terminal_attach: true }, auth, ...lan, ...facts, web_ui: { boot_id: orderOf(local.id).epoch, revision: null } }, 200, { "cache-control": "no-store" });
+    return json({ ok: true, herdr: { version: "0.9.0", protocol: 22, terminal_attach: true }, auth, relay: demoRelayStatus(), ...lan, ...facts, web_ui: { boot_id: orderOf(local.id).epoch, revision: null } }, 200, { "cache-control": "no-store" });
   }
-  // without `?demo_devices=` the demo answers no device route: its /api/devices stays a 404, as before
+  // a code starts here from the Devices group or from the relay panel's New code; the fictional phone
+  // enters it only where the demo has a device list to add it to
+  if (path === "/api/devices/pair/start") {
+    if (demoAuth.role === "watch") return error("read_only", "this device can only watch", 403);
+    if (DEVICE_STATE !== null) {
+      if (PAIRING_HELD) heldPairings.push(demoDevicePairs);
+      else setTimeout(demoDevicePairs, DEVICE_PAIRS_AFTER_MS);
+    }
+    return json(startDemoPairing(), 200, { "cache-control": "no-store" });
+  }
+  // without `?demo_devices=` the demo answers no other device route: its /api/devices stays a 404, as before
   if (DEVICE_STATE !== null) {
     if (path === "/api/devices") {
       // the `slow` state: held until released, so the lane captures the page while its list loads
       if (deviceListHeld) await deviceListHeld;
       return json({ devices: demoDevices }, 200, { "cache-control": "no-store" });
-    }
-    if (path === "/api/devices/pair/start") {
-      if (demoAuth.role === "watch") return error("read_only", "this device can only watch", 403);
-      if (PAIRING_HELD) heldPairings.push(demoDevicePairs);
-      else setTimeout(demoDevicePairs, DEVICE_PAIRS_AFTER_MS);
-      return json({ code: "482913", expires_at: new Date(Date.now() + 10 * 60_000).toISOString() } satisfies PairingCode, 200, { "cache-control": "no-store" });
     }
     if (path === "/api/devices/revoke-all") {
       if (demoAuth.role === "watch") return error("read_only", "this device can only watch", 403);
@@ -1254,9 +1310,20 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
   if (path === "/api/telemetry") return json({ error: { code: "not_found", message: "This server sends no telemetry" } }, 404, { "cache-control": "no-store" });
   if (path === "/api/herdr/update") return json({ supported: false, phase: "idle", server_version: null, binary_version: null, stale: false, output: null, finished_at: null }, 200, { "cache-control": "no-store" });
   if (path === "/api/portal") return json(demoPortal(), 200, { "cache-control": "no-store" });
-  if (path === "/api/portal/start" || path === "/api/portal/stop") return error("portal_unsupported", "The demo opens no public address.", 409);
+  if (path === "/api/relay") return json(demoRelayStatus(), 200, { "cache-control": "no-store" });
+  if (path === "/api/relay/start" || path === "/api/relay/stop" || path === "/api/relay/offer" || path === "/api/relay/reset-identity") {
+    if (method !== "POST") return error("method_not_allowed", "Use GET for status and POST for relay actions.", 405);
+    if (demoAuth.role === "watch") return error("read_only", "this device can only watch", 403);
+    if (path === "/api/relay/offer") return demoRelayOffer();
+    if (path === "/api/relay/start") demoRelayOnline = true;
+    else if (path === "/api/relay/stop") demoRelayOnline = false;
+    // a new identity: the offers made so far name a PC that no longer exists; the link stays as it was
+    else demoRelayIdentities += 1;
+    return json(demoRelayStatus(), 200, { "cache-control": "no-store" });
+  }
+  if (path === "/api/portal/start" || path === "/api/portal/stop" || path === "/api/portal/invite") return error("portal_unsupported", "The demo opens no public address.", 409);
   if (path === "/api/herdr-ui") return json({ copy_on_select: true }, 200, { "cache-control": "no-store" });
-  if (path === "/api/access") return json({ port: 7317, tailscale: { state: "running", dns_name: "workstation.example.ts.net", serving_url: "https://workstation.example.ts.net", serve_command: null, serve_url: null } });
+  if (path === "/api/access") return json({ port: 7317, relay: demoRelayStatus(), tailscale: { state: "running", dns_name: "workstation.example.ts.net", serving_url: "https://workstation.example.ts.net", serve_command: null, serve_url: null } });
   if (path === "/api/usage") return json(usageReport(), 200, { "cache-control": "no-store" });
   if (path === "/api/usage/statusline") {
     if (method === "POST") {
@@ -1267,8 +1334,44 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
     }
     return json({ installed: demoStatusline, supported: true }, 200, { "cache-control": "no-store" });
   }
+  if (SIGN_IN_DEMO && path === "/api/usage/login/prompt") {
+    const login = signInDemo.panes.get(url.searchParams.get("login") ?? "");
+    if (login === undefined) return error("login_not_found", "No sign-in this server started runs in that pane", 404);
+    login.reads += 1;
+    const ended = login.provider === "claude" ? login.code : login.reads > 3;
+    if (ended) signInDemo.signedIn.add(login.provider);
+    if (ended) return json({ provider: login.provider, url: null, user_code: null, wants_code: false, ended: true }, 200, { "cache-control": "no-store" });
+    return json(login.provider === "claude"
+      ? { provider: "claude", url: CLAUDE_SIGN_IN_URL, user_code: null, wants_code: true, ended: false }
+      : { provider: "codex", url: "https://auth.openai.com/codex/device", user_code: "PDLB-SLDUA", wants_code: false, ended: false }, 200, { "cache-control": "no-store" });
+  }
+  if (SIGN_IN_DEMO && path === "/api/usage/login/code" && method === "POST") {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { login?: string; code?: string };
+    const login = signInDemo.panes.get(body.login ?? "");
+    if (login === undefined) return error("login_not_found", "This sign-in has ended. Start it again.", 404);
+    if (!/^[A-Za-z0-9._~#-]{1,2048}$/.test((body.code ?? "").trim())) return error("invalid_code", "Paste the code the sign-in page showed, as it is", 400);
+    login.code = true;
+    return new Response(null, { status: 204 });
+  }
+  if (SIGN_IN_DEMO && path === "/api/usage/login/cancel" && method === "POST") {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { login?: string };
+    signInDemo.panes.delete(body.login ?? "");
+    return new Response(null, { status: 204 });
+  }
   if (path === "/api/usage/login") {
+    if (SIGN_IN_DEMO && method === "POST") {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { provider?: string; follow?: boolean };
+      if (!body.follow || (body.provider !== "claude" && body.provider !== "codex")) return error("demo", "This demo follows Claude Code and Codex only.", 409);
+      const login = `demo-login-${signInDemo.next++}`;
+      signInDemo.panes.set(login, { provider: body.provider, reads: 0, code: false });
+      return json({ login_id: login, device_auth: body.provider === "codex" });
+    }
     if (method === "GET") {
+      const asked = url.searchParams.get("provider");
+      if (SIGN_IN_DEMO && (asked === "claude" || asked === "codex")) {
+        const had = asked === "codex" ? ["sam@work.example", "sam@example.com"] : [];
+        return json({ accounts: signInDemo.signedIn.has(asked) ? [...had, asked === "claude" ? "me@example.test" : "codex@example.test"] : had });
+      }
       if (url.searchParams.has("provider")) return json({ accounts: url.searchParams.get("provider") === "cursor" ? ["cursor@example.test"] : [] });
       return json({ providers: [
         { id: "claude", cli: "claude", installed: true, local: true, separate_home: true },
