@@ -1,0 +1,6 @@
+(fail) resumable follow-up receipts (#2421) > recovers a relayed Codex sent receipt without typing again or sharing it with another device [16845.09ms]
+(fail) resumable follow-up receipts (#2421) > recovers a relayed Codex discarded receipt without typing again or sharing it with another device [16570.99ms]
+ 0 pass
+ 118 filtered out
+ 2 fail
+Ran 2 tests across 1 file. [34.13s]

@@ -1,0 +1,8 @@
+PASS first install, fingerprint, secret authentication and dedicated-key registration
+PASS equal pane ID isolation, remote terminal, observe, resize, input, image, conversation, files and prompts
+PASS end-to-end ACK budget and 4008 stalled observer eviction
+PASS isolated local failure, disconnect/reconnect and server restart recovery
+PASS cancellation before installation leaves remote session absent
+PASS compatible bridge update is idempotent and preserves both daemons
+PASS changed host key rejected without overwriting trust
+PASS remove registration and private key cleanup

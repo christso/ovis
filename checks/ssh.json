@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "runId": "479f066f-20a5-4458-a9c2-7c1a7dc85651",
+  "status": "success",
+  "exitCode": 0,
+  "startedAt": "2026-11-04T22:37:49.019Z",
+  "endedAt": "2026-11-04T22:38:06.186Z",
+  "durationMs": 17167,
+  "mode": [
+    "run"
+  ],
+  "revision": {
+    "head": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "testedSha": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "headSha": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "headBranch": "fix/remote-receipt-recovery-upstream",
+    "baseBranch": null,
+    "baseSha": null,
+    "branch": "fix/remote-receipt-recovery-upstream"
+  },
+  "toolchain": {
+    "bunVersion": "1.4.3",
+    "nodeVersion": "v26.7.0",
+    "herdrVersion": "herdr 0.9.5",
+    "herdrTestShards": 1,
+    "platform": "linux",
+    "arch": "x64",
+    "ci": false
+  },
+  "verification": {
+    "scope": "source-state-and-step-results",
+    "browserCurrentSource": "not-claimed",
+    "status": "verified",
+    "reason": null
+  },
+  "errors": [],
+  "source": {
+    "unchanged": true,
+    "startFingerprint": "3a4dd99b18085785659951398d0502465e27115b38132755395f607a2d95add5"
+  },
+  "steps": [
+    {
+      "name": "run",
+      "command": [
+        "bun",
+        "run",
+        "test:ssh"
+      ],
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 16996,
+      "reason": null
+    }
+  ]
+}

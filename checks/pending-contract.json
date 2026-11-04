@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "runId": "0ef9515d-7a6c-4209-8b09-f9cd57c2f73b",
+  "status": "success",
+  "exitCode": 0,
+  "startedAt": "2026-11-04T22:31:20.472Z",
+  "endedAt": "2026-11-04T22:33:11.273Z",
+  "durationMs": 110801,
+  "mode": [
+    "run"
+  ],
+  "revision": {
+    "head": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "testedSha": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "headSha": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "headBranch": "fix/remote-receipt-recovery-upstream",
+    "baseBranch": null,
+    "baseSha": null,
+    "branch": "fix/remote-receipt-recovery-upstream"
+  },
+  "toolchain": {
+    "bunVersion": "1.4.3",
+    "nodeVersion": "v26.7.0",
+    "herdrVersion": "herdr 0.9.5",
+    "herdrTestShards": 1,
+    "platform": "linux",
+    "arch": "x64",
+    "ci": false
+  },
+  "verification": {
+    "scope": "source-state-and-step-results",
+    "browserCurrentSource": "not-claimed",
+    "status": "verified",
+    "reason": null
+  },
+  "errors": [],
+  "source": {
+    "unchanged": true,
+    "startFingerprint": "f1ef9701f63d194676a3b60cc98ede2141ccf20ab1a7368491c85347e5d892ce"
+  },
+  "steps": [
+    {
+      "name": "run",
+      "command": [
+        "bun",
+        "test",
+        "--timeout",
+        "30000",
+        "server/pending-input.contract.test.ts"
+      ],
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 110761,
+      "reason": "ended processes the command left running"
+    }
+  ]
+}

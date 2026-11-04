@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "runId": "f820e9ff-383e-42c9-8605-3d8d41285377",
+  "status": "success",
+  "exitCode": 0,
+  "startedAt": "2026-11-04T22:40:20.695Z",
+  "endedAt": "2026-11-04T22:43:21.680Z",
+  "durationMs": 180985,
+  "mode": [
+    "fast"
+  ],
+  "revision": {
+    "head": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "testedSha": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "headSha": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "headBranch": "fix/remote-receipt-recovery-upstream",
+    "baseBranch": null,
+    "baseSha": null,
+    "branch": "fix/remote-receipt-recovery-upstream"
+  },
+  "toolchain": {
+    "bunVersion": "1.4.3",
+    "nodeVersion": "v26.7.0",
+    "herdrVersion": null,
+    "herdrTestShards": null,
+    "platform": "linux",
+    "arch": "x64",
+    "ci": false
+  },
+  "verification": {
+    "scope": "source-state-and-step-results",
+    "browserCurrentSource": "not-claimed",
+    "status": "verified",
+    "reason": null
+  },
+  "errors": [],
+  "source": {
+    "unchanged": true,
+    "startFingerprint": "3a4dd99b18085785659951398d0502465e27115b38132755395f607a2d95add5"
+  },
+  "steps": [
+    {
+      "name": "workflow syntax",
+      "command": [
+        "node_modules/.cache/actionlint-1.7.12/actionlint",
+        "-shellcheck="
+      ],
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 21,
+      "reason": null
+    },
+    {
+      "name": "generated types are fresh",
+      "command": [
+        "/home/christso/.bun/bin/bun",
+        "run",
+        "generate:types",
+        "--check"
+      ],
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 23,
+      "reason": null
+    },
+    {
+      "name": "generated themes are fresh",
+      "command": [
+        "/home/christso/.bun/bin/bun",
+        "run",
+        "generate:themes",
+        "--check"
+      ],
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 272,
+      "reason": null
+    },
+    {
+      "name": "typecheck",
+      "command": [
+        "/home/christso/.bun/bin/bun",
+        "run",
+        "typecheck"
+      ],
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 5309,
+      "reason": null
+    },
+    {
+      "name": "build",
+      "command": [
+        "/home/christso/.bun/bin/bun",
+        "run",
+        "build"
+      ],
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 3066,
+      "reason": null
+    },
+    {
+      "name": "unit tests",
+      "command": [
+        "/home/christso/.bun/bin/bun",
+        "run",
+        "test:unit"
+      ],
+      "status": "success",
+      "exitCode": 0,
+      "durationMs": 171977,
+      "reason": null
+    }
+  ]
+}

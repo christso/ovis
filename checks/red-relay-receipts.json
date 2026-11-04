@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "runId": "18b235b0-4bbf-43f5-84c0-2a5cb8148b41",
+  "status": "failure",
+  "exitCode": 1,
+  "startedAt": "2026-11-04T22:29:28.294Z",
+  "endedAt": "2026-11-04T22:30:02.569Z",
+  "durationMs": 34275,
+  "mode": [
+    "run"
+  ],
+  "revision": {
+    "head": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "testedSha": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "headSha": "b2d9e5d7074281437dce06ec0890d6f49e80e4df",
+    "headBranch": "fix/remote-receipt-recovery-upstream",
+    "baseBranch": null,
+    "baseSha": null,
+    "branch": "fix/remote-receipt-recovery-upstream"
+  },
+  "toolchain": {
+    "bunVersion": "1.4.3",
+    "nodeVersion": "v26.7.0",
+    "herdrVersion": "herdr 0.9.5",
+    "herdrTestShards": 1,
+    "platform": "linux",
+    "arch": "x64",
+    "ci": false
+  },
+  "verification": {
+    "scope": "source-state-and-step-results",
+    "browserCurrentSource": "not-claimed",
+    "status": "unknown",
+    "reason": "the check did not complete successfully"
+  },
+  "errors": [
+    "run exited with code 1"
+  ],
+  "source": {
+    "unchanged": true,
+    "startFingerprint": "3eb76478d31a1e2d1132d60594c6fcdb0b872d0cbee8d2d7cd04734bf5387340"
+  },
+  "steps": [
+    {
+      "name": "run",
+      "command": [
+        "bun",
+        "test",
+        "--timeout",
+        "30000",
+        "server/pending-input.contract.test.ts",
+        "-t",
+        "recovers a relayed"
+      ],
+      "status": "failure",
+      "exitCode": 1,
+      "durationMs": 34242,
+      "reason": "ended processes the command left running"
+    }
+  ]
+}
