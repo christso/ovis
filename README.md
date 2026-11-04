@@ -32,7 +32,7 @@ Run from the application checkout with its dependencies and Chrome installed:
 OVIS_QA_EVIDENCE=/tmp/receipt-evidence bun run check run --build bun /path/to/reproduce.ts
 ```
 
-## Checks
+## Checks (initial capture)
 
 - The two new sent/discarded contract cases failed on upstream before the production fix at
   retained-receipt recovery, then passed after it; [red summary](checks/red-receipts-summary.log).
@@ -46,6 +46,10 @@ OVIS_QA_EVIDENCE=/tmp/receipt-evidence bun run check run --build bun /path/to/re
   No unresolved findings. External peer review could not initialize; local adversarial fallback ran.
 
 See [check receipts](checks/) and the exact commands in the application PR's Validation section.
-Full integration/browser lanes, native Windows/Mac, a Rust PTY host and live/native-agent
-usage were not exercised. Receipt expiry/eviction and server restart can still leave a copy
+In the initial capture, full integration/browser lanes, native Windows/Mac, a Rust PTY host
+and live/native-agent usage were not exercised. Receipt expiry/eviction and server restart can still leave a copy
 unconfirmed. No automatic resend is introduced.
+
+## Additional adversarial behavior pass
+
+[Forty adversarial browser/bridge scenarios](adversarial/README.md) passed on upstream PR #2792 and the installed fork source, including the installed Rust PTY host. This later pass improves the original coverage above. It remains isolated fault-injection evidence; real/native-agent or phone dogfooding and a sustained soak are still unperformed.

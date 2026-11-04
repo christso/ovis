@@ -1,0 +1,57 @@
+{
+  "scenario": "recover",
+  "trial": "0",
+  "message": "TimeoutError: waitFor: Timeout 20000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-layout-pane=\"w2:p1\"]').and(locator('.is-current')).locator('.pending-message').filter({ hasText: 'Please check the receipt fixture once.' }) to be visible\u001b[22m\n",
+  "debug": {
+    "frames": [
+      {
+        "type": "role-ack",
+        "mode": "interact"
+      },
+      {
+        "type": "role-ack",
+        "mode": "interact"
+      },
+      {
+        "type": "submit-result",
+        "id": 1,
+        "pane_id": "w2:p1",
+        "ok": false,
+        "code": "input_not_ready",
+        "message": "The pane is not attached and ready"
+      },
+      {
+        "type": "input-ready",
+        "pane_id": "w2:p1"
+      }
+    ],
+    "outbound": [
+      {
+        "type": "role",
+        "mode": "interact"
+      },
+      {
+        "type": "attach",
+        "pane_id": "w2:p1",
+        "cols": 121,
+        "rows": 33,
+        "flow_control": "ack",
+        "receipt_resume_id": "702c92eb-0fbe-49b1-8956-1841827a9501",
+        "keep_size": true
+      },
+      {
+        "type": "role",
+        "mode": "interact"
+      },
+      {
+        "type": "submit",
+        "id": 1,
+        "pane_id": "w2:p1",
+        "text": "Please check the receipt fixture once.",
+        "payload": "Please check the receipt fixture once.",
+        "delivery": "queue"
+      }
+    ],
+    "errors": []
+  }
+}

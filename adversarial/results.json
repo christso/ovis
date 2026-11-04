@@ -1,0 +1,1278 @@
+{
+  "total": 38,
+  "completed": 38,
+  "passed": 38,
+  "failed": 0,
+  "results": [
+    {
+      "name": "upstream-pr-recover-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "recover",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 2641,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "798c49c8-6956-4653-a29b-b5897699e7bf",
+        "recoveredOutcome": [
+          {
+            "id": "798c49c8-6956-4653-a29b-b5897699e7bf",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-recover-desktop-1",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "recover",
+        "trial": "1",
+        "phone": false,
+        "jitter": 30,
+        "durationMs": 2873,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "c5bbf474-5c7e-420f-b953-67328c486223",
+        "recoveredOutcome": [
+          {
+            "id": "c5bbf474-5c7e-420f-b953-67328c486223",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-recover-desktop-2",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "recover",
+        "trial": "2",
+        "phone": false,
+        "jitter": 120,
+        "durationMs": 2819,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "79dc2965-be8e-4bbb-aea4-ccbd0e0e8c45",
+        "recoveredOutcome": [
+          {
+            "id": "79dc2965-be8e-4bbb-aea4-ccbd0e0e8c45",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-recover-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "recover",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 2857,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "291507fa-a4b4-4204-af41-f52cafcfcc07",
+        "recoveredOutcome": [
+          {
+            "id": "291507fa-a4b4-4204-af41-f52cafcfcc07",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-recover-phone-1",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "recover",
+        "trial": "1",
+        "phone": true,
+        "jitter": 30,
+        "durationMs": 2904,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "86723965-3ba8-40c0-8bce-d713859420e7",
+        "recoveredOutcome": [
+          {
+            "id": "86723965-3ba8-40c0-8bce-d713859420e7",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-recover-phone-2",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "recover",
+        "trial": "2",
+        "phone": true,
+        "jitter": 120,
+        "durationMs": 2713,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "dd29603d-687a-41e1-89bc-dd38811f52a2",
+        "recoveredOutcome": [
+          {
+            "id": "dd29603d-687a-41e1-89bc-dd38811f52a2",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-reload-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "reload",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 3256,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "85f13b49-aecc-4023-8e96-09adfc28dafe",
+        "recoveredOutcome": [
+          {
+            "id": "85f13b49-aecc-4023-8e96-09adfc28dafe",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-reload-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "reload",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 2996,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "5a6859f0-f613-4888-b2fc-ea3ceec423e1",
+        "recoveredOutcome": [
+          {
+            "id": "5a6859f0-f613-4888-b2fc-ea3ceec423e1",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-discard-saved-copy-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "discard-saved-copy",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 2830,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "3f714c32-56dc-4e07-9af3-6996f1533ecd",
+        "recoveredOutcome": [
+          {
+            "id": "3f714c32-56dc-4e07-9af3-6996f1533ecd",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-discard-saved-copy-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "discard-saved-copy",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 2730,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "2fb521ea-1504-4279-a975-0eed7b402440",
+        "recoveredOutcome": [
+          {
+            "id": "2fb521ea-1504-4279-a975-0eed7b402440",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-disconnect-before-delivery-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "disconnect-before-delivery",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 4638,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": false,
+        "terminalBytesBeforeReconnect": 0,
+        "terminalBytesAfterReconnect": 0,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "5ce5ba9a-831c-447e-abbc-c1f362aec4f8",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-disconnect-before-delivery-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "disconnect-before-delivery",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 4760,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": false,
+        "terminalBytesBeforeReconnect": 0,
+        "terminalBytesAfterReconnect": 0,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "b2cd2db5-78e7-4d6a-81ea-d0dabf9321c5",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-invalid-resume-id-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "invalid-resume-id",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 3705,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "9057be62-23ff-4b63-99d2-d31927bcad53",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-invalid-resume-id-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "invalid-resume-id",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 3505,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "62d4661a-ad54-46de-a275-83b5b31d55f0",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-flaps-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "flaps",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 6411,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "acdd7b71-27c2-4879-8724-d023cc155eff",
+        "recoveredOutcome": [
+          {
+            "id": "acdd7b71-27c2-4879-8724-d023cc155eff",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-isolation-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "isolation",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 4261,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "7864d7c8-a157-41c3-8bc4-694d33fab9e9",
+        "recoveredOutcome": [
+          {
+            "id": "7864d7c8-a157-41c3-8bc4-694d33fab9e9",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "deviceWatcherPcIsolation": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-bridge-restart-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "bridge-restart",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 3523,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "793b294d-edbe-4caa-9eb1-c96ffe95530f",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-central-restart-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "central-restart",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 3909,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "ab00d684-b167-48bd-9ad2-19dd5cdc0835",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "restartStorageCopiedAcrossEphemeralOrigins": true,
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "upstream-pr-early-submit-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+        "build": {
+          "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+        },
+        "scenario": "early-submit",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 2753,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 2,
+        "submitCountAfterReconnect": 2,
+        "originalPendingId": "608ff0fd-ff96-4328-8cec-678c144f78e1",
+        "recoveredOutcome": [
+          {
+            "id": "608ff0fd-ff96-4328-8cec-678c144f78e1",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "earlySubmitSafelyRefused": true,
+          "refusedDraftPreserved": true,
+          "explicitRetryRequired": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-recover-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "recover",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 2565,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "7e0ebc5a-9858-40fb-afb6-d3115ed9edcf",
+        "recoveredOutcome": [
+          {
+            "id": "7e0ebc5a-9858-40fb-afb6-d3115ed9edcf",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-recover-desktop-1",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "recover",
+        "trial": "1",
+        "phone": false,
+        "jitter": 30,
+        "durationMs": 2602,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "7591cf28-1c9f-438d-9d89-24b5b91ea488",
+        "recoveredOutcome": [
+          {
+            "id": "7591cf28-1c9f-438d-9d89-24b5b91ea488",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-recover-desktop-2",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "recover",
+        "trial": "2",
+        "phone": false,
+        "jitter": 120,
+        "durationMs": 2800,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "32b0b84b-8af5-41cf-a570-b1262004f815",
+        "recoveredOutcome": [
+          {
+            "id": "32b0b84b-8af5-41cf-a570-b1262004f815",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-recover-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "recover",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 2545,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "f90f50c6-f52b-44e5-befc-2d599e3bc01d",
+        "recoveredOutcome": [
+          {
+            "id": "f90f50c6-f52b-44e5-befc-2d599e3bc01d",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-recover-phone-1",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "recover",
+        "trial": "1",
+        "phone": true,
+        "jitter": 30,
+        "durationMs": 2514,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "88fc0de4-4648-434a-8ef8-1a3d2367dcd1",
+        "recoveredOutcome": [
+          {
+            "id": "88fc0de4-4648-434a-8ef8-1a3d2367dcd1",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-recover-phone-2",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "recover",
+        "trial": "2",
+        "phone": true,
+        "jitter": 120,
+        "durationMs": 2905,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "21508db4-9f0e-48e8-a822-fa6e82fd27a5",
+        "recoveredOutcome": [
+          {
+            "id": "21508db4-9f0e-48e8-a822-fa6e82fd27a5",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-reload-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "reload",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 2852,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "59b80c87-464d-46b3-a4e5-f1a983382ec8",
+        "recoveredOutcome": [
+          {
+            "id": "59b80c87-464d-46b3-a4e5-f1a983382ec8",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-reload-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "reload",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 2956,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "61ad5830-e84f-4d92-856b-fc3775b4718a",
+        "recoveredOutcome": [
+          {
+            "id": "61ad5830-e84f-4d92-856b-fc3775b4718a",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-discard-saved-copy-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "discard-saved-copy",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 2762,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "d8bf1eab-ae8d-49a6-9156-709131eee0e3",
+        "recoveredOutcome": [
+          {
+            "id": "d8bf1eab-ae8d-49a6-9156-709131eee0e3",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-discard-saved-copy-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "discard-saved-copy",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 2612,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "8fe14c4c-7151-4654-9f9d-00fb47aad6a1",
+        "recoveredOutcome": [
+          {
+            "id": "8fe14c4c-7151-4654-9f9d-00fb47aad6a1",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-disconnect-before-delivery-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "disconnect-before-delivery",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 4519,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": false,
+        "terminalBytesBeforeReconnect": 0,
+        "terminalBytesAfterReconnect": 0,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "10b8b03e-73c4-4487-9e77-be7a19b3aec5",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-disconnect-before-delivery-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "disconnect-before-delivery",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 4468,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": false,
+        "terminalBytesBeforeReconnect": 0,
+        "terminalBytesAfterReconnect": 0,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "1920a9b2-a9d2-42a9-9970-31833adc2aec",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-invalid-resume-id-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "invalid-resume-id",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 3807,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "0bb52e75-51e7-4929-9e6e-5dd7432b88ca",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-invalid-resume-id-phone-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "invalid-resume-id",
+        "trial": "0",
+        "phone": true,
+        "jitter": 0,
+        "durationMs": 3403,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "76f3d0ea-30d5-4b1e-9a67-ef4f66084304",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-flaps-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "flaps",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 6255,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "4580e235-3441-40db-a11d-fddeecd16525",
+        "recoveredOutcome": [
+          {
+            "id": "4580e235-3441-40db-a11d-fddeecd16525",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {},
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-isolation-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "isolation",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 4185,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "69f01fe6-1977-46f0-a847-62fde153d31b",
+        "recoveredOutcome": [
+          {
+            "id": "69f01fe6-1977-46f0-a847-62fde153d31b",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "deviceWatcherPcIsolation": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-bridge-restart-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "bridge-restart",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 3300,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "866456cd-03b0-4c38-9710-ea24d4508068",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-central-restart-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "central-restart",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 3571,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 1,
+        "submitCountAfterReconnect": 1,
+        "originalPendingId": "7c054ece-eab7-4071-b6b9-027cd73846bc",
+        "recoveredOutcome": [],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "restartStorageCopiedAcrossEphemeralOrigins": true,
+          "missingReceiptStayedUnconfirmed": true,
+          "savedCopyDiscardable": true
+        },
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "deployed-fork-source-early-submit-desktop-0",
+      "code": 0,
+      "detail": {
+        "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+        "build": {
+          "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+        },
+        "scenario": "early-submit",
+        "trial": "0",
+        "phone": false,
+        "jitter": 0,
+        "durationMs": 2947,
+        "isolated": true,
+        "nativeAgent": false,
+        "droppedExactSentReceipt": true,
+        "terminalBytesBeforeReconnect": 51,
+        "terminalBytesAfterReconnect": 51,
+        "submitCountBeforeReconnect": 2,
+        "submitCountAfterReconnect": 2,
+        "originalPendingId": "e441292a-dc71-4186-bb13-9248321b9e1d",
+        "recoveredOutcome": [
+          {
+            "id": "e441292a-dc71-4186-bb13-9248321b9e1d",
+            "outcome": "sent",
+            "resumed": true
+          }
+        ],
+        "draftPreserved": true,
+        "uncertainCopyOffersNoSendNow": true,
+        "checks": {
+          "earlySubmitSafelyRefused": true,
+          "refusedDraftPreserved": true,
+          "explicitRetryRequired": true
+        },
+        "pageErrors": []
+      }
+    }
+  ]
+}

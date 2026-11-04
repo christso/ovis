@@ -1,0 +1,78 @@
+[
+  {
+    "name": "upstream-pr",
+    "code": 0,
+    "detail": {
+      "source": "62db905689ef32ee8fc883c78e3b110838835a5b",
+      "build": {
+        "revision": "62db905689ef32ee8fc883c78e3b110838835a5b"
+      },
+      "scenario": "repeat-resume",
+      "trial": "0",
+      "phone": true,
+      "jitter": 0,
+      "durationMs": 22327,
+      "isolated": true,
+      "nativeAgent": false,
+      "droppedExactSentReceipt": true,
+      "terminalBytesBeforeReconnect": 51,
+      "terminalBytesAfterReconnect": 51,
+      "submitCountBeforeReconnect": 1,
+      "submitCountAfterReconnect": 1,
+      "originalPendingId": "a4de3396-a886-4798-a366-f83c7c987f24",
+      "recoveredOutcome": [
+        {
+          "id": "a4de3396-a886-4798-a366-f83c7c987f24",
+          "outcome": "sent",
+          "resumed": true
+        }
+      ],
+      "draftPreserved": true,
+      "uncertainCopyOffersNoSendNow": true,
+      "checks": {
+        "remoteSocketGenerations": 8,
+        "successfulAdditionalReconnects": 6,
+        "composerFocusPreserved": true
+      },
+      "pageErrors": []
+    }
+  },
+  {
+    "name": "deployed-fork-source",
+    "code": 0,
+    "detail": {
+      "source": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9",
+      "build": {
+        "revision": "4fda6ca101b0209c83bbc8f1a71dd025ebb0fbc9"
+      },
+      "scenario": "repeat-resume",
+      "trial": "0",
+      "phone": true,
+      "jitter": 0,
+      "durationMs": 21560,
+      "isolated": true,
+      "nativeAgent": false,
+      "droppedExactSentReceipt": true,
+      "terminalBytesBeforeReconnect": 51,
+      "terminalBytesAfterReconnect": 51,
+      "submitCountBeforeReconnect": 1,
+      "submitCountAfterReconnect": 1,
+      "originalPendingId": "102a79da-7e6c-4430-925f-8f325abf20bb",
+      "recoveredOutcome": [
+        {
+          "id": "102a79da-7e6c-4430-925f-8f325abf20bb",
+          "outcome": "sent",
+          "resumed": true
+        }
+      ],
+      "draftPreserved": true,
+      "uncertainCopyOffersNoSendNow": true,
+      "checks": {
+        "remoteSocketGenerations": 8,
+        "successfulAdditionalReconnects": 6,
+        "composerFocusPreserved": true
+      },
+      "pageErrors": []
+    }
+  }
+]
