@@ -204,6 +204,36 @@ try {
         await page.locator('.agents-sidebar .agent-select[aria-current="true"]').waitFor();
         await waitQuery(page, "machine", null);
         assert.deepEqual(errors, []);
+        for (const machine of ["local", "removed"]) for (const forward of [false, true]) {
+          await page.goto(`${url}?pane=${encodeURIComponent(INFRA)}`);
+          await waitSelected(page, INFRA);
+          const here = await page.evaluate(() => location.search);
+          await page.evaluate(({ here, machine, forward }) => {
+            history.pushState(null, "", `?machine=${machine}&new=workspace&agent=codex&name=Held`);
+            if (!forward) history.pushState(null, "", here);
+          }, { here, machine, forward });
+          if (forward) { await page.goBack(); await waitQuery(page, "pane", INFRA); }
+          await page.evaluate(() => sessionStorage.setItem("hold-roster", "1"));
+          await page.reload();
+          await page.waitForFunction(() => typeof (window as unknown as { __releaseRoster?: unknown }).__releaseRoster === "function" && document.querySelector(".sidebar-shell") !== null);
+          if (forward) await page.goForward(); else await page.goBack();
+          await waitQuery(page, "new", "workspace");
+          assert.equal(await page.getByRole("dialog", { name: /New workspace/ }).count(), 0, "creation waits for the first roster");
+          await page.evaluate(() => (window as unknown as { __releaseRoster: () => void }).__releaseRoster());
+          if (machine === "local") {
+            await page.getByRole("dialog", { name: "New workspace · workstation", exact: true }).waitFor();
+            assert.equal((await query(page))["name"], "Held", "history preserves the pending creation fields until the roster arrives");
+            if (forward) await page.goBack(); else await page.goForward();
+            await page.getByRole("dialog", { name: /New workspace/ }).waitFor({ state: "detached" });
+          } else {
+            await page.locator(".header-note", { hasText: "That link's PC is not set up here" }).waitFor();
+            await waitQuery(page, "machine", null);
+            assert.equal(await page.getByRole("dialog", { name: /New workspace/ }).count(), 0, "a missing PC cancels held creation before local fallback");
+            if (forward) await page.goBack(); else await page.goForward();
+            await waitSelected(page, INFRA);
+          }
+        }
+        assert.deepEqual(errors, []);
       } finally {
         await heldContext.close();
       }

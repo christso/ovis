@@ -68,6 +68,8 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
   }, [fileLeft, releaseFile]);
   useEffect(() => {
     if (locked !== false || machines.length === 0 || snapshot === null || linkWorkspaceId === undefined || !linkLanded) return;
+    // A popped entry's PC can land before its fallback pane. Keep Forward until that pane is known.
+    if (poppedTo.current && selectedPaneId === null && snapshot.panes.length > 0) return;
     const link: AppLink = {
       machine: selectedMachineId, workspace: linkWorkspaceId, workspaceSlug: linkSlug, pane: selectedPaneId, view: selectedPaneId ? view : null, file: linkFile,
       settings: settingsOpen ? settingsPage : null, section: settingsOpen && settingsPage === settingsLinkPage ? settingsLinkSection : null,
@@ -116,7 +118,9 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
       // before the PCs are in, nothing can say the entry's PC is still set up: it waits as a link
       // opened with the page does, settled against its roster or answered with a note once they are
       if (machinesRef.current.length === 0) {
-        if (!link.pane && !link.workspace) return;
+        if (!link.pane && !link.workspace && !link.create) return;
+        if (!link.create) setNewSessionOpen(false);
+        pendingCreate.current = link.create ?? null;
         selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
         pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
         linkSince.current = rosterSeq.current;
@@ -133,7 +137,10 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
       if (missing) setHeaderNote("machine-missing");
       else {
         const pane = machine?.snapshot ? resolveLink(machine.snapshot, link).pane : link.pane;
-        if (pane === null) return;
+        if (pane === null) {
+          if (link.create) { poppedTo.current = true; selectTargetRef.current(link.machine, null); }
+          return;
+        }
         const current = selectionRef.current;
         // the entry's lens is drawn over the pane's own, as a tapped notification's is. Where it
         // lands is written over the entry, so Forward keeps the entries after it

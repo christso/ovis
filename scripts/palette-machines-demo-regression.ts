@@ -57,7 +57,10 @@ const patch = `(() => {
     const match = url.pathname.match(/^\\/api\\/machines\\/([^/]+)(\\/.*)$/);
     const machine = match ? decodeURIComponent(match[1]) : "local";
     const path = match ? "/api" + match[2] : url.pathname;
-    if (path === "/api/agents") calls.agents.push(machine);
+    if (path === "/api/agents") {
+      calls.agents.push(machine);
+      if (machine === "remote") return json({ agents: [{ kind: "codex", label: "Codex" }, { kind: "letta", label: "Build PC agent" }] });
+    }
     if (path === "/api/worktree/list") {
       calls.branches.push(machine);
       const id = url.searchParams.get("workspace_id");
@@ -109,6 +112,18 @@ try {
           await page.waitForFunction(() => (window as any).paletteMachineCalls.agents.includes("remote"));
           assert.deepEqual(await page.evaluate(() => (window as any).paletteMachineCalls.agents), ["remote"], "the creation dialog requests only the linked PC's agent choices");
           assert.equal(await dialog.locator(".agent-picker-label").innerText(), "Codex");
+          await dialog.getByRole("combobox", { name: "Agent", exact: true }).click();
+          await dialog.getByRole("option").filter({ hasText: "Build PC agent" }).waitFor();
+          assert.equal(await dialog.getByRole("option").filter({ hasText: "Claude Code" }).count(), 0, "the visible choices come from the remote catalog, not the local catalog");
+          await page.keyboard.press("Escape");
+          await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+          await page.goto(`http://127.0.0.1:${server.port}/?pane=${encodeURIComponent(panes.api)}`);
+          await page.locator('.agents-sidebar .agent-select[aria-current="true"]').first().waitFor({ state: "attached" });
+          await page.evaluate(() => history.pushState(null, "", "?machine=remote&new=workspace&agent=codex&name=Forward"));
+          await page.goBack();
+          await page.goForward();
+          await dialog.waitFor();
+          assert.equal(await dialog.locator("h2").innerText(), "New workspace · Build PC", "Forward to a creation-only link selects the link's PC before opening its dialog");
           console.log(`PASS ${phone ? "phone" : "desktop"} creation link loads the linked remote PC's dialog and agent choices without a pane`);
         } finally { await creationContext.close(); }
         const detachedContext = await browser.newContext(phone
