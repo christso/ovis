@@ -1,0 +1,133 @@
+[
+  {
+    "pr": 2717,
+    "id": "PRRT_kwDOUfO9Bc6zaaT3",
+    "root": 4462677291,
+    "kind": "review_thread",
+    "verdict": "fixed",
+    "request": "prune waiting baselines for confirmed closed panes",
+    "paths": [
+      "src/lib/sentWaiting.ts",
+      "src/lib/useMachineRoster.ts"
+    ],
+    "publication": "verified",
+    "conversation": "submitted reply verified; thread resolved",
+    "commit": "f160973638e0043799bd8b53ca44514debfdd36a",
+    "reply_url": "https://github.com/devswha/ovis/pull/2717#discussion_r4463089440"
+  },
+  {
+    "pr": 2717,
+    "id": "5762127228:history-reset",
+    "root": 5762127228,
+    "kind": "review_body",
+    "verdict": "fixed",
+    "request": "invalidate baseline on transcript reset",
+    "paths": [
+      "src/lib/sentWaiting.ts"
+    ],
+    "publication": "verified",
+    "conversation": "submitted reply verified",
+    "commit": "f160973638e0043799bd8b53ca44514debfdd36a",
+    "reply_url": "https://github.com/devswha/ovis/pull/2717#issuecomment-6621390714"
+  },
+  {
+    "pr": 2718,
+    "id": "5762151620:forward-pc",
+    "root": 5762151620,
+    "kind": "review_body",
+    "verdict": "fixed",
+    "request": "select named PC on create-only history navigation",
+    "paths": [
+      "src/lib/useAddressBar.ts"
+    ],
+    "publication": "verified",
+    "conversation": "submitted top-level reply verified",
+    "commit": "6527765eb425c3a28792c47bd291a3fc7ae02689",
+    "reply_url": "https://github.com/devswha/ovis/pull/2718#issuecomment-6621434627"
+  },
+  {
+    "pr": 2718,
+    "id": "5762151620:pending-roster",
+    "root": 5762151620,
+    "kind": "review_body",
+    "verdict": "fixed",
+    "request": "retain create-only history link before roster loads",
+    "paths": [
+      "src/lib/useAddressBar.ts",
+      "src/lib/useSelection.ts"
+    ],
+    "publication": "verified",
+    "conversation": "submitted top-level reply verified",
+    "commit": "6527765eb425c3a28792c47bd291a3fc7ae02689",
+    "reply_url": "https://github.com/devswha/ovis/pull/2718#issuecomment-6621434627"
+  },
+  {
+    "pr": 2718,
+    "id": "5762151620:catalog",
+    "root": 5762151620,
+    "kind": "review_body",
+    "verdict": "fixed",
+    "request": "assert distinct remote agent catalog visible",
+    "paths": [
+      "scripts/palette-machines-demo-regression.ts"
+    ],
+    "publication": "verified",
+    "conversation": "submitted top-level reply verified",
+    "commit": "6527765eb425c3a28792c47bd291a3fc7ae02689",
+    "reply_url": "https://github.com/devswha/ovis/pull/2718#issuecomment-6621434627"
+  },
+  {
+    "pr": 2719,
+    "id": "PRRT_kwDOUfO9Bc6zajmo",
+    "root": 4462739859,
+    "kind": "review_thread",
+    "verdict": "fixed",
+    "request": "compare database identity not home directory",
+    "paths": [
+      "server/codex.ts"
+    ],
+    "publication": "verified",
+    "conversation": "submitted reply verified; thread resolved",
+    "commit": "2bea7bc9e319aa4f7abf1d7734b67b7dc366cf3b",
+    "reply_url": "https://github.com/devswha/ovis/pull/2719#discussion_r4463073472"
+  },
+  {
+    "pr": 2719,
+    "id": "PRRT_kwDOUfO9Bc6zajme",
+    "root": 4462739848,
+    "kind": "review_thread",
+    "verdict": "fixed",
+    "request": "narrow unknown-store changelog wording",
+    "paths": [
+      "changelog.d/codex-distinct-store-peers.md"
+    ],
+    "publication": "verified",
+    "conversation": "submitted reply verified; thread resolved",
+    "commit": "2bea7bc9e319aa4f7abf1d7734b67b7dc366cf3b",
+    "reply_url": "https://github.com/devswha/ovis/pull/2719#discussion_r4463073700"
+  },
+  {
+    "pr": 2718,
+    "id": "6620341543:docstrings",
+    "root": 6620341543,
+    "kind": "pr_comment",
+    "verdict": "replied",
+    "request": "raise docstring coverage to 80%",
+    "reason": "No committed upstream rule sets that threshold; existing branch-local comments state the constraints. Generic repeat-the-code comments would conflict with the configured emphasis on substantive findings.",
+    "publication": "no code change",
+    "conversation": "submitted top-level reply verified",
+    "reply_url": "https://github.com/devswha/ovis/pull/2718#issuecomment-6621462419"
+  },
+  {
+    "pr": 2719,
+    "id": "6620458796:description",
+    "root": 6620458796,
+    "kind": "pr_comment",
+    "verdict": "fixed-differently",
+    "request": "make changelog and conditional issue approval explicit",
+    "reason": "Named actual changelog fragment in Change. Exact commands already listed. Small bug fixes may go straight to PR; no feature-approval link was invented.",
+    "publication": "GitHub body update verified",
+    "conversation": "submitted top-level reply verified",
+    "reply_url": "https://github.com/devswha/ovis/pull/2719#issuecomment-6621462718"
+  }
+]

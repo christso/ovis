@@ -1,0 +1,117 @@
+bun test v1.4.3 (c6da4a4d3)
+
+src/lib/paneLifetime.test.ts:
+{"time":"2026-11-04T02:56:28.200Z","event":"herdr.rpc.failed","episode_id":"0b7ebca8-6803-4fcf-86e9-dffcacc732db","operation":"ping","code":"connect_failed","failures":1,"suppressed":0,"since_first_failure_ms":0,"request_id":"br-mw1iz8kn-1","phase":"connect","elapsed_ms":0,"timeout_ms":10000,"pending":0}
+{"time":"2026-11-04T02:56:28.403Z","event":"herdr.rpc.recovered","episode_id":"0b7ebca8-6803-4fcf-86e9-dffcacc732db","operation":"ping","code":"connect_failed","failures":2,"suppressed":1,"since_first_failure_ms":203,"request_id":"br-mw1iz8nh-3","phase":"response","elapsed_ms":101,"connect_ms":0,"timeout_ms":10000,"pending":0}
+(pass) pane state per herdr lifetime > keeps a pane's state across server restarts on one herdr, and leaves a replaced herdr's text to recovery [3.97ms]
+(pass) pane state per herdr lifetime > keeps a PC whose snapshots name no lifetime in the page: never stored, kept across reconnects, recoverable once one is named [0.42ms]
+(pass) pane state per herdr lifetime > leaves the stored state alone in a page that is behind another tab, and keeps that page's own typing for recovery [0.44ms]
+(pass) pane state per herdr lifetime > leaves held and unconfirmed chat messages to recovery too, one record per message [0.50ms]
+(pass) pane state per herdr lifetime > keeps a message an older bridge took with no receipt for recovery across a reload, never back in the reused pane id (#2172) [1.81ms]
+(pass) pane state per herdr lifetime > gives each unconfirmed row its own recovery record: discarding one never takes another tab's, or an older one with the same words [0.84ms]
+(pass) pane state per herdr lifetime > drops the recovery copy of an unconfirmed row discarded in the same page, and makes one for a stored PC only when storage refuses the row [1.19ms]
+(pass) pane state per herdr lifetime > drops an unconfirmed row's recovery copy once storage takes the row on the same herdr, so a reload offers it once [0.71ms]
+(pass) pane state per herdr lifetime > drops the recovery copy of a row storage refused once a later write saves it, so a reload offers it once [0.52ms]
+(pass) pane state per herdr lifetime > never rolls the stored state back to a herdr it outlived, and follows one that came after [0.38ms]
+(pass) pane state per herdr lifetime > sends text an earlier release stored, for a herdr nothing proves, to recovery, and keeps its lenses [0.41ms]
+(pass) pane state per herdr lifetime > gives the panes of a snapshot naming no herdr none of the stored state, gives the proven state back once that herdr is named again, and leaves what was typed meanwhile to recovery [0.98ms]
+(pass) pane state per herdr lifetime > settles a send begun for a pane of the herdr before nothing in the draft its pane ID holds now [1.25ms]
+(pass) pane state per herdr lifetime > keeps text in this page for recovery when storage refuses its record, or refused the edit itself [0.45ms]
+(pass) pane state per herdr lifetime > stores what the page kept while storage refused its record once storage takes it on the same herdr, leaving only another tab's text to recovery [0.32ms]
+(pass) pane state per herdr lifetime > takes a read from a herdr the page already moved on from as stale, not as a herdr to go back to [0.24ms]
+(pass) pane state per herdr lifetime > empties a draft store's copy in the render that names another herdr, and Discard removes recovered text [0.31ms]
+(pass) keeps the agent-only flag of a retired draft and of each retired queued message [0.41ms]
+
+src/lib/useComposerSends.test.ts:
+(pass) refuses composer choices and confirmation while the answered card waits for its next read [6.76ms]
+(pass) Claude wrapped running turn chooses safe delivery with autoSendQueued=false [13.82ms]
+(pass) Claude spinner above thirteen agents chooses safe delivery with autoSendQueued=false [5.49ms]
+(pass) Claude short duration chooses safe delivery with autoSendQueued=false [3.37ms]
+(pass) Claude duration without ellipsis chooses safe delivery with autoSendQueued=false [2.79ms]
+(pass) Claude compaction chooses safe delivery with autoSendQueued=false [2.47ms]
+(pass) Claude idle footer chooses safe delivery with autoSendQueued=false [2.96ms]
+(pass) Claude plain idle chooses safe delivery with autoSendQueued=false [2.22ms]
+(pass) Claude idle without waiting evidence chooses safe delivery with autoSendQueued=false [2.03ms]
+(pass) Claude permission dialog chooses safe delivery with autoSendQueued=false [2.17ms]
+(pass) Claude wrapped running turn chooses safe delivery with autoSendQueued=true [2.39ms]
+(pass) Claude spinner above thirteen agents chooses safe delivery with autoSendQueued=true [2.66ms]
+(pass) Claude short duration chooses safe delivery with autoSendQueued=true [2.74ms]
+(pass) Claude duration without ellipsis chooses safe delivery with autoSendQueued=true [2.54ms]
+(pass) Claude compaction chooses safe delivery with autoSendQueued=true [2.42ms]
+(pass) Claude idle footer chooses safe delivery with autoSendQueued=true [2.12ms]
+(pass) Claude plain idle chooses safe delivery with autoSendQueued=true [4.17ms]
+(pass) Claude idle without waiting evidence chooses safe delivery with autoSendQueued=true [2.98ms]
+(pass) Claude permission dialog chooses safe delivery with autoSendQueued=true [2.47ms]
+(pass) a composer send the bridge answered unconfirmed keeps its text only while nothing confirmed it [0.85ms]
+(pass) a composer send the bridge answered confirmed keeps its text only while nothing confirmed it [0.10ms]
+(pass) Send now of a held copy the bridge answered unconfirmed removes its recovery row only on a receipt [1.49ms]
+(pass) Send now of a held copy the bridge answered confirmed removes its recovery row only on a receipt [0.37ms]
+(pass) Send now of a held copy the bridge answered replayed removes its recovery row only on a receipt [0.20ms]
+(pass) a connection refusal leaves no waiting line [0.49ms]
+(pass) a connection rejection leaves no waiting line [0.08ms]
+(pass) records a confirmed send for its original pane after navigation without following the new pane [0.25ms]
+(pass) a queued follow-up the bridge typed at once waits in the chat and follows it, as a send at once [0.25ms]
+(pass) a queued follow-up answered ok with no row and no typed-now mark is no waiting message [0.23ms]
+(pass) timestamps a send before the receipt so a turn written during the request settles it [0.70ms]
+(pass) Send it sends the named draft over itself, only at once and never as an answer [0.63ms]
+(pass) sends a held copy of an agent-only message again as agent-only [1.21ms]
+(pass) puts an edited agent-only message back in the box agent-only [1.07ms]
+
+src/lib/sentWaiting.test.ts:
+(pass) waitingText > keeps a sent message in view until the transcript has it [0.32ms]
+(pass) waitingText > reads the copy the terminal writes as the same message [0.16ms]
+(pass) waitingText > does not take a message that differs only in its spaces for this one [0.11ms]
+(pass) waitingText > does not take another turn's words for it [0.16ms]
+(pass) waitingText > says nothing for an empty message or no message [0.06ms]
+(pass) waitingText > keeps a repeated message waiting when only an earlier matching user turn exists [0.07ms]
+(pass) waitingText > does not settle pending yes from yes, please proceed with the changes [0.05ms]
+(pass) waitingText > does not settle an unmarked shortened copy [0.05ms]
+(pass) waitingText > does not take an ellipsized opening for the whole message: the transcript keeps user turns whole [0.08ms]
+(pass) waitingText > gives a command no waiting line: Claude writes it as a command, never as this user turn [0.09ms]
+(pass) waitingText > settles a send from a browser whose clock runs ahead of the PC, by the turns the chat held when it was sent [0.09ms]
+(pass) waitingText > keeps a repeated send waiting past the identical turn the chat held when it was sent, whatever the browser's clock [0.17ms]
+(pass) waitingText > keeps a second send's own waiting line without overwriting the first [0.12ms]
+(pass) waitingText > one turn settles only one of two identical sends, even across refreshes [0.19ms]
+(pass) waitingText > keeps a send with no transcript turn and settles it when its delayed turn appears [0.08ms]
+(pass) waitingText > never treats an undated or invalidly dated turn as evidence for a new send [0.13ms]
+(pass) waitingText > keeps a send waiting past an identical turn written before it that the chat had not shown yet [0.27ms]
+(pass) waitingText > waits for the text that was typed: paste markers the composer strips are not part of it [0.12ms]
+(pass) waitingText > stops saying a send is on its way once its turn has not come for a minute [0.11ms]
+(pass) waitingText > lets a replaced herdr's waiting sends go: the new herdr gives the same pane ids to other panes [0.51ms]
+(pass) waitingText > bounds an unshown earlier turn by the newest turn the chat showed, the agent's included [0.24ms]
+(pass) waitingText > settles the first message of an empty chat whatever the browser's clock says [0.11ms]
+(pass) waitingText > keeps the time the chat first showed its turns: settling again for the waiting list is no new read [0.10ms]
+(pass) waitingText > settles a send by its own turn when the transcript keeps whole seconds [0.06ms]
+(pass) waitingText > settles a whole-second turn for a send made before the chat's first read on the turn itself when nothing was written after it [0.07ms]
+(pass) waitingText > keeps a send made before the chat's first read waiting past a same-second turn with an undated turn after it [0.08ms]
+(pass) waitingText > settles a whole-second turn for a send made before the chat's first read once a turn after it is in a later second [0.10ms]
+(pass) waitingText > keeps a new send waiting before the first read when only an older identical turn of the same second is there [0.09ms]
+(pass) waitingText > drops every waiting send of a PC whose connection went, and only that PC's [0.07ms]
+(pass) waitingText > connection cleanup clears that PC's waiting copies while retaining loaded transcript baselines [0.19ms]
+(pass) waitingText > prunes only panes proved closed by a connected PC's fresh snapshot [0.37ms]
+(pass) waitingText > forgets roster closure evidence when a PC's Herdr is retired [0.13ms]
+(pass) waitingText > forgets a replaced transcript's baseline before the next send [0.17ms]
+(pass) waitingText > records no baseline for a chat that has not read its transcript [0.05ms]
+
+src/components/SentWaiting.test.tsx:
+(pass) SentWaitingList > shows only the sent words, with no caption, while the agent is about to take them [8.81ms]
+(pass) SentWaitingList > adds a clock beside the bubble once the turn is late, still with no caption [2.23ms]
+(pass) SentWaitingList > shows a long message whole, capped at the lines its turn's card shows, so the turn takes its place at its height [0.71ms]
+(pass) SentWaitingList > is no live region of its own: the chat footer's one status region stays the only one [0.90ms]
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+Detected multiple renderers concurrently rendering the same context provider. This is currently unsupported.
+Detected multiple renderers concurrently rendering the same context provider. This is currently unsupported.
+(pass) mounted > brings the clock in at five seconds, on its own timer [17.04ms]
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+Detected multiple renderers concurrently rendering the same context provider. This is currently unsupported.
+Detected multiple renderers concurrently rendering the same context provider. This is currently unsupported.
+(pass) mounted > leaves no timer behind when the bubble goes before its clock [2.00ms]
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+(pass) mounted > lets a waiting send go when the connection does, and does not bring it back on reconnect [1.91ms]
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+(pass) mounted > a disconnected sibling pane preserves the baseline so a phone's send does not duplicate its transcript turn [0.56ms]
+
+ 93 pass
+ 0 fail
+ 291 expect() calls
+Ran 93 tests across 4 files. [554.00ms]

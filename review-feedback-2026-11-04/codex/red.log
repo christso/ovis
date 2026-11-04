@@ -1,0 +1,69 @@
+bun test v1.4.3 (c6da4a4d3)
+
+server/codex-processes.test.ts:
+(pass) ignores a same-directory peer that uses another Codex home [100.71ms]
+(pass) ignores a default-home peer beside an isolated Codex profile [81.55ms]
+1532 |   mkdirSync(otherHome);
+1533 |   symlinkSync(join(home, "state_5.sqlite"), join(otherHome, "state_5.sqlite"));
+1534 |   const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1535 |   foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+1536 |   peerScreens.set("peer", shortScreen);
+1537 |   expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+                                                                                                       ^
+error: expect(received).toBeNull()
+
+Received: "/tmp/ovis-codex-processes-Lx9NkV/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1537:97)
+(fail) keeps a peer sharing the selected native database through a symlink ambiguous [72.08ms]
+1548 |   mkdirSync(otherHome);
+1549 |   fs.copyFileSync(join(home, "state_5.sqlite"), join(otherHome, "state_5.sqlite"));
+1550 |   const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1551 |   foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+1552 |   peerScreens.set("peer", "Working…");
+1553 |   expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBe(path);
+                                                                                                       ^
+error: expect(received).toBe(expected)
+
+Expected: "/tmp/ovis-codex-processes-n96ahP/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+Received: null
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1553:97)
+(fail) compares the selected and actual databases through different Codex homes [109.98ms]
+1561 |     const file = join(otherHome, "state_5.sqlite");
+1562 |     if (database === "directory") mkdirSync(file);
+1563 |     const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1564 |     foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+1565 |     peerScreens.set("peer", shortScreen);
+1566 |     expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+                                                                                                         ^
+error: expect(received).toBeNull()
+
+Received: "/tmp/ovis-codex-processes-BZUs1C/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1566:99)
+(fail) keeps a peer with a missing native database competitive [73.28ms]
+1561 |     const file = join(otherHome, "state_5.sqlite");
+1562 |     if (database === "directory") mkdirSync(file);
+1563 |     const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1564 |     foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+1565 |     peerScreens.set("peer", shortScreen);
+1566 |     expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+                                                                                                         ^
+error: expect(received).toBeNull()
+
+Received: "/tmp/ovis-codex-processes-HyVQmN/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1566:99)
+(fail) keeps a peer with a directory native database competitive [75.94ms]
+(pass) keeps a remote peer ambiguous with --remote [82.98ms]
+(pass) keeps local peers ambiguous when this pane uses --remote [77.06ms]
+(pass) keeps a remote peer ambiguous with --remote=ws://fixture.invalid:4500 [75.20ms]
+(pass) keeps local peers ambiguous when this pane uses --remote=ws://fixture.invalid:4500 [71.00ms]
+(pass) keeps peers ambiguous when the selected store differs from the pane's actual store [111.18ms]
+
+ 7 pass
+ 141 filtered out
+ 4 fail
+ 35 expect() calls
+Ran 11 tests across 1 file. [1113.00ms]

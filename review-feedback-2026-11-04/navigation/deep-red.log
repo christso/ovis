@@ -1,0 +1,20 @@
+PASS creation links honor their PC without a pane and never create on another PC when the target is missing
+PASS a link to a workspace, or to a pane of it that has closed, opens the pane its row opens
+PASS opening another pane is a history entry and a lens switch is not; Back and Forward return to each pane in its lens
+PASS Back to an entry for a PC since removed stays on the pane shown, says so, opens none of its dialogs, and keeps Forward
+57689 |       throw new Error("Serialized error must have either an error or a value");
+57690 |     return parseSerializedValue(error.value, void 0);
+57691 |   }
+57692 |   let e;
+57693 |   if (error.error.name === "TimeoutError")
+57694 |     e = new TimeoutError2(error.error.message);
+                    ^
+TimeoutError: waitFor: Timeout 30000ms exceeded.
+Call log:
+  - waiting for getByRole('dialog', { name: 'New workspace · workstation', exact: true }) to be visible
+
+  log: [ "  - waiting for getByRole('dialog', { name: 'New workspace · workstation', exact: true }) to be visible" ],
+
+      at $WORKTREE/node_modules/playwright-core/lib/coreBundle.js:57694:13
+
+Bun v1.4.3 (Linux x64)

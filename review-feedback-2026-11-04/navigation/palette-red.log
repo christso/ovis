@@ -1,0 +1,24 @@
+121 |           await page.locator('.agents-sidebar .agent-select[aria-current="true"]').first().waitFor({ state: "attached" });
+122 |           await page.evaluate(() => history.pushState(null, "", "?machine=remote&new=workspace&agent=codex&name=Forward"));
+123 |           await page.goBack();
+124 |           await page.goForward();
+125 |           await dialog.waitFor();
+126 |           assert.equal(await dialog.locator("h2").innerText(), "New workspace · Build PC", "Forward to a creation-only link selects the link's PC before opening its dialog");
+                       ^
+AssertionError: Forward to a creation-only link selects the link's PC before opening its dialog
++ actual - expected
+
++ 'New workspace · Laptop'
+- 'New workspace · Build PC'
+                   ^
+
+ generatedMessage: false,
+     actual: "New workspace · Laptop",
+   expected: "New workspace · Build PC",
+   operator: "strictEqual",
+       diff: "simple",
+       code: "ERR_ASSERTION"
+
+      at $WORKTREE/scripts/palette-machines-demo-regression.ts:126:18
+
+Bun v1.4.3 (Linux x64)

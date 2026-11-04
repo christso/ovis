@@ -1,0 +1,65 @@
+bun test v1.4.3 (c6da4a4d3)
+
+src/lib/sentWaiting.test.ts:
+{"time":"2026-11-04T02:56:03.279Z","event":"herdr.rpc.failed","episode_id":"88013213-6cd6-44bc-871f-2d4065062078","operation":"ping","code":"connect_failed","failures":1,"suppressed":0,"since_first_failure_ms":0,"request_id":"br-mw1iypcf-1","phase":"connect","elapsed_ms":1,"timeout_ms":10000,"pending":0}
+{"time":"2026-11-04T02:56:03.482Z","event":"herdr.rpc.recovered","episode_id":"88013213-6cd6-44bc-871f-2d4065062078","operation":"ping","code":"connect_failed","failures":2,"suppressed":1,"since_first_failure_ms":203,"request_id":"br-mw1iypf9-3","phase":"response","elapsed_ms":101,"connect_ms":0,"timeout_ms":10000,"pending":0}
+(pass) waitingText > keeps a sent message in view until the transcript has it [1.30ms]
+(pass) waitingText > reads the copy the terminal writes as the same message [0.17ms]
+(pass) waitingText > does not take a message that differs only in its spaces for this one [0.09ms]
+(pass) waitingText > does not take another turn's words for it [0.08ms]
+(pass) waitingText > says nothing for an empty message or no message [0.07ms]
+(pass) waitingText > keeps a repeated message waiting when only an earlier matching user turn exists [0.09ms]
+(pass) waitingText > does not settle pending yes from yes, please proceed with the changes [0.09ms]
+(pass) waitingText > does not settle an unmarked shortened copy [0.09ms]
+(pass) waitingText > does not take an ellipsized opening for the whole message: the transcript keeps user turns whole [0.33ms]
+(pass) waitingText > gives a command no waiting line: Claude writes it as a command, never as this user turn [0.09ms]
+(pass) waitingText > settles a send from a browser whose clock runs ahead of the PC, by the turns the chat held when it was sent [0.24ms]
+(pass) waitingText > keeps a repeated send waiting past the identical turn the chat held when it was sent, whatever the browser's clock [0.25ms]
+(pass) waitingText > keeps a second send's own waiting line without overwriting the first [0.12ms]
+(pass) waitingText > one turn settles only one of two identical sends, even across refreshes [0.19ms]
+(pass) waitingText > keeps a send with no transcript turn and settles it when its delayed turn appears [0.11ms]
+(pass) waitingText > never treats an undated or invalidly dated turn as evidence for a new send [0.21ms]
+(pass) waitingText > keeps a send waiting past an identical turn written before it that the chat had not shown yet [0.17ms]
+(pass) waitingText > waits for the text that was typed: paste markers the composer strips are not part of it [0.12ms]
+(pass) waitingText > stops saying a send is on its way once its turn has not come for a minute [0.20ms]
+(pass) waitingText > lets a replaced herdr's waiting sends go: the new herdr gives the same pane ids to other panes [0.56ms]
+(pass) waitingText > bounds an unshown earlier turn by the newest turn the chat showed, the agent's included [0.27ms]
+(pass) waitingText > settles the first message of an empty chat whatever the browser's clock says [0.10ms]
+(pass) waitingText > keeps the time the chat first showed its turns: settling again for the waiting list is no new read [0.13ms]
+(pass) waitingText > settles a send by its own turn when the transcript keeps whole seconds [0.07ms]
+(pass) waitingText > settles a whole-second turn for a send made before the chat's first read on the turn itself when nothing was written after it [0.07ms]
+(pass) waitingText > keeps a send made before the chat's first read waiting past a same-second turn with an undated turn after it [0.10ms]
+(pass) waitingText > settles a whole-second turn for a send made before the chat's first read once a turn after it is in a later second [0.11ms]
+(pass) waitingText > keeps a new send waiting before the first read when only an older identical turn of the same second is there [0.13ms]
+(pass) waitingText > drops every waiting send of a PC whose connection went, and only that PC's [0.12ms]
+(pass) waitingText > connection cleanup clears that PC's waiting copies while retaining loaded transcript baselines [0.24ms]
+344 |         settleWaitingSends(key, [user("earlier", 1)], 10, true);
+345 |         rememberWaitingSend(key, "next", 20, waitingBaseline(key));
+346 |       }
+347 |       const baselines = keys.map(waitingBaseline);
+348 |       pruneWaitingSends(roster("connected", { panes: [{ pane_id: "closed" }, { pane_id: "active" }, { pane_id: "sibling" }] } as Machine["snapshot"]));
+349 |       expect(waitingBaseline(keys[4]!)).toBe(baselines[4]!);
+                                              ^
+error: expect(received).toBe(expected)
+
+Expected: {
+  keys: Set(1) {
+    "[\"1970-01-01T00:00:00.001Z\",[{\"kind\":\"text\",\"text\":\"earlier\"}]]:0",
+  },
+  latest: 1,
+  takenAt: 10,
+}
+Received: null
+
+      at <anonymous> ($WORKTREE/src/lib/sentWaiting.test.ts:349:41)
+(fail) waitingText > prunes only panes proved closed by a connected PC's fresh snapshot [0.55ms]
+(pass) waitingText > forgets a replaced transcript's baseline before the next send [0.11ms]
+(pass) waitingText > records no baseline for a chat that has not read its transcript [0.03ms]
+
+1 tests failed:
+(fail) waitingText > prunes only panes proved closed by a connected PC's fresh snapshot [0.55ms]
+
+ 32 pass
+ 1 fail
+ 62 expect() calls
+Ran 33 tests across 1 file. [268.00ms]

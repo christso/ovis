@@ -1,0 +1,16 @@
+57689 |       throw new Error("Serialized error must have either an error or a value");
+57690 |     return parseSerializedValue(error.value, void 0);
+57691 |   }
+57692 |   let e;
+57693 |   if (error.error.name === "TimeoutError")
+57694 |     e = new TimeoutError2(error.error.message);
+                    ^
+TimeoutError: waitFor: Timeout 3000ms exceeded.
+Call log:
+  - waiting for getByRole('dialog', { name: /^New workspace/ }).getByRole('option').filter({ hasText: 'Build PC agent' }) to be visible
+
+  log: [ "  - waiting for getByRole('dialog', { name: /^New workspace/ }).getByRole('option').filter({ hasText: 'Build PC agent' }) to be visible" ],
+
+      at $WORKTREE/node_modules/playwright-core/lib/coreBundle.js:57694:13
+
+Bun v1.4.3 (Linux x64)

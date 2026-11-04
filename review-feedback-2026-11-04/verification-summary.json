@@ -1,0 +1,36 @@
+{
+  "code_findings_fixed": 7,
+  "advisory_check_items_handled": 2,
+  "inline_threads_resolved": 3,
+  "fast": {
+    "codex": {
+      "command": "bun run check fast",
+      "result": "pass",
+      "passed": 10951,
+      "failed": 0,
+      "skipped": 42,
+      "commit": "2bea7bc9e319aa4f7abf1d7734b67b7dc366cf3b"
+    },
+    "waiting": {
+      "command": "bun run check fast",
+      "result": "pass",
+      "passed": 10941,
+      "failed": 0,
+      "skipped": 42,
+      "commit": "f160973638e0043799bd8b53ca44514debfdd36a"
+    },
+    "navigation": {
+      "command": "bun run check fast",
+      "result": "pass",
+      "passed": 10936,
+      "failed": 0,
+      "skipped": 42,
+      "commit": "6527765eb425c3a28792c47bd291a3fc7ae02689"
+    }
+  },
+  "full_integration_browser": "not run",
+  "native_macos_windows": "not run locally",
+  "browser_demos": "Both complete targeted demo scripts pass; wrong-catalog negative control fails as expected",
+  "capture_classification": "fictional automated fixture, not native-agent dogfooding",
+  "reply_visibility": "replies read back; inline replies submitted; authoritative resolution verified"
+}

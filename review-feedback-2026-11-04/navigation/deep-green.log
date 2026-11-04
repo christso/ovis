@@ -1,0 +1,19 @@
+PASS creation links honor their PC without a pane and never create on another PC when the target is missing
+PASS a link to a workspace, or to a pane of it that has closed, opens the pane its row opens
+PASS opening another pane is a history entry and a lens switch is not; Back and Forward return to each pane in its lens
+PASS Back to an entry for a PC since removed stays on the pane shown, says so, opens none of its dialogs, and keeps Forward
+PASS Back before the PC list is in waits for it, then lands a removed PC's entry on this PC with the note
+PASS a link to a Settings page opens it there, the address follows its pages, and closing it leaves the pane's address
+PASS ws carries the workspace's slug; a slug that names another workspace wins over the id, and a link to nothing open says so
+PASS a link to a Settings group scrolls to and focuses it, and another page drops it from the address
+PASS a link to a file opens it beside its pane, and closing the viewer takes it off the address
+PASS Copy link puts the address on the clipboard
+PASS a link to the New workspace dialog fills it and creates nothing; the address follows the fields, and a tab link opens it for its workspace
+PASS the agent picker stays open when a text field scrolls and closes when its anchor moves; its keys scroll the list alone
+PASS a closed-pane note fits the phone header without overlapping or pushing More offscreen
+PASS sidebar=hidden collapses a desktop's sidebar and the address follows the toggle; sidebar=shown opens a phone's drawer
+PASS a link to a PC that is not set up here opens this PC's pane in front, and says so
+PASS an unknown-PC fallback preserves the link until its local roster arrives, then writes the pane it opened
+PASS a pane Back selects under an open modal does not take the keyboard out of it
+PASS phone header and Files omit palette buttons; More's first item opens the palette by touch; wider Files and keyboard shortcuts still open it
+PASS a phone's sheet, plan and palette close on Back without leaving their pane; Cancel and Rename pane leave no Back step behind

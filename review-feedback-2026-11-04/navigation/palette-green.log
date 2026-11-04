@@ -1,0 +1,8 @@
+PASS desktop creation link loads the linked remote PC's dialog and agent choices without a pane
+PASS desktop sidebar and detached branch render when the remote API omits branch
+PASS phone creation link loads the linked remote PC's dialog and agent choices without a pane
+PASS phone sidebar and detached branch render when the remote API omits branch
+PASS global search distinguishes duplicate IDs, searches machine/branch names and migrates remote history
+PASS a failed folder listing stays visible and retryable beside cached folder rows
+PASS switching PCs through the palette dismisses an old close confirmation even when tab IDs match
+PASS cross-PC selection stays bound; plugin actions follow the current PC; offline/removed panes are excluded

@@ -1,0 +1,12 @@
+ 0 fail
+ 20 expect() calls
+Ran 9 tests across 1 file. [45.07s]
+
+unit: 10951 pass, 0 fail, 42 skip in 672 files, 4 at a time, 178.6s
+
+ok     workflow syntax (0.0s)
+ok     generated types are fresh (0.0s)
+ok     generated themes are fresh (0.3s)
+ok     typecheck (5.3s)
+ok     build (3.0s)
+ok     unit tests (178.6s)
