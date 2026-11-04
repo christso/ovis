@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { currentWaitingSends, expireWaitingSends, forgetMachineWaitingSends, forgetWaitingSends, rememberWaitingSend, settleWaitingSends, WAITING_SEND_MS, waitingBaseline, waitingKey } from "./sentWaiting.ts";
+import { clearMachineWaitingSends, currentWaitingSends, expireWaitingSends, forgetMachineWaitingSends, forgetWaitingSends, rememberWaitingSend, settleWaitingSends, WAITING_SEND_MS, waitingBaseline, waitingKey } from "./sentWaiting.ts";
 import type { ConversationTurn } from "../../shared/protocol.ts";
 import type { Machine } from "../../shared/machines.ts";
 import { paneLifetimes } from "./paneLifetime.ts";
@@ -315,6 +315,24 @@ describe("waitingText", () => {
       forgetMachineWaitingSends("local");
       expect([currentWaitingSends(here), currentWaitingSends(other), currentWaitingSends(away).length]).toEqual([[], [], 1]);
     } finally { for (const key of [here, other, away]) forgetWaitingSends(key); }
+  });
+
+  it("connection cleanup clears that PC's waiting copies while retaining loaded transcript baselines", () => {
+    const here = waitingKey("local", "cleanup-owner"), other = waitingKey("local", "cleanup-sibling"), away = waitingKey("remote", "cleanup-owner");
+    const keys = [here, other, away];
+    try {
+      for (const key of keys) {
+        settleWaitingSends(key, [user("earlier", 1)], 10, true);
+        rememberWaitingSend(key, "next", 20, waitingBaseline(key));
+      }
+      const baselines = keys.map(waitingBaseline);
+      clearMachineWaitingSends("local");
+      expect(keys.map((key) => currentWaitingSends(key).length)).toEqual([0, 0, 1]);
+      for (const [index, key] of keys.entries()) expect(waitingBaseline(key)).toBe(baselines[index]!);
+      // A replaced Herdr must still forget those baselines before its pane IDs are reused.
+      forgetMachineWaitingSends("local");
+      expect(keys.map((key) => waitingBaseline(key) === null)).toEqual([true, true, false]);
+    } finally { for (const key of keys) forgetWaitingSends(key); }
   });
 
   it("records no baseline for a chat that has not read its transcript", () => {

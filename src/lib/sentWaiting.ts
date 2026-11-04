@@ -185,6 +185,15 @@ export function forgetWaitingSends(key: string): void {
   if (waiting.delete(key)) announce();
 }
 
+/** A connection loss drops provisional bubbles, but does not invalidate a chat's loaded turns. */
+export function clearMachineWaitingSends(machineId: string): void {
+  let changed = false;
+  for (const key of waiting.keys()) {
+    if (key.startsWith(`${machineId}:`)) { waiting.delete(key); changed = true; }
+  }
+  if (changed) announce();
+}
+
 // herdr gives pane ids out again once it is replaced (lib/paneLifetime.ts): the earlier herdr's
 // sends never reach the new panes, so a PC's waiting lines go with its herdr
 export function forgetMachineWaitingSends(machineId: string): void {
