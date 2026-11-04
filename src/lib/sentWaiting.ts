@@ -1,3 +1,4 @@
+import type { Machine } from "../../shared/machines.ts";
 import type { ConversationTurn } from "../../shared/protocol.ts";
 import { composerMessage } from "./compose.ts";
 import { paneLifetimes } from "./paneLifetime.ts";
@@ -91,6 +92,7 @@ interface WaitingPane {
 const waiting = new Map<string, WaitingPane>();
 /** the user turns each pane's chat showed last, for the baseline of its next send */
 const shown = new Map<string, WaitingBaseline>();
+const listedPanes = new Map<string, ReadonlySet<string>>();
 const empty: readonly WaitingSend[] = [];
 const listeners = new Set<() => void>();
 const announce = (): void => { for (const listener of listeners) listener(); };
@@ -156,6 +158,7 @@ export function currentWaitingSends(key: string): readonly WaitingSend[] {
  */
 export function settleWaitingSends(key: string, turns: readonly Turn[], now = Date.now(), loaded = turns.length > 0): void {
   const candidates = userTurns(turns);
+  if (!loaded && turns.length === 0) shown.delete(key);
   if (loaded) {
     // every shown turn was written before this read, the agent's too: the newest of them all bounds the skew
     const times = turns.map(turnTime).filter(Number.isFinite);
@@ -197,7 +200,19 @@ export function clearMachineWaitingSends(machineId: string): void {
 // herdr gives pane ids out again once it is replaced (lib/paneLifetime.ts): the earlier herdr's
 // sends never reach the new panes, so a PC's waiting lines go with its herdr
 export function forgetMachineWaitingSends(machineId: string): void {
+  listedPanes.delete(machineId);
   for (const key of [...waiting.keys(), ...shown.keys()]) if (key.startsWith(`${machineId}:`)) forgetWaitingSends(key);
+}
+
+export function pruneWaitingSends(machines: readonly Machine[]): void {
+  for (const machine of machines) {
+    if (machine.state !== "connected" || machine.snapshot === null) continue;
+    const open = new Set(machine.snapshot.panes.map((pane) => waitingKey(machine.id, pane.pane_id)));
+    for (const key of listedPanes.get(machine.id) ?? []) {
+      if (!open.has(key)) forgetWaitingSends(key);
+    }
+    listedPanes.set(machine.id, open);
+  }
 }
 
 paneLifetimes.onRetire(forgetMachineWaitingSends);
