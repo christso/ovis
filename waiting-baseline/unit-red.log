@@ -41,7 +41,7 @@ error: expect(received).toEqual(expected)
 - Expected  - 1
 + Received  + 9
 
-      at <anonymous> (/home/christso/.herdr/worktrees/herdr-web-ui-wt/fix-waiting-baseline-disconnect/src/components/SentWaiting.test.tsx:142:40)
+      at <anonymous> ($WORKTREE/src/components/SentWaiting.test.tsx:142:40)
 (fail) mounted > a disconnected sibling pane preserves the baseline so a phone's send does not duplicate its transcript turn [1.49ms]
 
  7 pass

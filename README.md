@@ -35,8 +35,9 @@ record a fictional send; this is a component reproduction, not a full upstream d
 The test uses real owned fixture processes, temporary native stores and synthetic foreground
 metadata; no Codex model is invoked. Two distinct-store cases fail before the fix.
 Five conservative controls pass, including same-store aliases and unknown environments.
-After the fix, all 144 tests in `server/codex-processes.test.ts` pass.
-See [before](codex-store-peers/red.log) and [after](codex-store-peers/green.log).
+After the fix, all 148 tests in `server/codex-processes.test.ts` pass.
+See the [process-test record](codex-store-peers/README.md), including the initial upstream
+failure, remote-client review finding, and final 148 passing tests.
 
 ## Creation link selects its named PC
 
@@ -49,7 +50,7 @@ See [verification](create-link-selection/verification.md),
 [phone after](create-link-selection/green/creation-link-phone.png).
 
 All three final fast checks passed, including typecheck, build, workflow syntax and generated-file
-freshness. Unit counts were 10,938 for waiting bubbles, 10,943 for separate Codex stores, and
+freshness. Unit counts were 10,938 for waiting bubbles, 10,947 for separate Codex stores, and
 10,936 for creation links; each had zero failures and 42 skips.
 
 Native macOS and Windows checks have not been run locally. Application PRs carry their

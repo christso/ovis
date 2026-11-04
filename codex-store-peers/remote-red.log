@@ -1,0 +1,63 @@
+bun test v1.4.3 (c6da4a4d3)
+
+server/codex-processes.test.ts:
+{"time":"2026-11-04T01:50:08.631Z","event":"herdr.rpc.failed","episode_id":"8f728d81-0a58-45d0-8965-9a4b4d0a8aa9","operation":"ping","code":"connect_failed","failures":1,"suppressed":0,"since_first_failure_ms":0,"request_id":"br-mw1glxx2-1","phase":"connect","elapsed_ms":0,"timeout_ms":10000,"pending":0}
+{"time":"2026-11-04T01:50:08.833Z","event":"herdr.rpc.recovered","episode_id":"8f728d81-0a58-45d0-8965-9a4b4d0a8aa9","operation":"ping","code":"connect_failed","failures":2,"suppressed":1,"since_first_failure_ms":202,"request_id":"br-mw1glxzw-3","phase":"response","elapsed_ms":101,"connect_ms":0,"timeout_ms":10000,"pending":0}
+1530 |     const otherHome = join(root, "other-codex-home");
+1531 |     mkdirSync(otherHome);
+1532 |     const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1533 |     foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex"), ...remote] }]);
+1534 |     peerScreens.set("peer", shortScreen);
+1535 |     expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+                                                                                                         ^
+error: expect(received).toBeNull()
+
+Received: "/tmp/ovis-codex-processes-FJ1UmS/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1535:99)
+(fail) keeps a remote peer ambiguous with --remote [88.70ms]
+1541 |     const otherHome = join(root, "other-codex-home");
+1542 |     mkdirSync(otherHome);
+1543 |     const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1544 |     foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+1545 |     peerScreens.set("peer", shortScreen);
+1546 |     expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+                                                                                                         ^
+error: expect(received).toBeNull()
+
+Received: "/tmp/ovis-codex-processes-YbofRL/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1546:99)
+(fail) keeps local peers ambiguous when this pane uses --remote [74.34ms]
+1530 |     const otherHome = join(root, "other-codex-home");
+1531 |     mkdirSync(otherHome);
+1532 |     const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1533 |     foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex"), ...remote] }]);
+1534 |     peerScreens.set("peer", shortScreen);
+1535 |     expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+                                                                                                         ^
+error: expect(received).toBeNull()
+
+Received: "/tmp/ovis-codex-processes-tXBJxf/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1535:99)
+(fail) keeps a remote peer ambiguous with --remote=ws://fixture.invalid:4500 [81.79ms]
+1541 |     const otherHome = join(root, "other-codex-home");
+1542 |     mkdirSync(otherHome);
+1543 |     const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1544 |     foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+1545 |     peerScreens.set("peer", shortScreen);
+1546 |     expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+                                                                                                         ^
+error: expect(received).toBeNull()
+
+Received: "/tmp/ovis-codex-processes-8TbKRh/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1546:99)
+(fail) keeps local peers ambiguous when this pane uses --remote=ws://fixture.invalid:4500 [82.67ms]
+
+ 0 pass
+ 144 filtered out
+ 4 fail
+ 12 expect() calls
+Ran 4 tests across 1 file. [616.00ms]
