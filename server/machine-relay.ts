@@ -1,6 +1,5 @@
 import { authenticatedWebSocket } from "./remote-websocket.ts";
 import { createHmac, randomBytes } from "node:crypto";
-import type { ServerWebSocket } from "bun";
 import { OUTPUT_HARD_BYTES, OUTPUT_HIGH_BYTES, OUTPUT_STALL_MS } from "./output-window.ts";
 import { OUTPUT_STALLED_CLOSE_CODE } from "../shared/terminal-flow.ts";
 import type { MachineManager } from "./machines.ts";
@@ -19,6 +18,12 @@ export class RelayReceiptIds {
     const hex = digest.subarray(0, 16).toString("hex");
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
+}
+
+interface RelayClient {
+  send(data: string): number;
+  getBufferedAmount(): number;
+  close(code?: number, reason?: string): void;
 }
 
 /**
@@ -47,7 +52,7 @@ export function upstreamCloseCode(code: number): number {
 /** Relay ACK frames unchanged: only xterm parsing releases remote output credit. */
 export class MachineRelay {
   private upstream: WebSocket;
-  private client?: ServerWebSocket<unknown>;
+  private client?: RelayClient;
   private waiting: string[] = [];
   private bytes = 0;
   private closed = false;
@@ -107,7 +112,7 @@ export class MachineRelay {
     const code = this.stall.sample(buffered, now);
     if (code) this.close(code, "terminal transport stalled");
   }
-  bind(client: ServerWebSocket<unknown>): void {
+  bind(client: RelayClient): void {
     this.client = client;
     if (this.closed) { client.close(1012, "Remote connection ended"); return; }
     for (const raw of this.waiting) this.send(raw);

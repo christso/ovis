@@ -8,7 +8,7 @@ export const GUIDE_KO: Record<string, string> = {
   "I'm new to Ovis": "처음이에요",
   "I've used Ovis before": "써 본 적 있어요",
   "Skip the setup and go straight in": "안내 없이 바로 시작해요",
-  "You can open this again any time from Settings → Setup guide.": "설정 → 설정 안내에서 언제든 다시 열 수 있어요.",
+  "You can open this again any time from Settings → Agents.": "설정 → 에이전트에서 언제든 다시 열 수 있어요.",
   "Skip setup": "안내 건너뛰기",
   "Already installed one?": "이미 설치하셨나요?",
   "Look again": "다시 확인",
@@ -34,4 +34,5 @@ export const GUIDE_KO: Record<string, string> = {
   "Back to setup": "설정 안내로 돌아가기",
   "The workspace opened, but {agent} did not start. Open it to see why in its terminal.": "워크스페이스는 열었지만 {agent}가 시작되지 않았어요. 열어서 터미널에서 이유를 확인하세요.",
   "Open the workspace": "워크스페이스 열기",
+  "{agent} is not signed in yet.": "{agent}에 아직 로그인하지 않았습니다.",
 };

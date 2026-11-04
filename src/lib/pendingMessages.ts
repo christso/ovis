@@ -16,6 +16,7 @@ export class PendingMessageStore {
   private rows = new Map<string, PendingMessageView[]>();
   private scopes = new Map<string, Map<string, string>>();
   private removed = new Map<string, Map<string, Set<string>>>();
+  /** ids an exact resumed receipt settled (a consumed Pi id, or a resumed sent/discarded one): no saved copy brings them back */
   private settledResumed = new Map<string, Set<string>>();
   private receiptOrder: Array<{ owner: string; id: string; scope: string }> = [];
   private saved = new Map<string, string | null>();
@@ -149,12 +150,19 @@ export class PendingMessageStore {
     // a dropped connection (suspend), which no connection proves any more
     this.refresh(owner);
     const unproved = new Set(this.read(owner).filter((message) => message.request_id < 0 && !message.serverOwned && proofs?.get(message.id) === undefined).map((message) => message.id));
-    const resumed = new Set(this.read(owner).filter((message) => piReceipt(message) && !message.serverOwned && proofs?.get(message.id) === undefined).map((message) => message.id));
-    const copies = new Set(this.read(owner).filter(message => !message.serverOwned && proofs?.get(message.id) === undefined).map(message => message.id));
+    // A consumed Pi ID is an exact server-attested receipt, replayed only to the same
+    // browser/device on attach. It can settle a saved non-authoritative copy across
+    // connection epochs; text, request IDs, and empty snapshots never can. A `resumed` sent or discarded
+    // receipt is the same for any follow-up's saved copy (#2421).
+    const saved = (message: PendingMessage & { serverOwned: boolean }): boolean => !message.serverOwned && proofs?.get(message.id) === undefined;
+    const resumed = new Set(this.read(owner).filter((message) => piReceipt(message) && saved(message)).map((message) => message.id));
+    const copies = new Set(this.read(owner).filter(saved).map((message) => message.id));
     const deleted = new Set(removed.filter((item) => proofs?.get(item.id) === scope || unproved.has(item.id)
       || item.outcome === "consumed" && resumed.has(item.id) || item.resumed === true && copies.has(item.id)).map((item) => item.id));
-    for (const item of removed) if (item.resumed === true && (proofs?.get(item.id) === undefined || proofs.get(item.id) === scope)
-      || item.outcome === "consumed" && deleted.has(item.id) && item.id.startsWith("pi:")) {
+    // A resumed receipt is remembered even before its copy is saved (another tab may save it later), but
+    // never for a row a live connection here proves under another scope.
+    for (const item of removed) if (item.outcome === "consumed" && deleted.has(item.id) && item.id.startsWith("pi:")
+      || item.resumed === true && (proofs?.get(item.id) === undefined || proofs.get(item.id) === scope)) {
       const settled = this.settledResumed.get(owner) ?? new Set<string>();
       settled.add(item.id);
       if (settled.size > 1024) settled.delete(settled.values().next().value!);
