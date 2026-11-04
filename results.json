@@ -1,0 +1,63 @@
+[
+  {
+    "name": "idle-loaded",
+    "hold": false,
+    "skew": 0,
+    "submits": 1,
+    "firstDuplicate": null,
+    "lastDuplicate": null,
+    "last": {
+      "at": 8256.299999982119,
+      "real": 1,
+      "faded": 0,
+      "clock": 0
+    },
+    "errors": [],
+    "video": "idle-loaded/control.mp4",
+    "duplicateDurationMs": null
+  },
+  {
+    "name": "idle-first-read-accurate",
+    "hold": true,
+    "skew": 0,
+    "submits": 1,
+    "firstDuplicate": null,
+    "lastDuplicate": null,
+    "last": {
+      "at": 8086.5999999940395,
+      "real": 1,
+      "faded": 0,
+      "clock": 0
+    },
+    "errors": [],
+    "video": "idle-first-read-accurate/control.mp4",
+    "duplicateDurationMs": null
+  },
+  {
+    "name": "idle-first-read-clock-skew",
+    "hold": true,
+    "skew": -150,
+    "submits": 1,
+    "firstDuplicate": {
+      "at": 1647.199999988079,
+      "real": 1,
+      "faded": 1,
+      "clock": 0
+    },
+    "lastDuplicate": {
+      "at": 61220.09999999404,
+      "real": 1,
+      "faded": 1,
+      "clock": 1
+    },
+    "last": {
+      "at": 63169.89999997616,
+      "real": 1,
+      "faded": 0,
+      "clock": 0
+    },
+    "errors": [],
+    "video": "idle-first-read-clock-skew/reproduction.mp4",
+    "duplicateDurationMs": 59572.9
+  }
+]

@@ -1,0 +1,6 @@
+ok     workflow syntax (0.0s)
+ok     generated types are fresh (0.0s)
+ok     generated themes are fresh (0.3s)
+ok     typecheck (5.6s)
+ok     build (3.0s)
+ok     unit tests (176.4s)
