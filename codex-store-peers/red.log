@@ -1,0 +1,44 @@
+bun test v1.4.3 (c6da4a4d3)
+
+server/codex-processes.test.ts:
+{"time":"2026-11-04T01:39:24.776Z","event":"herdr.rpc.failed","episode_id":"055e1a1c-27c3-4a27-abd1-f128418d8eff","operation":"ping","code":"connect_failed","failures":1,"suppressed":0,"since_first_failure_ms":0,"request_id":"br-mw1g8547-1","phase":"connect","elapsed_ms":1,"timeout_ms":10000,"pending":0}
+{"time":"2026-11-04T01:39:24.879Z","event":"herdr.rpc.recovered","episode_id":"055e1a1c-27c3-4a27-abd1-f128418d8eff","operation":"ping","code":"connect_failed","failures":2,"suppressed":1,"since_first_failure_ms":103,"request_id":"br-mw1g8572-3","phase":"response","elapsed_ms":1,"connect_ms":0,"timeout_ms":10000,"pending":0}
+1508 |   const otherHome = join(root, "other-codex-home");
+1509 |   mkdirSync(otherHome);
+1510 |   const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+1511 |   foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+1512 |   peerScreens.set("peer", "Working…");
+1513 |   expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBe(path);
+                                                                                                       ^
+error: expect(received).toBe(expected)
+
+Expected: "/tmp/ovis-codex-processes-LgPu3D/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+Received: null
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1513:97)
+(fail) ignores a same-directory peer that uses another Codex home [149.11ms]
+1520 |   const env = { ...process.env, HOME: userHome };
+1521 |   delete env.CODEX_HOME;
+1522 |   const peer = await runningCodex(false, env);
+1523 |   foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+1524 |   peerScreens.set("peer", shortScreen);
+1525 |   expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBe(path);
+                                                                                                       ^
+error: expect(received).toBe(expected)
+
+Expected: "/tmp/ovis-codex-processes-hIDtmV/codex/sessions/rollout-01a0c7a1-56d9-7e20-9f08-f7a2d973bc01.jsonl"
+Received: null
+
+      at <anonymous> ($WORKTREE/server/codex-processes.test.ts:1525:97)
+(fail) ignores a default-home peer beside an isolated Codex profile [137.67ms]
+(pass) keeps a peer with an inaccessible environment ambiguous [74.87ms]
+(pass) keeps a same-store peer ambiguous through its same path [118.60ms]
+(pass) keeps a same-store peer ambiguous through its trailing slash path [133.87ms]
+(pass) keeps a same-store peer ambiguous through its symlink path [120.69ms]
+(pass) keeps peers ambiguous when the selected store differs from the pane's actual store [181.88ms]
+
+ 5 pass
+ 137 filtered out
+ 2 fail
+ 21 expect() calls
+Ran 7 tests across 1 file. [1273.00ms]

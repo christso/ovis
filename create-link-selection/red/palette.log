@@ -1,0 +1,24 @@
+103 |           const page = await creationContext.newPage();
+104 |           await page.goto(`http://127.0.0.1:${server.port}/?machine=remote&new=workspace&agent=codex&view=chat`);
+105 |           const dialog = page.getByRole("dialog", { name: /^New workspace/ });
+106 |           await dialog.waitFor();
+107 |           if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `creation-link-${phone ? "phone" : "desktop"}.png`), animations: "disabled" });
+108 |           assert.equal(await dialog.locator("h2").innerText(), "New workspace · Build PC", "a remote creation link without a pane overrides the remembered local PC");
+                       ^
+AssertionError: a remote creation link without a pane overrides the remembered local PC
++ actual - expected
+
++ 'New workspace · Laptop'
+- 'New workspace · Build PC'
+                   ^
+
+ generatedMessage: false,
+     actual: "New workspace · Laptop",
+   expected: "New workspace · Build PC",
+   operator: "strictEqual",
+       diff: "simple",
+       code: "ERR_ASSERTION"
+
+      at $WORKTREE/scripts/palette-machines-demo-regression.ts:108:18
+
+Bun v1.4.3 (Linux x64)

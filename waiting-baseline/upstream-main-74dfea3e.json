@@ -1,0 +1,24 @@
+{
+  "classification": "synthetic browser fixture; not native-agent dogfooding",
+  "upstreamBase": "74dfea3e72de1f26a07e9028aef77d8f77396e67",
+  "results": [
+    {
+      "mode": "upstream-main-74dfea3e",
+      "width": 390,
+      "waitingCopies": 1,
+      "transcriptUserTurns": 2,
+      "clockOffsetMs": 2000,
+      "siblingConnected": false,
+      "screenshot": "upstream-main-74dfea3e-390.png"
+    },
+    {
+      "mode": "upstream-main-74dfea3e",
+      "width": 1280,
+      "waitingCopies": 1,
+      "transcriptUserTurns": 2,
+      "clockOffsetMs": 2000,
+      "siblingConnected": false,
+      "screenshot": "upstream-main-74dfea3e-1280.png"
+    }
+  ]
+}

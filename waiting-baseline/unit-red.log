@@ -1,0 +1,50 @@
+bun test v1.4.3 (c6da4a4d3)
+
+src/components/SentWaiting.test.tsx:
+{"time":"2026-11-04T01:35:46.182Z","event":"herdr.rpc.failed","episode_id":"eeea1cd9-119e-4494-9b2c-2618530cea0b","operation":"ping","code":"connect_failed","failures":1,"suppressed":0,"since_first_failure_ms":0,"request_id":"br-mw1g3gg6-1","phase":"connect","elapsed_ms":0,"timeout_ms":10000,"pending":0}
+{"time":"2026-11-04T01:35:46.385Z","event":"herdr.rpc.recovered","episode_id":"eeea1cd9-119e-4494-9b2c-2618530cea0b","operation":"ping","code":"connect_failed","failures":2,"suppressed":1,"since_first_failure_ms":203,"request_id":"br-mw1g3gj0-3","phase":"response","elapsed_ms":101,"connect_ms":0,"timeout_ms":10000,"pending":0}
+(pass) SentWaitingList > shows only the sent words, with no caption, while the agent is about to take them [12.24ms]
+(pass) SentWaitingList > adds a clock beside the bubble once the turn is late, still with no caption [1.54ms]
+(pass) SentWaitingList > shows a long message whole, capped at the lines its turn's card shows, so the turn takes its place at its height [0.71ms]
+(pass) SentWaitingList > is no live region of its own: the chat footer's one status region stays the only one [1.12ms]
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+Detected multiple renderers concurrently rendering the same context provider. This is currently unsupported.
+Detected multiple renderers concurrently rendering the same context provider. This is currently unsupported.
+(pass) mounted > brings the clock in at five seconds, on its own timer [14.34ms]
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+Detected multiple renderers concurrently rendering the same context provider. This is currently unsupported.
+Detected multiple renderers concurrently rendering the same context provider. This is currently unsupported.
+(pass) mounted > leaves no timer behind when the bubble goes before its clock [1.70ms]
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+(pass) mounted > lets a waiting send go when the connection does, and does not bring it back on reconnect [2.07ms]
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+137 |     }
+138 |     try {
+139 |       mount(createElement(Sibling), false);
+140 |       rememberWaitingSend(key, "follow up while working", at + 2_000, waitingBaseline(key));
+141 |       settleWaitingSends(key, [earlier, user("follow up while working", at + 100)], at + 2_100, true);
+142 |       expect(currentWaitingSends(key)).toEqual([]);
+                                             ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   {
++     "after": null,
++     "at": 1793242802000,
++     "id": 2,
++     "pane": "local:baseline-owner",
++     "text": "follow up while working",
++   },
++ ]
+
+- Expected  - 1
++ Received  + 9
+
+      at <anonymous> (/home/christso/.herdr/worktrees/herdr-web-ui-wt/fix-waiting-baseline-disconnect/src/components/SentWaiting.test.tsx:142:40)
+(fail) mounted > a disconnected sibling pane preserves the baseline so a phone's send does not duplicate its transcript turn [1.49ms]
+
+ 7 pass
+ 1 fail
+ 18 expect() calls
+Ran 8 tests across 1 file. [407.00ms]

@@ -1,0 +1,17 @@
+62 | 
+63 |   try {
+64 |     const browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
+65 |     try {
+66 |       await withPage(browser, "?machine=removed&new=workspace&agent=codex", async (page) => {
+67 |         await page.locator(".header-note", { hasText: "That link's PC is not set up here" }).waitFor();
+                                                                                                  ^
+TimeoutError: waitFor: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator('.header-note').filter({ hasText: 'That link\'s PC is not set up here' }) to be visible
+
+  log: [ "  - waiting for locator('.header-note').filter({ hasText: 'That link\\'s PC is not set up here' }) to be visible" ],
+
+      at $WORKTREE/scripts/deep-link-demo-regression.ts:67:94
+      at withPage ($WORKTREE/scripts/deep-link-demo-regression.ts:36:11)
+
+Bun v1.4.3 (Linux x64)
