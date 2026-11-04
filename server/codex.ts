@@ -2751,13 +2751,44 @@ async function peersFirstExchanges(
 }
 
 /**
+ * A peer in a proven different native store cannot own this store's threads. Unknown stores
+ * still compete, and an explicit lookup home must agree with this pane's actual process first.
+ */
+async function withoutOtherCodexStores(
+  panes: HerdrPane[], paneId: string, cwd: string, home: string, process: { pid: number; argv?: string[] } | undefined,
+): Promise<HerdrPane[]> {
+  if (process === undefined
+    || process.argv?.some((arg) => arg === "--remote" || arg.startsWith("--remote="))) return panes;
+  let store: string;
+  try {
+    const named = await certainProcessCodexHome(process.pid, process.argv ?? []);
+    if (named === null) return panes;
+    store = realpathSync(named);
+    if (!sameDirectory(store, realpathSync(home))) return panes;
+  } catch { return panes; }
+  const kept = await Promise.all(panes.map(async (pane) => {
+    if (pane.pane_id === paneId || resolveAgent(pane).agent !== "codex"
+      || (pane.cwd != null && !sameDirectory(pane.cwd, cwd))) return pane;
+    try {
+      const peer = (await codexProcessesOf(pane.pane_id)).list[0];
+      if (peer === undefined
+        || peer.argv?.some((arg) => arg === "--remote" || arg.startsWith("--remote="))) return pane;
+      const named = await certainProcessCodexHome(peer.pid, peer.argv ?? []);
+      if (named === null || !(await isCodexHomeDir(named))) return pane;
+      return !sameDirectory(store, realpathSync(named)) ? null : pane;
+    } catch { return pane; }
+  }));
+  return kept.filter((pane) => pane !== null);
+}
+
+/**
  * The prompt is not ownership evidence on its own. Require its submitted answer,
  * compare older conversations and other same-directory panes too. A peer showing the
  * same exchange leaves ownership ambiguous. No weak binding survives a poll.
  */
 async function shortThreadFromProcess(
   paneId: string, cwd: string, home: string, screen: string,
-  processes: readonly { pid: number }[], panes?: HerdrPane[],
+  processes: readonly { pid: number; argv?: string[] }[], panes?: HerdrPane[],
 ): Promise<string | null> {
   // no later than the process started: Codex 0.163 makes its thread in that same second
   const starts = processes.map(({ pid }) => processStartLowerBound(pid));
@@ -2765,7 +2796,7 @@ async function shortThreadFromProcess(
   const notBefore = Math.min(...starts as number[]);
   let db: Database | undefined;
   try {
-    const peers = panes ?? (await sessionSnapshot()).panes;
+    const peers = await withoutOtherCodexStores(panes ?? (await sessionSnapshot()).panes, paneId, cwd, home, processes[0]);
     if (peers.some((pane) => pane.pane_id !== paneId
       && resolveAgent(pane).agent === "codex" && pane.cwd == null)) return null;
     const opened = openCodexStore(home);
