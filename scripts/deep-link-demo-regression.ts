@@ -63,6 +63,23 @@ try {
   try {
     const browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
     try {
+      await withPage(browser, "?machine=removed&new=workspace&agent=codex", async (page) => {
+        await page.locator(".header-note", { hasText: "That link's PC is not set up here" }).waitFor();
+        assert.equal(await page.getByRole("dialog", { name: /New workspace/ }).count(), 0, "a creation link for an unknown PC never opens a local creation dialog");
+      });
+      await withPage(browser, `?pane=${encodeURIComponent(INFRA)}`, async (page) => {
+        await waitSelected(page, INFRA);
+        await page.evaluate(() => {
+          const selected = JSON.stringify({ machine_id: "previous-PC", pane_id: "w1:p1" });
+          sessionStorage.setItem("ovis:selection", selected);
+          localStorage.setItem("ovis:selection", selected);
+        });
+        await page.goto(`${url}?new=workspace&agent=codex`);
+        await page.getByRole("dialog", { name: "New workspace · workstation", exact: true }).waitFor();
+        assert.equal((await query(page))["machine"], undefined, "a local creation link overrides the remembered PC without a pane or workspace");
+      });
+      console.log("PASS creation links honor their PC without a pane and never create on another PC when the target is missing");
+
       // a link to a workspace opens the pane its row opens, and the address then names it all
       await withPage(browser, `?ws=${wsOf(INFRA)}`, async (page) => {
         await waitSelected(page, INFRA);

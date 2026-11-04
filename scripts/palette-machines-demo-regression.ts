@@ -13,7 +13,7 @@ const app = mkdtempSync(join(tmpdir(), "herdr-palette-machines-"));
 const patch = `(() => {
   const fetchDemo = window.fetch.bind(window), EventSourceDemo = window.EventSource;
   const detachedRemote = new URLSearchParams(location.search).has("detached");
-  const calls = window.paletteMachineCalls = { branches: [], plugins: [], focus: [], runs: [], closes: [] };
+  const calls = window.paletteMachineCalls = { branches: [], plugins: [], focus: [], runs: [], closes: [], agents: [] };
   let last = null, offline = false, missing = false;
   const sources = new Set();
   const json = (value) => new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
@@ -57,6 +57,7 @@ const patch = `(() => {
     const match = url.pathname.match(/^\\/api\\/machines\\/([^/]+)(\\/.*)$/);
     const machine = match ? decodeURIComponent(match[1]) : "local";
     const path = match ? "/api" + match[2] : url.pathname;
+    if (path === "/api/agents") calls.agents.push(machine);
     if (path === "/api/worktree/list") {
       calls.branches.push(machine);
       const id = url.searchParams.get("workspace_id");
@@ -91,6 +92,25 @@ try {
     const browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
     try {
       for (const phone of [false, true]) {
+        const creationContext = await browser.newContext(phone
+          ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: "en-US" }
+          : { viewport: { width: 1280, height: 900 }, locale: "en-US" });
+        try {
+          await creationContext.addInitScript((paneId) => {
+            localStorage.setItem("ovis:settings", JSON.stringify({ language: "en" }));
+            sessionStorage.setItem("ovis:selection", JSON.stringify({ machine_id: "local", pane_id: paneId }));
+          }, panes.api);
+          const page = await creationContext.newPage();
+          await page.goto(`http://127.0.0.1:${server.port}/?machine=remote&new=workspace&agent=codex&view=chat`);
+          const dialog = page.getByRole("dialog", { name: /^New workspace/ });
+          await dialog.waitFor();
+          if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `creation-link-${phone ? "phone" : "desktop"}.png`), animations: "disabled" });
+          assert.equal(await dialog.locator("h2").innerText(), "New workspace · Build PC", "a remote creation link without a pane overrides the remembered local PC");
+          await page.waitForFunction(() => (window as any).paletteMachineCalls.agents.includes("remote"));
+          assert.deepEqual(await page.evaluate(() => (window as any).paletteMachineCalls.agents), ["remote"], "the creation dialog requests only the linked PC's agent choices");
+          assert.equal(await dialog.locator(".agent-picker-label").innerText(), "Codex");
+          console.log(`PASS ${phone ? "phone" : "desktop"} creation link loads the linked remote PC's dialog and agent choices without a pane`);
+        } finally { await creationContext.close(); }
         const detachedContext = await browser.newContext(phone
           ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: "en-US" }
           : { viewport: { width: 1280, height: 900 }, locale: "en-US" });

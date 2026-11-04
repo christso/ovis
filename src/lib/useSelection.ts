@@ -13,9 +13,9 @@ import { storedSelection, storeSelection } from "./useSplitView.ts";
 type SelectionHint = { machine: string; pane: string; workspace: string } | null;
 type SelectTarget = (machineId: string, paneId: string | null, view?: PaneView) => void;
 
-/** Whether the address the app opened with picks the pane, rather than this tab's last selection. */
+/** Whether the address the app opened with picks the PC or pane, rather than this tab's last selection. */
 export function linkSelects(initialLink: AppLink | null): boolean {
-  return initialLink !== null && Boolean(initialLink.pane || initialLink.workspace || fileFromLink(initialLink));
+  return initialLink !== null && Boolean(initialLink.pane || initialLink.workspace || fileFromLink(initialLink) || initialLink.create);
 }
 
 export function useSelectedMachine({ initialLink, machines }: { initialLink: AppLink | null; machines: Machine[] }) {
@@ -32,7 +32,7 @@ export function useSelectionState({ initialLink }: { initialLink: AppLink | null
   const [selectedPaneId, setSelectedPaneId] = useState<string | null>(() => {
     if (initialLink?.pane) return initialLink.pane;
     // a link to a workspace opens the pane its row opens, once the roster is in (below)
-    if (initialLink && (initialLink.workspace || fileFromLink(initialLink))) return null;
+    if (initialLink && (initialLink.workspace || fileFromLink(initialLink) || initialLink.create)) return null;
     return storedSelection()?.pane_id ?? null;
   });
   const [notificationViewTarget, setNotificationViewTarget] = useState<NotificationTarget | null>(
@@ -345,10 +345,11 @@ export function useSelectedLayout({ selectedPane, snapshot, drawerOpen, selected
   return { selectedWorkspace, selectedLayout, presentedPaneId };
 }
 
-export function useMachineGone({ machines, pendingLink, pendingFile, selectedMachineRef, linkSince, selectionSince, rosterSeq, setLinkLanded, setHeaderNote, selectTargetRef, rosterTick, linkTick }: {
+export function useMachineGone({ machines, pendingLink, pendingFile, pendingCreate, selectedMachineRef, linkSince, selectionSince, rosterSeq, setLinkLanded, setHeaderNote, selectTargetRef, rosterTick, linkTick }: {
   machines: Machine[];
   pendingLink: RefObject<AppLink | null>;
   pendingFile: RefObject<string | null>;
+  pendingCreate: RefObject<import("./deepLink.ts").CreateDraft | null>;
   selectedMachineRef: RefObject<string>;
   linkSince: RefObject<number>;
   selectionSince: RefObject<number>;
@@ -368,7 +369,7 @@ export function useMachineGone({ machines, pendingLink, pendingFile, selectedMac
     const machineId = linked ? linked.machine : selectedMachineRef.current;
     const since = linked ? linkSince.current : selectionSince.current;
     if (!machineGone(machines, rosterSeq.current, since, machineId)) return;
-    pendingLink.current = null; pendingFile.current = null;
+    pendingLink.current = null; pendingFile.current = null; pendingCreate.current = null;
     setLinkLanded(true);
     setHeaderNote("machine-missing");
     // no pane: the link's pane id means nothing on another PC, so the pane herdr has in front opens
