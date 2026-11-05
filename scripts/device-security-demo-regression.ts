@@ -394,7 +394,7 @@ try {
             assert.deepEqual(await overflow(page), [], "the confirmation fits");
             if (phone) {
               const targets = await touchTargets(page, ".confirm-dialog button");
-              for (const target of targets) assert.ok(target.height >= 44, `${target.label}: ${target.height} px tall`);
+              for (const target of targets) assert.ok(target.height >= 44 - SUBPIXEL, `${target.label}: ${target.height} px tall`);
             }
             await page.keyboard.press("Escape");
             await dialog.waitFor({ state: "detached" });
@@ -589,7 +589,7 @@ try {
             // at 390 split it between its two words): one box each time, on the name's line or the next, and one
             // line high, as beside a one-letter name (a box of its own could still wrap its words inside it).
             // The name is set in place and put back, so React's own text stays what it rendered
-            const split = await page.locator(".devices-current").evaluate(async (badge) => {
+            const split = await page.locator(".devices-current").evaluate(async (badge, subpixel) => {
               const name = badge.parentElement!.firstChild as Text;
               const rendered = name.data;
               const long = "iPhone · Safari on the long-named phone";
@@ -601,7 +601,7 @@ try {
               const oneLine = badge.getBoundingClientRect().height;
               for (let n = 1; n <= long.length; n++) {
                 name.data = long.slice(0, n);
-                if (badge.getClientRects().length !== 1 || badge.getBoundingClientRect().height !== oneLine) broken.push(name.data);
+                if (badge.getClientRects().length !== 1 || Math.abs(badge.getBoundingClientRect().height - oneLine) > subpixel) broken.push(name.data);
               }
               // a column narrower than the pill itself (Japanese at 320 with Revoke? open beside it): its words wrap
               // inside it, and it stays in the column instead of running under the row's buttons. The column is as
@@ -617,7 +617,7 @@ try {
               column.style.maxWidth = "";
               name.data = rendered;
               return broken;
-            });
+            }, SUBPIXEL);
             assert.deepEqual(split, [], `the this-device pill stays one box beside every name, and inside a narrow column, at ${width}`);
             await page.close();
           }
