@@ -8,7 +8,7 @@ import { currentWaitingSends, forgetWaitingSends, rememberWaitingSend, settleWai
 import { SentWaitingList, useWaitingSends } from "./SentWaiting.tsx";
 
 const at = Date.parse("2026-10-29T03:00:00Z");
-const send: WaitingSend = { id: 1, pane: "local:p1", text: "fix the flaky test", at, after: null };
+const send: WaitingSend = { id: 1, pane: "local:p1", text: "fix the flaky test", at, after: { keys: new Set(), latest: null, takenAt: at - 100 } };
 
 function withEnglish<T>(run: () => T): T {
   const saved = Object.getOwnPropertyDescriptor(navigator, "languages");
@@ -28,6 +28,38 @@ const textWithoutTags = (markup: string): string => markup.replace(/<[^>]*>/gu, 
 afterEach(() => { setSystemTime(); });
 
 describe("SentWaitingList", () => {
+  test("keeps a first-read clock discrepancy as compact sent status, without a second full bubble", () => {
+    const key = waitingKey("local", "first-read-clock");
+    const text = "fix the flaky test";
+    const turn = { role: "user" as const, ts: new Date(at + 422).toISOString(), parts: [{ kind: "text" as const, text }] };
+    try {
+      // The browser submits before its initial conversation read answers, two seconds ahead of
+      // the source clock. The real turn and answer arrive, but cannot safely identify this send.
+      rememberWaitingSend(key, text, at + 2_000, waitingBaseline(key));
+      settleWaitingSends(key, [turn, { ...turn, role: "assistant", parts: [{ kind: "text", text: "done" }] }], at + 3_000, true);
+      const waiting = currentWaitingSends(key);
+      expect(waiting).toHaveLength(1);
+      expect(waiting[0]!.after).toBeNull();
+      const markup = render(at + 3_000, waiting);
+      expect(markup).not.toContain("chat-turn-waiting");
+      expect(markup).not.toContain("chat-bubble");
+      expect(markup).toContain("<summary>");
+      expect(markup).toContain("Sent · waiting for transcript");
+      expect(markup).toContain(text);
+      expect(markup).not.toContain("<details open");
+    } finally { forgetWaitingSends(key); }
+  });
+
+  test("keeps each unread send's full text recoverable beside a loaded-baseline send's bubble", () => {
+    const first: WaitingSend = { ...send, id: 2, after: null, text: "first\n".repeat(30) };
+    const second: WaitingSend = { ...send, id: 3, after: null, text: "second" };
+    const markup = render(at, [first, second, send]);
+    expect(markup.match(/<details\b/gu)).toHaveLength(2);
+    expect(markup.match(/class="chat-turn chat-turn-user chat-turn-waiting"/gu)).toHaveLength(1);
+    expect(markup).toContain(first.text);
+    expect(markup).toContain(second.text);
+  });
+
   test("shows only the sent words, with no caption, while the agent is about to take them", () => {
     for (const now of [at, at + WAITING_HINT_MS - 1]) {
       const markup = render(now);
@@ -50,7 +82,9 @@ describe("SentWaitingList", () => {
   });
 
   test("is no live region of its own: the chat footer's one status region stays the only one", () => {
-    expect(render(at + WAITING_HINT_MS)).not.toMatch(/role="(?:status|alert|log)"|aria-live/u);
+    for (const after of [send.after, null]) {
+      expect(render(at + WAITING_HINT_MS, [{ ...send, after }])).not.toMatch(/role="(?:status|alert|log)"|aria-live/u);
+    }
   });
 });
 
@@ -98,6 +132,15 @@ describe("mounted", () => {
     act(() => { jest.advanceTimersByTime(1); });
     expect(clocks(renderer)).toBe(1);
     expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test("keeps an unread send compact without a bubble hint timer", () => {
+    const renderer = mount(createElement(SentWaitingList, { sends: [{ ...send, after: null }] }));
+    expect(renderer.root.findAllByType("details")).toHaveLength(1);
+    expect(renderer.root.findAllByType("summary")[0]!.children).toEqual(["Sent · waiting for transcript"]);
+    expect(jest.getTimerCount()).toBe(0);
+    act(() => { jest.advanceTimersByTime(WAITING_HINT_MS); });
+    expect(clocks(renderer)).toBe(0);
   });
 
   test("leaves no timer behind when the bubble goes before its clock", () => {

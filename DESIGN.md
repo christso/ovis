@@ -2090,6 +2090,11 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   composer's terminal commands). It has no outcome chip or unconfirmed output preview.
   The same row replaces a matching native user turn, so the command never appears twice.
   Recognized informational result cards, including Hermes, keep their existing presentation.
+- A confirmed prose send made before the first conversation read uses compact **Sent · waiting
+  for transcript** status with expandable original text. Loaded-baseline sends keep their faded
+  bubble. Matching and expiry stay unchanged; ambiguous status may remain for 60 seconds. This
+  differs from the native Codex/Claude message lists because Ovis cannot establish a first-read
+  turn identity from independent clocks; it preserves status without displaying a second turn.
 - An ordinary command sent from the chat says what became of it under its bubble (`.chat-outcome`,
   `lib/outcomeChip.ts`): one quiet `--fs-xs` line in `--text-dim` on the message's side, a 14px
   glyph and the state in words, read as a `role="status"` live region. It follows the delivery

@@ -209,4 +209,5 @@ export const CHAT_JA: Record<string, string> = {
   "Open link": "リンクを開く",
   "Share link": "リンクを共有",
   "Sent · waiting for the agent's next turn": "送信済み · エージェントの次のターンを待っています",
+  "Sent · waiting for transcript": "送信済み · 会話ログへの反映を待っています",
 };
