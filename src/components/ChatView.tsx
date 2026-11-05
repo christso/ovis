@@ -46,6 +46,7 @@ import { useMediaQuery } from "../lib/useMediaQuery.ts";
 import { statusEdgeRead } from "../lib/status.ts";
 import { askedQuestions } from "../../shared/askQuestions.ts";
 import { settleWaitingSends, waitingKey } from "../lib/sentWaiting.ts";
+import { observePendingTranscript, pendingTranscriptMatches } from "../lib/pendingTranscript.ts";
 import { SentWaitingList, useWaitingSends } from "./SentWaiting.tsx";
 import { ConversationRefresh } from "../lib/conversationRefresh.ts";
 import { teammateMessageParts, type TeammateMessage } from "../lib/teammateMessage.ts";
@@ -172,7 +173,8 @@ export interface ChatViewProps {
   /** bumped as a send that bumped sentKey is refused with nothing typed: the stopped turn it hid shows again once its copy is gone */
   unsentKey?: number;
   /** the pane's pending rows: one going out (`sending`, Send now or the turn-end drain) empties the agent's box before its receipt bumps sentKey */
-  pendingRows?: readonly Pick<PendingMessage, "id" | "state">[];
+  pendingRows?: readonly PendingMessage[];
+  onPendingTarget?: (id: string, target: HTMLElement | null) => void;
   /** bumped once this browser's own message from the box was accepted at once, with the navigation
    * generation it went out at: the chat follows it to the end unless the reader navigated since */
   localSend?: { key: number; navigationGeneration: number };
@@ -244,7 +246,7 @@ interface ChatState {
 }
 
 const EMPTY_STATE: ChatState = { source: "conversation", turns: [], messages: [], truncated: false };
-const NO_ROWS: readonly Pick<PendingMessage, "id" | "state">[] = [];
+const NO_ROWS: readonly PendingMessage[] = [];
 
 /** One row of the timeline: a loaded turn in its browser slot, or a provisional sent row keyed by its outcome. */
 type ChatRow = { key: string; beforeUser: boolean } & (
@@ -956,6 +958,12 @@ interface TurnProps {
   outcomeActions?: OutcomeActions | null;
   /** Claude Code, grok, agy: the message offers to open the terminal, where the agent's own rewind is run (lib/rewindAction.ts) */
   onRewindInTerminal?: (() => void) | null;
+  pendingReview?: { id: string; onTarget: (id: string, target: HTMLElement | null) => void } | null;
+}
+
+function PendingReviewTarget({ id, onTarget }: NonNullable<TurnProps["pendingReview"]>) {
+  const target = useCallback((node: HTMLDivElement | null) => onTarget(id, node), [id, onTarget]);
+  return <div className="chat-pending-recovery" ref={target} />;
 }
 
 const TASK_RESULT_ICONS: Record<OmoTaskResult["status"], ComponentType<LucideProps>> = { completed: CircleCheck, failed: CircleX, cancelled: CircleSlash };
@@ -1027,7 +1035,7 @@ function noticeLabel(t: ReturnType<typeof useT>, notice: Extract<ConversationPar
 }
 
 // a turn that did not change keeps its object across polls: skip re-rendering it
-export const Turn = memo(function Turn({ paneId, turn, rowKey, live, waiting, showThinking, expandThinking = false, foldWork = false, skills = null, userSkills = null, outcome = null, outcomeActions = null, onRewindInTerminal = null }: TurnProps) {
+export const Turn = memo(function Turn({ paneId, turn, rowKey, live, waiting, showThinking, expandThinking = false, foldWork = false, skills = null, userSkills = null, outcome = null, outcomeActions = null, onRewindInTerminal = null, pendingReview = null }: TurnProps) {
   const t = useT();
   const memory = useContext(ChatRowMemoryContext);
   // what the drawn runs, and the runs that drew no block, were named, by part index; the row's
@@ -1106,6 +1114,7 @@ export const Turn = memo(function Turn({ paneId, turn, rowKey, live, waiting, sh
       </div>
       {copyError}
       {outcome !== null && <OutcomeChip outcome={outcome} actions={outcomeActions} />}
+      {pendingReview !== null && <PendingReviewTarget {...pendingReview} />}
       {/* the skill this message invoked (omp, omo, pi): the runtime recorded its instructions with it */}
       <SkillActivityList parts={turn.parts} />
     </article>;
@@ -1216,7 +1225,7 @@ function TerminalFallback({ paneId, visible }: { paneId: string; visible: boolea
 }
 
 // the app re-renders on every pane-status and poll; an unchanged transcript sits those out
-export const ChatView = memo(function ChatView({ paneId, presentationKey, finishEpoch, finishId, active = true, visible: paneVisible = true, pageScroll, refreshKey, invalidationKey = 0, onConversationWatch, conversationPushes = false, onTerminalOutput, sentKey = 0, unsentKey = 0, pendingRows = NO_ROWS, localSend, navigation, connected, ended, agent, agentStatus, agentSession = null, onMetadata, onRead, greeted = false, onPrompt, onSuggestion, onRestored, promptRefreshKey = 0, pendingAnswer = null, onPendingAnswerDone, promptDock = null, onPromptAnswered, title = null, onOpenTerminal, covered = false, peek = null, onCommandScreenClosed, onOutcomes, interactive = false, quotable = false, onRewindInTerminal, cwd = null }: ChatViewProps) {
+export const ChatView = memo(function ChatView({ paneId, presentationKey, finishEpoch, finishId, active = true, visible: paneVisible = true, pageScroll, refreshKey, invalidationKey = 0, onConversationWatch, conversationPushes = false, onTerminalOutput, sentKey = 0, unsentKey = 0, pendingRows = NO_ROWS, onPendingTarget, localSend, navigation, connected, ended, agent, agentStatus, agentSession = null, onMetadata, onRead, greeted = false, onPrompt, onSuggestion, onRestored, promptRefreshKey = 0, pendingAnswer = null, onPendingAnswerDone, promptDock = null, onPromptAnswered, title = null, onOpenTerminal, covered = false, peek = null, onCommandScreenClosed, onOutcomes, interactive = false, quotable = false, onRewindInTerminal, cwd = null }: ChatViewProps) {
   const t = useT();
   const { fetchPaneConversation, peekPaneConversation, fetchPanePromptState, fetchPaneTranscript } = useMachineApi();
   const { settings } = useSettings();
@@ -2313,19 +2322,24 @@ export const ChatView = memo(function ChatView({ paneId, presentationKey, finish
     if (commandScreenClosed(peek, agent, at, turns)) onCommandScreenClosed(peek);
   }, [peek, outcomes, turns, agent, onCommandScreenClosed]);
   const outcomeActions = useMemo((): OutcomeActions => ({ answer: promptUp ? focusPrompt : null, terminal: onOpenTerminal ?? null, commands }), [promptUp, focusPrompt, onOpenTerminal, commands]);
+  const waitKey = waitingKey(machineId, paneId);
+  const pendingMatches = useMemo(() => known && !screenRead
+    ? pendingTranscriptMatches(waitKey, historyId, pendingRows, shownTurns) : new Map<number, string>(), [known, screenRead, waitKey, historyId, pendingRows, shownTurns]);
   // Nothing is typed: drafts and the agent's own rewind remain in the terminal.
   const offered = rewindOffer({ agent, interactive, connected, ended, conversation: state.source === "conversation" });
   const rewindInTerminal = offered === "terminal" ? onRewindInTerminal ?? null : null;
   const renderTurn = useCallback((row: ChatRow) => {
     if (row.turn === null) return <OutcomeRow outcome={row.outcome} actions={outcomeActions} skills={skillMatcher} />;
     const { turn } = row;
+    const pendingId = pendingMatches.get(row.index);
     const live = isLiveWorkTurn(turn, row.index === shownTurns.length - 1, workStatus, finishedBeforeSend);
     return <RenderBoundary resetKey={turnRevision(turn, true)} fallback={() => <p className="chat-inline-state chat-inline-error" data-pane-content-error>{t("This message can't be shown here. The terminal has it.")}</p>}>
       <Turn paneId={paneId} turn={turn} rowKey={row.key} live={live} waiting={isWaitingWorkTurn(live, agentStatus)} showThinking={settings.showThinking}
         expandThinking={settings.expandThinking} foldWork={settings.foldWork} skills={skillMatcher} userSkills={skillMatcher} outcome={row.outcome} outcomeActions={outcomeActions}
-        onRewindInTerminal={turn.role === "user" ? rewindInTerminal : null} />
+        onRewindInTerminal={turn.role === "user" ? rewindInTerminal : null}
+        pendingReview={pendingId !== undefined && onPendingTarget !== undefined ? { id: pendingId, onTarget: onPendingTarget } : null} />
     </RenderBoundary>;
-  }, [shownTurns.length, workStatus, finishedBeforeSend, t, paneId, agentStatus, settings.showThinking, settings.expandThinking, settings.foldWork, skillMatcher, outcomeActions, rewindInTerminal]);
+  }, [shownTurns.length, workStatus, finishedBeforeSend, t, paneId, agentStatus, settings.showThinking, settings.expandThinking, settings.foldWork, skillMatcher, outcomeActions, rewindInTerminal, pendingMatches, onPendingTarget]);
   // displayPaneTitle falls back to the pane id for a pane with nothing else to call it
   const shownTitle = title?.trim() ?? "";
   const logLabel = shownTitle !== "" && shownTitle !== paneId ? t("conversation of {pane}", { pane: shownTitle }) : t("Conversation");
@@ -2359,14 +2373,14 @@ export const ChatView = memo(function ChatView({ paneId, presentationKey, finish
   // A message this browser sent that the pane has not written as a turn yet: Claude records the user
   // turn only when its next turn starts, so without this the chat would show nothing at all. The
   // queue lives in the store, so a reader who goes to another tab and comes back still sees it.
-  const waitKey = waitingKey(machineId, paneId);
   const sentWaiting = useWaitingSends(machineId, paneId, connected);
   // before paint: a frame never shows a send's turn and its waiting bubble together. Only a
   // conversation read that answered says what the chat holds: a failed read leaves it unknown
   const turnsRead = loaded && error === null && state.source === "conversation";
   useLayoutEffect(() => {
     settleWaitingSends(waitKey, state.turns, Date.now(), turnsRead);
-  }, [sentWaiting, state.turns, turnsRead, waitKey]);
+    if (turnsRead) observePendingTranscript(waitKey, screenRead ? undefined : historyId);
+  }, [sentWaiting, state.turns, turnsRead, waitKey, historyId, screenRead]);
   const waitWords = useAnnouncedText(!loaded && error === null ? t("Loading conversation…") : waiting ? t("Waiting for the PC…") : null);
   const retryRead = useCallback(() => { setFailures(0); conversationRefresh.refresh(); }, [conversationRefresh]);
   const footer = <>

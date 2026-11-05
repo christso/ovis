@@ -56,11 +56,11 @@ const turnTime = (turn: Turn): number => turn.ts === null ? Number.NaN : Date.pa
  * `answeredAt`: the newest time of the turns written after this one, NaN when none is dated.
  * `last`: it is the last of the turns read, nothing after it, dated or not.
  */
-function newerThanSend(send: WaitingSend, at: number, key: string, answeredAt: number, last: boolean): boolean {
+function newerThanSend(send: Pick<WaitingSend, "text" | "at" | "after">, at: number, key: string, answeredAt: number, last: boolean, allowCoarse = true): boolean {
   const after = send.after;
   // the send's own turn is written after its `at`, which is taken before submitting; a transcript
   // that keeps whole seconds (Grok's) may record it up to a second early
-  const coarse = at % 1000 === 0 ? 1000 : 0;
+  const coarse = allowCoarse && at % 1000 === 0 ? 1000 : 0;
   if (after === null) {
     if (at >= send.at) return true;
     // Stamped in the send's own second, with no turns shown before the send to tell them apart: an
@@ -77,9 +77,9 @@ function newerThanSend(send: WaitingSend, at: number, key: string, answeredAt: n
   return after.latest === null || (at >= after.latest && at + coarse + (after.takenAt - after.latest) > send.at);
 }
 
-function turnMatches(send: WaitingSend, turn: Turn, key: string, answeredAt: number, last: boolean): boolean {
+function turnMatches(send: Pick<WaitingSend, "text" | "at" | "after">, turn: Turn, key: string, answeredAt: number, last: boolean, allowCoarse = true): boolean {
   const at = turnTime(turn);
-  if (turn.role !== "user" || !Number.isFinite(at) || !newerThanSend(send, at, key, answeredAt, last)) return false;
+  if (turn.role !== "user" || !Number.isFinite(at) || !newerThanSend(send, at, key, answeredAt, last, allowCoarse)) return false;
   return said(turn.parts.filter((part) => part.kind === "text").map((part) => part.text).join(" ")) === said(send.text);
 }
 
@@ -100,7 +100,7 @@ let nextId = 0;
 export const waitingKey = (machineId: string, paneId: string): string => `${machineId}:${paneId}`;
 
 /** Each user turn's identity, the same turn twice told apart by its place: only a user turn can be a send's. */
-function userTurns(turns: readonly Turn[]): { turn: Turn; key: string; answeredAt: number; last: boolean }[] {
+function userTurns(turns: readonly Turn[]): { turn: Turn; key: string; index: number; answeredAt: number; last: boolean }[] {
   const occurrences = new Map<string, number>();
   const laterTimes = new Array<number>(turns.length);
   let newest = Number.NaN;
@@ -114,8 +114,17 @@ function userTurns(turns: readonly Turn[]): { turn: Turn; key: string; answeredA
     const identity = JSON.stringify([turn.ts, turn.parts]);
     const occurrence = occurrences.get(identity) ?? 0;
     occurrences.set(identity, occurrence + 1);
-    return [{ turn, key: `${identity}:${occurrence}`, answeredAt: laterTimes[index]!, last: index === turns.length - 1 }];
+    return [{ turn, key: `${identity}:${occurrence}`, index, answeredAt: laterTimes[index]!, last: index === turns.length - 1 }];
   });
+}
+
+export function transcriptTurnMatcher(turns: readonly Turn[]): (text: string, at: number, after: WaitingBaseline) => number[] {
+  const candidates = userTurns(turns);
+  return (text, at, after) => {
+    const send = { text: composerMessage(text), at, after };
+    if (after.latest === null || send.text.trim() === "" || !becomesTurn(send.text)) return [];
+    return candidates.filter((candidate) => turnMatches(send, candidate.turn, candidate.key, candidate.answeredAt, candidate.last, false)).map((candidate) => candidate.index);
+  };
 }
 
 /** What the pane's chat holds now; take it before submitting, as `at` is. */
