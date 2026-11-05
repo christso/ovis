@@ -1,0 +1,18 @@
+{
+  "native-dogfood/fast-check-summary.txt": "2383e39e5e8975f668b36137911de1f298b007250a3152c4c3c18967dc856ab5",
+  "native-dogfood/README.md": "a3f2f0ad3a0486c07a8f60de54b612b809b0061d69793823c498d1966ae4f4f5",
+  "native-dogfood/reproduce-send-now.ts": "3b15715664fbf266c8c2e9464db576e824b6c379579bc4f4d4646656af1444df",
+  "native-dogfood/reproduce-clock.ts": "d34f6a93fc5ce7ab01b9e1777ea7c70233f737f3da7df195f4d2b2693e43c237",
+  "native-dogfood/native-trials.json": "a9beb948a2de733e70b7e86e57df220e0b721ac90a53e9f1d114d5a3d4abaaa5",
+  "native-dogfood/send-now-results.json": "59dc7a96ff216a7ca4d00119434f670dfcc3371e35a6656eaf9d7586e2aa65d2",
+  "native-dogfood/clock-results.json": "285ed3a8fa567ae33a5d9a6481e9b125d7aa39a43aee856d3bbcebb18800b353",
+  "native-dogfood/control-clock-ahead-loaded.mp4": "e4ed8b72e5c40620e9816206303ef8fe653b784521570a1f329269056911c82f",
+  "native-dogfood/control-clock-aligned.mp4": "9ba2c43cda4be5cc92c67344b9673c91920c66c1aac0efe544ef7df6fe892185",
+  "native-dogfood/clock-after-reload.png": "572bd09aa662e6aab406ab225fee18eb0c779b4561917e0e496ddb58399eb75e",
+  "native-dogfood/native-faded-clock.png": "549df3985839a8b811d25f4537a6d9079b9766c4f42f98b02e968174d5bdb920",
+  "native-dogfood/native-faded-clock.mp4": "f8de25a1b27b1e66044c77e346918cd347d4b53cb5bc6331888999de033e64ff",
+  "native-dogfood/after-dismiss.png": "e9d3f34d6e44e414926cb956e8140fc3921d390c7ace89e26d2f7d531cef0110",
+  "native-dogfood/after-reload.png": "da28e00696df7a23952b93ecfcf4fb92f3903af41407943f273c7f060db0ed79",
+  "native-dogfood/native-send-now.png": "2c73f6c0091255403ea0efec8437f8c5dc97d4d42f966b58589c893e802c53db",
+  "native-dogfood/native-send-now.mp4": "01469b778554714446ffef9f1ad969e68271d3eaabeacdd22efd9695947f4be8"
+}

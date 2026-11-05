@@ -1,0 +1,8 @@
+unit: 680 test files
+unit: 11250 pass, 0 fail, 44 skip in 680 files, 4 at a time, 174.4s
+ok     workflow syntax (0.0s)
+ok     generated types are fresh (0.0s)
+ok     generated themes are fresh (0.3s)
+ok     typecheck (5.5s)
+ok     build (3.3s)
+ok     unit tests (174.5s)

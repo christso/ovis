@@ -2,6 +2,8 @@
 
 This orphan branch contains investigation artifacts only. It changes no Ovis source and is not part of upstream PR #2792.
 
+**Follow-up: [native Codex dogfooding and UX findings](native-dogfood/README.md).** The newer runs use actual native transcripts and no forced transport failures. They reproduce the Send now warning in four fresh sessions and the faded placeholder under a simulated browser-clock/first-read condition. The sections below preserve the earlier controlled demo and acknowledgement-fault experiments.
+
 ## What is reproduced
 
 The real Ovis client displays one native transcript bubble together with its faded, clock-marked waiting placeholder. The placeholder later disappears while the transcript message remains. The recording contains one submit, not a repeated send.

@@ -1,0 +1,236 @@
+[
+  {
+    "run": "native-dogfood",
+    "completedWholeScript": true,
+    "cases": [
+      {
+        "label": "idle-1",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 3778,
+        "reply": {
+          "ok": true
+        },
+        "userTurns": 1,
+        "uncertainCards": 0,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "idle-2",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 3468,
+        "reply": {
+          "ok": true
+        },
+        "userTurns": 1,
+        "uncertainCards": 0,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "idle-3",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 3369,
+        "reply": {
+          "ok": true
+        },
+        "userTurns": 1,
+        "uncertainCards": 0,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "auto-drain",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 5260,
+        "reply": {
+          "ok": true
+        },
+        "userTurns": 1,
+        "uncertainCards": 0,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "send-now",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 4938,
+        "reply": {
+          "ok": true,
+          "pending": "queued"
+        },
+        "userTurns": 1,
+        "uncertainCards": 1,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "reload",
+        "nativeAgent": true,
+        "source": "codex-transcript",
+        "uncertainCards": 1,
+        "fadedBubbles": 0
+      }
+    ]
+  },
+  {
+    "run": "native-dogfood-repeat",
+    "completedWholeScript": false,
+    "cases": [
+      {
+        "label": "idle-1",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 3962,
+        "reply": {
+          "ok": true
+        },
+        "userTurns": 1,
+        "uncertainCards": 0,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "send-now-1",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 4083,
+        "reply": {
+          "ok": true,
+          "pending": "queued"
+        },
+        "userTurns": 1,
+        "uncertainCards": 1,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      }
+    ]
+  },
+  {
+    "run": "native-dogfood-confirm",
+    "completedWholeScript": false,
+    "cases": [
+      {
+        "label": "idle-1",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 3888,
+        "reply": {
+          "ok": true
+        },
+        "userTurns": 1,
+        "uncertainCards": 0,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "send-now-1",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 4352,
+        "reply": {
+          "ok": true,
+          "pending": "queued"
+        },
+        "userTurns": 1,
+        "uncertainCards": 1,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      }
+    ]
+  },
+  {
+    "run": "native-lifecycle",
+    "completedWholeScript": true,
+    "cases": [
+      {
+        "label": "idle-1",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 3662,
+        "reply": {
+          "ok": true
+        },
+        "userTurns": 1,
+        "uncertainCards": 0,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "send-now-1",
+        "nativeAgent": true,
+        "transcriptFixture": false,
+        "faultInjected": false,
+        "source": "codex-transcript",
+        "durationMs": 4187,
+        "reply": {
+          "ok": true,
+          "pending": "queued"
+        },
+        "userTurns": 1,
+        "uncertainCards": 1,
+        "fadedBubbles": 0,
+        "duplicateFrames": 0,
+        "relatedSubmits": 1
+      },
+      {
+        "label": "reload-and-dismiss",
+        "nativeAgent": true,
+        "source": "codex-transcript",
+        "uncertainBefore": 1,
+        "uncertainAfter": 0,
+        "userTurnsBefore": 3,
+        "userTurnsAfter": 3,
+        "newSubmits": 0,
+        "queueAccessibleLabel": "Queued messages",
+        "buttons": [
+          {
+            "label": "Copy message",
+            "title": "Copy message",
+            "text": ""
+          },
+          {
+            "label": "Discard saved copy",
+            "title": "Discard saved copy",
+            "text": ""
+          }
+        ]
+      }
+    ]
+  }
+]

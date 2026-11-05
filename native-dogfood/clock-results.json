@@ -1,0 +1,55 @@
+{
+  "results": [
+    {
+      "name": "clock-aligned-loaded",
+      "offset": 0,
+      "hold": false,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:23:36.408Z",
+      "serverObservedSendTime": 1793838214860,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "video": "control-clock-aligned.mp4"
+    },
+    {
+      "name": "clock-ahead-loaded",
+      "offset": 2000,
+      "hold": false,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:23:46.588Z",
+      "serverObservedSendTime": 1793838226035,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "video": "control-clock-ahead-loaded.mp4"
+    },
+    {
+      "name": "clock-ahead-first-read",
+      "offset": 2000,
+      "hold": true,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:23:56.133Z",
+      "serverObservedSendTime": 1793838235711,
+      "fadedBubbles": 1,
+      "uncertainCards": 0,
+      "fadedAfterReload": 0,
+      "submitsAfterReload": 0,
+      "video": "native-faded-clock.mp4"
+    }
+  ],
+  "errors": []
+}
