@@ -1730,6 +1730,31 @@ for (const remote of [["--remote", "ws://fixture.invalid:4500"], ["--remote=ws:/
   });
 }
 
+shortIt("keeps a peer ambiguous while any of its Codex processes shares the selected store", async () => {
+  await shortSession();
+  const otherHome = join(root, "other-codex-home");
+  mkdirSync(otherHome);
+  fs.copyFileSync(join(home, "state_5.sqlite"), join(otherHome, "state_5.sqlite"));
+  const elsewhere = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+  const shared = await runningCodex(false, { ...process.env, CODEX_HOME: home });
+  foregrounds.set("peer", [elsewhere, shared].map((child) => ({ pid: child.pid, argv: [join(root, "codex")] })));
+  peerScreens.set("peer", "Working…");
+  expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+});
+
+shortIt("keeps peers ambiguous while any of this pane's Codex processes uses another store", async () => {
+  await shortSession();
+  const otherHome = join(root, "other-codex-home");
+  mkdirSync(otherHome);
+  fs.copyFileSync(join(home, "state_5.sqlite"), join(otherHome, "state_5.sqlite"));
+  const own = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+  foreground.push({ pid: own.pid, argv: [join(root, "codex")] });
+  const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+  foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+  peerScreens.set("peer", "Working…");
+  expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+});
+
 shortIt("keeps a peer with an inaccessible environment ambiguous", async () => {
   await shortSession();
   foregrounds.set("peer", [{ pid: 2147483647, argv: [join(root, "codex")] }]);
