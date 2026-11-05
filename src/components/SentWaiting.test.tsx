@@ -3,6 +3,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 
+import type { Machine } from "../../shared/machines.ts";
+import { paneLifetimes } from "../lib/paneLifetime.ts";
 import { SettingsProvider } from "../lib/settings.ts";
 import { currentWaitingSends, forgetWaitingSends, rememberWaitingSend, settleWaitingSends, WAITING_HINT_MS, waitingBaseline, waitingKey, type WaitingSend } from "../lib/sentWaiting.ts";
 import { SentWaitingList, useWaitingSends } from "./SentWaiting.tsx";
@@ -126,13 +128,15 @@ describe("mounted", () => {
   });
 
   test("a disconnected sibling pane preserves the baseline so a phone's send does not duplicate its transcript turn", () => {
-    const key = waitingKey("local", "baseline-owner");
+    // a PC whose snapshots name their herdr: a reconnect to it is the same herdr
+    paneLifetimes.observe([{ id: "skewed-PC", snapshot: { panes: [], herdr_lifetime: "skewed-herdr" } } as unknown as Machine]);
+    const key = waitingKey("skewed-PC", "baseline-owner");
     const user = (text: string, ts: number) => ({ role: "user" as const, ts: new Date(ts).toISOString(), parts: [{ kind: "text" as const, text }] });
     // The phone is two seconds ahead of the PC. Its loaded chat already accounts for that skew.
     const earlier = user("earlier", at - 10_000);
     settleWaitingSends(key, [earlier], at, true);
     function Sibling() {
-      useWaitingSends("local", "another-pane", false);
+      useWaitingSends("skewed-PC", "another-pane", false);
       return null;
     }
     try {

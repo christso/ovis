@@ -158,7 +158,6 @@ export function currentWaitingSends(key: string): readonly WaitingSend[] {
  */
 export function settleWaitingSends(key: string, turns: readonly Turn[], now = Date.now(), loaded = turns.length > 0): void {
   const candidates = userTurns(turns);
-  if (!loaded && turns.length === 0) shown.delete(key);
   if (loaded) {
     // every shown turn was written before this read, the agent's too: the newest of them all bounds the skew
     const times = turns.map(turnTime).filter(Number.isFinite);
@@ -188,8 +187,18 @@ export function forgetWaitingSends(key: string): void {
   if (waiting.delete(key)) announce();
 }
 
-/** A connection loss drops provisional bubbles, but does not invalidate a chat's loaded turns. */
+/** The chat dropped its transcript for another history: the turns it showed are no baseline for its next send. */
+export function forgetWaitingBaseline(key: string): void {
+  shown.delete(key);
+}
+
+/**
+ * A connection loss drops provisional bubbles, but does not invalidate a chat's loaded turns. Only a
+ * PC whose snapshots name their herdr keeps them: an older bridge's replacement would reuse its pane
+ * ids unnoticed, so its baselines go with the connection.
+ */
 export function clearMachineWaitingSends(machineId: string): void {
+  if (typeof paneLifetimes.generation(machineId) !== "string") { forgetMachineWaitingSends(machineId); return; }
   let changed = false;
   for (const key of waiting.keys()) {
     if (key.startsWith(`${machineId}:`)) { waiting.delete(key); changed = true; }
@@ -207,6 +216,9 @@ export function forgetMachineWaitingSends(machineId: string): void {
 export function pruneWaitingSends(machines: readonly Machine[]): void {
   for (const machine of machines) {
     if (machine.state !== "connected" || machine.snapshot === null) continue;
+    // a roster read from a herdr this page already left (paneLifetimes skipped it) proves no pane closed
+    const lifetime = machine.snapshot.herdr_lifetime;
+    if (lifetime !== undefined && lifetime !== paneLifetimes.generation(machine.id)) continue;
     const open = new Set(machine.snapshot.panes.map((pane) => waitingKey(machine.id, pane.pane_id)));
     for (const key of listedPanes.get(machine.id) ?? []) {
       if (!open.has(key)) forgetWaitingSends(key);

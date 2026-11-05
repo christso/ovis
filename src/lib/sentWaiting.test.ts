@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { clearMachineWaitingSends, currentWaitingSends, expireWaitingSends, forgetMachineWaitingSends, forgetWaitingSends, pruneWaitingSends, rememberWaitingSend, settleWaitingSends, WAITING_SEND_MS, waitingBaseline, waitingKey } from "./sentWaiting.ts";
+import { clearMachineWaitingSends, currentWaitingSends, expireWaitingSends, forgetMachineWaitingSends, forgetWaitingBaseline, forgetWaitingSends, pruneWaitingSends, rememberWaitingSend, settleWaitingSends, WAITING_SEND_MS, waitingBaseline, waitingKey } from "./sentWaiting.ts";
 import type { ConversationTurn } from "../../shared/protocol.ts";
 import type { Machine } from "../../shared/machines.ts";
 import { paneLifetimes } from "./paneLifetime.ts";
@@ -318,19 +318,20 @@ describe("waitingText", () => {
   });
 
   it("connection cleanup clears that PC's waiting copies while retaining loaded transcript baselines", () => {
-    const here = waitingKey("local", "cleanup-owner"), other = waitingKey("local", "cleanup-sibling"), away = waitingKey("remote", "cleanup-owner");
+    const here = waitingKey("cleanup-PC", "cleanup-owner"), other = waitingKey("cleanup-PC", "cleanup-sibling"), away = waitingKey("cleanup-away", "cleanup-owner");
     const keys = [here, other, away];
+    paneLifetimes.observe(["cleanup-PC", "cleanup-away"].map((id) => ({ id, snapshot: { panes: [], herdr_lifetime: `${id}-herdr` } } as unknown as Machine)));
     try {
       for (const key of keys) {
         settleWaitingSends(key, [user("earlier", 1)], 10, true);
         rememberWaitingSend(key, "next", 20, waitingBaseline(key));
       }
       const baselines = keys.map(waitingBaseline);
-      clearMachineWaitingSends("local");
+      clearMachineWaitingSends("cleanup-PC");
       expect(keys.map((key) => currentWaitingSends(key).length)).toEqual([0, 0, 1]);
       for (const [index, key] of keys.entries()) expect(waitingBaseline(key)).toBe(baselines[index]!);
       // A replaced Herdr must still forget those baselines before its pane IDs are reused.
-      forgetMachineWaitingSends("local");
+      forgetMachineWaitingSends("cleanup-PC");
       expect(keys.map((key) => waitingBaseline(key) === null)).toEqual([true, true, false]);
     } finally { for (const key of keys) forgetWaitingSends(key); }
   });
@@ -376,13 +377,50 @@ describe("waitingText", () => {
     } finally { forgetMachineWaitingSends("retired-PC"); }
   });
 
+  it("a bridge that names no herdr loses its baselines with the connection: a replacement could reuse its pane ids", () => {
+    const key = waitingKey("unnamed-PC", "reused");
+    paneLifetimes.observe([{ id: "unnamed-PC", snapshot: { panes: [] } } as unknown as Machine]);
+    try {
+      settleWaitingSends(key, [], 10, true);
+      clearMachineWaitingSends("unnamed-PC");
+      expect(waitingBaseline(key)).toBeNull();
+    } finally { forgetMachineWaitingSends("unnamed-PC"); }
+  });
+
+  it("does not prune by a roster read from a herdr the page already left", () => {
+    const key = waitingKey("moved-PC", "new-pane");
+    const roster = (lifetime: string, panes: { pane_id: string }[]) => [{ id: "moved-PC", state: "connected", snapshot: { panes, herdr_lifetime: lifetime } } as unknown as Machine];
+    try {
+      paneLifetimes.observe(roster("moved-a", []));
+      paneLifetimes.observe(roster("moved-b", [{ pane_id: "new-pane" }]));
+      pruneWaitingSends(roster("moved-b", [{ pane_id: "new-pane" }]));
+      rememberWaitingSend(key, "still mine", Date.now());
+      // a delayed read of the herdr left behind, without the pane: paneLifetimes skips it, so must the prune
+      const stale = roster("moved-a", []);
+      paneLifetimes.observe(stale);
+      pruneWaitingSends(stale);
+      expect(currentWaitingSends(key).map((send) => send.text)).toEqual(["still mine"]);
+    } finally { forgetMachineWaitingSends("moved-PC"); }
+  });
+
+  it("keeps a chat's baseline while it remounts empty before its read", () => {
+    const key = waitingKey("local", "remounted");
+    try {
+      settleWaitingSends(key, [user("earlier", 1_000)], 3_000, true);
+      const baseline = waitingBaseline(key);
+      settleWaitingSends(key, [], 9_000, false);
+      settleWaitingSends(key, [user("earlier", 1_000)], 9_100, true);
+      expect(waitingBaseline(key)).toBe(baseline);
+    } finally { forgetWaitingSends(key); }
+  });
+
   it("forgets a replaced transcript's baseline before the next send", () => {
     const key = waitingKey("local", "replaced"), sibling = waitingKey("local", "retained-sibling");
     const turn = user("repeat", 10_000);
     try {
       for (const pane of [key, sibling]) settleWaitingSends(pane, [turn], 3_000, true);
       const retained = waitingBaseline(sibling);
-      settleWaitingSends(key, [], 3_100, false);
+      forgetWaitingBaseline(key);
       expect(waitingBaseline(key)).toBeNull();
       expect(waitingBaseline(sibling)).toBe(retained);
       rememberWaitingSend(key, "repeat", 3_100, waitingBaseline(key));
