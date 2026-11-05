@@ -14,7 +14,7 @@ The fork now places uncertain-send recovery under a unique native transcript tur
 
 ## Deployed source verified
 
-The installed source at `de7ba960a5293bda67289f357476ac924ebfe69d` passed the same native smoke test after deployment. [Installed-source green MP4](deployed/green.mp4), [results](deployed/results.json), [phone screenshot](deployed/inline-phone.png), and [HTTPS/deployment verification](deployed/deployment-verification.json). The served client matches the installed build; configuration, device identities, bundle pin and Herdr socket were preserved. Merge remains gated on hosted CI.
+The installed source at `de7ba960a5293bda67289f357476ac924ebfe69d` passed the same native smoke test after deployment. [Installed-source green MP4](deployed/green.mp4), [results](deployed/results.json), [phone screenshot](deployed/inline-phone.png), and [HTTPS/deployment verification](deployed/deployment-verification.json). The served client matches the installed build; configuration, device identities, bundle pin and Herdr socket were preserved. [Fork PR #16](https://github.com/christso/ovis/pull/16) merged after all 12 checks passed. [Merge and CI receipt](merge-verification.json) confirms that the deployed and fork-main trees are identical. The source checkout is on clean `christso/main`; the finished feature worktree and branch were removed.
 
 ## What the recordings establish
 
