@@ -1,0 +1,61 @@
+{
+  "results": [
+    {
+      "name": "clock-aligned-loaded",
+      "offset": 0,
+      "hold": false,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:51:49.746Z",
+      "serverObservedSendTime": 1793839908180,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "compactStatuses": 0,
+      "horizontalOverflow": false,
+      "video": "/tmp/ovis-shadow-investigation/green-clock/clock-aligned-loaded/page@4fdd280e410a8a1cede108c0ec78dc62.webm"
+    },
+    {
+      "name": "clock-ahead-loaded",
+      "offset": 2000,
+      "hold": false,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:52:00.411Z",
+      "serverObservedSendTime": 1793839919688,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "compactStatuses": 0,
+      "horizontalOverflow": false,
+      "video": "/tmp/ovis-shadow-investigation/green-clock/clock-ahead-loaded/page@1e03500fbdb7d3ed45274d21788ae8a5.webm"
+    },
+    {
+      "name": "clock-ahead-first-read",
+      "offset": 2000,
+      "hold": true,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:52:10.643Z",
+      "serverObservedSendTime": 1793839930040,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "compactStatuses": 1,
+      "horizontalOverflow": false,
+      "fadedAfterReload": 0,
+      "submitsAfterReload": 0,
+      "video": "/tmp/ovis-shadow-investigation/green-clock/clock-ahead-first-read/page@8770f0e8b6e608f1461340d7c9336d5d.webm"
+    }
+  ],
+  "errors": []
+}

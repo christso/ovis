@@ -79,3 +79,7 @@ ffmpeg -i input.webm -c:v libx264 -pix_fmt yuv420p -crf 24 -movflags +faststart 
 To run the separate pending-card probe from an Ovis checkout, build the app first, then use `bun run check run bun /path/to/local-uncertain-card/reproduce.ts`. It uses only an isolated test session and its own temporary state.
 
 No application fix, version bump, deployment, or change to PR #2792 is included.
+
+## Fork improvements
+
+[Paired fork red/green native evidence](fork-fixes/README.md) records the separate presentation and Send now recovery improvements.

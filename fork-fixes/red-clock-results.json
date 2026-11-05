@@ -1,0 +1,55 @@
+{
+  "results": [
+    {
+      "name": "clock-aligned-loaded",
+      "offset": 0,
+      "hold": false,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:43:18.378Z",
+      "serverObservedSendTime": 1793839396719,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "video": "/tmp/ovis-shadow-investigation/fork-red-clock/clock-aligned-loaded/page@8b136f1fffef4b47326aa04d4649864e.webm"
+    },
+    {
+      "name": "clock-ahead-loaded",
+      "offset": 2000,
+      "hold": false,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:43:29.964Z",
+      "serverObservedSendTime": 1793839409326,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "video": "/tmp/ovis-shadow-investigation/fork-red-clock/clock-ahead-loaded/page@5178183395a4a71da2e907bd3d885beb.webm"
+    },
+    {
+      "name": "clock-ahead-first-read",
+      "offset": 2000,
+      "hold": true,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T00:43:40.408Z",
+      "serverObservedSendTime": 1793839419849,
+      "fadedBubbles": 1,
+      "uncertainCards": 0,
+      "fadedAfterReload": 0,
+      "submitsAfterReload": 0,
+      "video": "/tmp/ovis-shadow-investigation/fork-red-clock/clock-ahead-first-read/page@c4c36ea26e4786738a0fd3554f51dab0.webm"
+    }
+  ],
+  "errors": []
+}
