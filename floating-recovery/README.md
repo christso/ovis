@@ -10,6 +10,19 @@ This replaces the earlier [inline recovery presentation](../uncertain-transcript
 - [Measured native results](before-deployment/results.json)
 - [Native reproduction harness](reproduce.ts)
 
+## Installed build
+
+Revision `7d0f42915d1c39874706d33c048ccae7f73385b0` is deployed at https://herdrweb.z.tsoyang.com/. The HTTPS-served JavaScript matches the installed build. Configuration, paired-device identities, remote bundle pin and the Herdr socket were preserved.
+
+- [Installed-source green MP4](deployed/green.mp4)
+- [Installed-source measured results](deployed/results.json)
+- [Short-phone screenshot](deployed/floating-short-phone.png)
+- [After dismissal, draft retained](deployed/after-dismiss.png)
+- [HTTPS and deployment receipt](deployed/deployment-verification.json)
+- [Source/check/artifact manifest](manifest.json)
+
+The first installed-build attempt sent the follow-up before the browser had observed working status. It delivered once with no warning, so it did not exercise Send now. The final harness waits for the browser’s working state and requires an actual queued response before clicking Send now. Both queued cases then passed on the installed source. No application change was needed.
+
 ## What was exercised
 
 The harness uses the real client/server and isolated native Codex sessions. Codex runs a short shell tool call; follow-ups go through the actual composer and Send now. Native transcripts are not fixtures. The browser-bound WebSocket deliberately maps `codex_interrupt_unconfirmed` to generic `submit_changed` to exercise the reported generic warning. It does not change input or native transcript content. This is controlled compatibility coverage, not proof of the exact acknowledgement failure on the user’s remote host.

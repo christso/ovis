@@ -1,0 +1,668 @@
+{
+  "results": [
+    {
+      "label": "idle-1",
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": true,
+      "compatibilityProjection": "acknowledged interruption error mapped to legacy submit_changed",
+      "source": "codex-transcript",
+      "durationMs": 6578,
+      "reply": {
+        "ok": true
+      },
+      "userTurns": 1,
+      "uncertainCards": 0,
+      "fadedBubbles": 0,
+      "duplicateFrames": 0,
+      "relatedSubmits": 1
+    },
+    {
+      "label": "send-now-1",
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": true,
+      "compatibilityProjection": "acknowledged interruption error mapped to legacy submit_changed",
+      "source": "codex-transcript",
+      "durationMs": 12293,
+      "reply": {
+        "ok": true,
+        "pending": "queued"
+      },
+      "userTurns": 1,
+      "uncertainCards": 1,
+      "fadedBubbles": 0,
+      "duplicateFrames": 0,
+      "relatedSubmits": 1
+    },
+    {
+      "label": "floating-recovery",
+      "copyFallbackExact": true,
+      "mobileOverflow": false,
+      "peekAndReturn": true,
+      "draftPreserved": true,
+      "newSubmits": 0,
+      "newInputOrKeys": 0,
+      "pendingActions": [
+        "discard"
+      ],
+      "nativeTurnsUnchanged": true
+    },
+    {
+      "label": "after-clear",
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": true,
+      "compatibilityProjection": "acknowledged interruption error mapped to legacy submit_changed",
+      "source": "codex-transcript",
+      "durationMs": 4751,
+      "reply": {
+        "ok": true
+      },
+      "userTurns": 1,
+      "uncertainCards": 0,
+      "fadedBubbles": 0,
+      "duplicateFrames": 0,
+      "relatedSubmits": 1
+    },
+    {
+      "label": "send-now-2",
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": true,
+      "compatibilityProjection": "acknowledged interruption error mapped to legacy submit_changed",
+      "source": "codex-transcript",
+      "durationMs": 6095,
+      "reply": {
+        "ok": true,
+        "pending": "queued"
+      },
+      "userTurns": 1,
+      "uncertainCards": 1,
+      "fadedBubbles": 0,
+      "duplicateFrames": 0,
+      "relatedSubmits": 1
+    },
+    {
+      "label": "reload-and-dismiss",
+      "nativeAgent": true,
+      "source": "codex-transcript",
+      "uncertainBefore": 1,
+      "uncertainAfter": 0,
+      "userTurnsBefore": 6,
+      "userTurnsAfter": 6,
+      "newSubmits": 0,
+      "queueAccessibleLabel": "Message status",
+      "buttons": [
+        {
+          "label": null,
+          "title": null,
+          "text": "Show terminal"
+        },
+        {
+          "label": "Copied",
+          "title": "Copy message",
+          "text": ""
+        },
+        {
+          "label": "Dismiss saved copy",
+          "title": "Dismiss saved copy",
+          "text": "Dismiss saved copy"
+        }
+      ],
+      "recovery": {
+        "copyExact": true,
+        "peekAndReturn": true,
+        "draftPreserved": true,
+        "mobileOverflow": false,
+        "newSubmits": 0,
+        "newInputActions": 0
+      }
+    }
+  ],
+  "errors": [],
+  "steeringRecords": [
+    {
+      "explicit": true,
+      "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.",
+      "submittedWorking": true,
+      "reads": [
+        {
+          "at": 1793869759310,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759367,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759425,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759483,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759540,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759597,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759658,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759716,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759776,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759834,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759892,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869759948,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760006,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760063,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760121,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760177,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760234,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760292,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760349,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760406,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760462,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760520,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760577,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760636,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760697,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869760755,
+          "working": true,
+          "panelMatches": false
+        }
+      ],
+      "escapes": 0,
+      "error": "Error: Codex immediate delivery was not confirmed. Check the terminal before sending again."
+    },
+    {
+      "explicit": true,
+      "text": "Reply with exactly ACK-FOLLOW-send-now-2. Do not run tools or read or write files.",
+      "submittedWorking": true,
+      "reads": [
+        {
+          "at": 1793869780326,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869780484,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869780543,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869780713,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869780771,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869780828,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869780891,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869780957,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781214,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781271,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781327,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781384,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781442,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781499,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781556,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781613,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793869781672,
+          "working": true,
+          "panelMatches": false
+        }
+      ],
+      "escapes": 0,
+      "error": "Error: Codex immediate delivery was not confirmed. Check the terminal before sending again."
+    }
+  ],
+  "protocol": [
+    {
+      "type": "submit-result",
+      "id": 1,
+      "pane_id": "w2:p1",
+      "ok": true,
+      "at": 1793869751300
+    },
+    {
+      "type": "submit-result",
+      "id": 2,
+      "pane_id": "w2:p1",
+      "ok": true,
+      "at": 1793869758199
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+          "request_id": 3,
+          "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.",
+          "state": "queued",
+          "created_at": "2026-11-05T09:09:18.804Z"
+        }
+      ],
+      "at": 1793869758806
+    },
+    {
+      "type": "submit-result",
+      "id": 3,
+      "pane_id": "w2:p1",
+      "ok": true,
+      "pending": {
+        "id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+        "request_id": 3,
+        "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.",
+        "state": "queued",
+        "created_at": "2026-11-05T09:09:18.804Z"
+      },
+      "at": 1793869758807
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+          "request_id": 3,
+          "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.",
+          "state": "sending",
+          "created_at": "2026-11-05T09:09:18.804Z"
+        }
+      ],
+      "at": 1793869759062
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+          "request_id": 3,
+          "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.",
+          "state": "uncertain",
+          "created_at": "2026-11-05T09:09:18.804Z",
+          "error": {
+            "code": "submit_changed",
+            "message": "Sent to terminal; immediate interruption was not confirmed. Check the terminal before sending again."
+          }
+        }
+      ],
+      "at": 1793869760801
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+          "request_id": 3,
+          "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.",
+          "state": "uncertain",
+          "created_at": "2026-11-05T09:09:18.804Z",
+          "error": {
+            "code": "submit_changed",
+            "message": "Sent to terminal; immediate interruption was not confirmed. Check the terminal before sending again."
+          }
+        }
+      ],
+      "at": 1793869760801
+    },
+    {
+      "type": "pending-result",
+      "id": 4,
+      "pane_id": "w2:p1",
+      "pending_id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+      "ok": false,
+      "code": "submit_changed",
+      "message": "Sent to terminal; immediate interruption was not confirmed. Check the terminal before sending again.",
+      "at": 1793869760802
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [],
+      "removed": [
+        {
+          "id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+          "outcome": "dismissed"
+        }
+      ],
+      "at": 1793869772660
+    },
+    {
+      "type": "pending-result",
+      "id": 5,
+      "pane_id": "w2:p1",
+      "pending_id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+      "ok": true,
+      "at": 1793869772660
+    },
+    {
+      "type": "submit-result",
+      "id": 6,
+      "pane_id": "w2:p1",
+      "ok": true,
+      "at": 1793869773920
+    },
+    {
+      "type": "submit-result",
+      "id": 7,
+      "pane_id": "w2:p1",
+      "ok": true,
+      "at": 1793869779096
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "f24e6fdf-1d4f-47cf-8ef6-0fbb0ecc2b73",
+          "request_id": 8,
+          "text": "Reply with exactly ACK-FOLLOW-send-now-2. Do not run tools or read or write files.",
+          "state": "queued",
+          "created_at": "2026-11-05T09:09:39.528Z"
+        }
+      ],
+      "at": 1793869779541
+    },
+    {
+      "type": "submit-result",
+      "id": 8,
+      "pane_id": "w2:p1",
+      "ok": true,
+      "pending": {
+        "id": "f24e6fdf-1d4f-47cf-8ef6-0fbb0ecc2b73",
+        "request_id": 8,
+        "text": "Reply with exactly ACK-FOLLOW-send-now-2. Do not run tools or read or write files.",
+        "state": "queued",
+        "created_at": "2026-11-05T09:09:39.528Z"
+      },
+      "at": 1793869779542
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "f24e6fdf-1d4f-47cf-8ef6-0fbb0ecc2b73",
+          "request_id": 8,
+          "text": "Reply with exactly ACK-FOLLOW-send-now-2. Do not run tools or read or write files.",
+          "state": "sending",
+          "created_at": "2026-11-05T09:09:39.528Z"
+        }
+      ],
+      "at": 1793869779855
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "f24e6fdf-1d4f-47cf-8ef6-0fbb0ecc2b73",
+          "request_id": 8,
+          "text": "Reply with exactly ACK-FOLLOW-send-now-2. Do not run tools or read or write files.",
+          "state": "uncertain",
+          "created_at": "2026-11-05T09:09:39.528Z",
+          "error": {
+            "code": "submit_changed",
+            "message": "Sent to terminal; immediate interruption was not confirmed. Check the terminal before sending again."
+          }
+        }
+      ],
+      "at": 1793869781715
+    },
+    {
+      "type": "pending-messages",
+      "pane_id": "w2:p1",
+      "messages": [
+        {
+          "id": "f24e6fdf-1d4f-47cf-8ef6-0fbb0ecc2b73",
+          "request_id": 8,
+          "text": "Reply with exactly ACK-FOLLOW-send-now-2. Do not run tools or read or write files.",
+          "state": "uncertain",
+          "created_at": "2026-11-05T09:09:39.528Z",
+          "error": {
+            "code": "submit_changed",
+            "message": "Sent to terminal; immediate interruption was not confirmed. Check the terminal before sending again."
+          }
+        }
+      ],
+      "at": 1793869781715
+    },
+    {
+      "type": "pending-result",
+      "id": 9,
+      "pane_id": "w2:p1",
+      "pending_id": "f24e6fdf-1d4f-47cf-8ef6-0fbb0ecc2b73",
+      "ok": false,
+      "code": "submit_changed",
+      "message": "Sent to terminal; immediate interruption was not confirmed. Check the terminal before sending again.",
+      "at": 1793869781716
+    }
+  ],
+  "actions": [
+    {
+      "type": "submit",
+      "id": 1,
+      "pane_id": "w2:p1",
+      "text": "Reply with exactly ACK-IDLE-1. Do not run tools or read or write files.",
+      "payload": "\u001b[200~Reply with exactly ACK-IDLE-1. Do not run tools or read or write files.\u001b[201~",
+      "at": 1793869750777
+    },
+    {
+      "type": "submit",
+      "id": 2,
+      "pane_id": "w2:p1",
+      "text": "Run exactly one shell command: sleep 12. Then reply with ACK-BUSY-send-now-1. Do not read or write any files or do anything else.",
+      "payload": "\u001b[200~Run exactly one shell command: sleep 12. Then reply with ACK-BUSY-send-now-1. Do not read or write any files or do anything else.\u001b[201~",
+      "at": 1793869757868
+    },
+    {
+      "type": "submit",
+      "id": 3,
+      "pane_id": "w2:p1",
+      "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.",
+      "payload": "\u001b[200~Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.\u001b[201~",
+      "delivery": "queue",
+      "at": 1793869758671
+    },
+    {
+      "type": "pending-action",
+      "id": 4,
+      "pane_id": "w2:p1",
+      "pending_id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+      "action": "steer",
+      "resend_generation": 0,
+      "launch_ended": true,
+      "at": 1793869758948
+    },
+    {
+      "type": "pending-action",
+      "id": 5,
+      "pane_id": "w2:p1",
+      "pending_id": "859e9b7f-5e5d-47a6-951c-8748aaf85a11",
+      "action": "discard",
+      "resend_generation": 0,
+      "launch_ended": true,
+      "at": 1793869772653
+    },
+    {
+      "type": "submit",
+      "id": 6,
+      "pane_id": "w2:p1",
+      "text": "Reply with exactly ACK-AFTER-CLEAR. Do not run tools or read or write files.",
+      "payload": "\u001b[200~Reply with exactly ACK-AFTER-CLEAR. Do not run tools or read or write files.\u001b[201~",
+      "at": 1793869773477
+    },
+    {
+      "type": "submit",
+      "id": 7,
+      "pane_id": "w2:p1",
+      "text": "Run exactly one shell command: sleep 12. Then reply with ACK-BUSY-send-now-2. Do not read or write any files or do anything else.",
+      "payload": "\u001b[200~Run exactly one shell command: sleep 12. Then reply with ACK-BUSY-send-now-2. Do not read or write any files or do anything else.\u001b[201~",
+      "at": 1793869778673
+    },
+    {
+      "type": "submit",
+      "id": 8,
+      "pane_id": "w2:p1",
+      "text": "Reply with exactly ACK-FOLLOW-send-now-2. Do not run tools or read or write files.",
+      "payload": "\u001b[200~Reply with exactly ACK-FOLLOW-send-now-2. Do not run tools or read or write files.\u001b[201~",
+      "delivery": "queue",
+      "at": 1793869779494
+    },
+    {
+      "type": "pending-action",
+      "id": 9,
+      "pane_id": "w2:p1",
+      "pending_id": "f24e6fdf-1d4f-47cf-8ef6-0fbb0ecc2b73",
+      "action": "steer",
+      "resend_generation": 0,
+      "launch_ended": true,
+      "at": 1793869779731
+    }
+  ],
+  "sourceRevision": "7d0f42915d1c39874706d33c048ccae7f73385b0"
+}

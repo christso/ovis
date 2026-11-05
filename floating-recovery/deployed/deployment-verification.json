@@ -1,0 +1,22 @@
+{
+  "url": "https://herdrweb.z.tsoyang.com/",
+  "revision": "7d0f42915d1c39874706d33c048ccae7f73385b0",
+  "httpsHealthy": true,
+  "newOvisBoot": true,
+  "installedClientMatchesHttpsAsset": true,
+  "servedScripts": [
+    {
+      "path": "/assets/theme-bootstrap-f1c4fae877.js",
+      "sha256": "f1c4fae8772541bf7dd7a5fcd3b5ae691d986d2ae6cc5a105e5c8a573af1c446"
+    },
+    {
+      "path": "/assets/index-D0N35wax.js",
+      "sha256": "296a20aed1e54a8c853b1a27e9ab01f6312bebe72170d70f51675a288606b0c9"
+    }
+  ],
+  "htmlCacheControl": "no-cache",
+  "configurationPreserved": true,
+  "pairedDeviceIdentitiesPreserved": true,
+  "remoteBundlePinPreserved": true,
+  "herdrSocketUnchanged": true
+}
