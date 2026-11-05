@@ -2705,7 +2705,8 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   [T3 Code's control-surface documentation](https://github.com/pingdotgg/t3code#readme) were also
   inspected; neither establishes a terminal-write receipt as proof of immediate interruption.
   Ovis retains its explicit recovery copy because it bridges a terminal rather than owning the
-  native agent's queue. No comparator code or pixels are copied.
+  native agent's queue. No comparator code or pixels are copied. Recovery actions stay visible
+  at the foot of the scrollable saved-copy area, including on touch screens.
 - Accepted pending messages clear only the draft prefix acknowledged by the bridge. For agents
   other than Pi, actual Enter delivery removes the pending row and refreshes the transcript. For
   a message submitted from Ovis Chat to Pi, Enter changes it to a read-only **Sent to Pi ·
