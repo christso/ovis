@@ -158,19 +158,21 @@ try {
       await context.addInitScript(({ theme, pane }) => {
         localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme, darkTheme: "amber", lightTheme: "amber", autoSendQueued: true }));
         localStorage.setItem(`ovis:view:${pane}`, "chat");
-        if (!localStorage.getItem("qa:recovery-seeded")) {
-          localStorage.setItem("qa:recovery-seeded", "true");
-          localStorage.setItem(`ovis:pending:${pane}`, JSON.stringify({ messages: [{
-            id: "acknowledged-send-now", request_id: 1, text: "Previously sent follow-up", state: "uncertain",
-            created_at: "2026-11-05T00:00:00Z", error: { code: "codex_interrupt_unconfirmed", message: "Sent to terminal; immediate interruption was not confirmed" },
-          }] }));
-        }
       }, { theme, pane: owner });
       const page = await context.newPage();
       const errors: string[] = [];
       page.on("pageerror", (error) => { errors.push(error.message); console.error(error.message); });
       page.setDefaultTimeout(10_000);
       await page.goto(`${server.url}?pane=${encodeURIComponent(owner)}`);
+      await chat(page).locator(".composer").waitFor();
+      await appFaces(page);
+      await page.waitForFunction(() => (window as unknown as PeekWindow).promptReads > 0);
+      await page.evaluate((pane) => Reflect.get(window, "demoSocket").push({ type: "pending-messages", pane_id: pane, messages: [{
+        id: "acknowledged-send-now", request_id: 1, text: "Previously sent follow-up", state: "uncertain",
+        created_at: "2026-11-05T00:00:00Z", error: { code: "codex_interrupt_unconfirmed", message: "Sent to terminal; immediate interruption was not confirmed" },
+      }] }), owner);
+      await chat(page).locator('.pending-message[data-state="uncertain"]').waitFor();
+      await page.reload();
       await chat(page).locator(".composer").waitFor();
       await appFaces(page);
       page.on("console", (message) => { if (message.type() === "error") console.error(message.text()); });
@@ -261,6 +263,13 @@ try {
       await recovery.locator("summary").click();
       await recovery.getByText("Dismiss removes this browser's saved copy. It does not cancel sent input; another connection may still hold the queue.", { exact: true }).waitFor();
       await box(page).fill("Keep this draft while reviewing delivery");
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+      await capture(page, `${tag}-recovery-controls`);
+      const controlBounds = await recovery.locator(".pending-message-meta button").evaluateAll((buttons) => {
+        const list = document.querySelector(".pending-messages")!.getBoundingClientRect();
+        return buttons.map((button) => { const box = button.getBoundingClientRect(); return { label: button.textContent || button.getAttribute("aria-label"), visible: box.top >= list.top && box.bottom <= list.bottom }; });
+      });
+      assert.ok(controlBounds.every((button) => button.visible), `recovery controls remain wholly visible: ${JSON.stringify(controlBounds)}`);
       await noteLog(page);
       const inputFrames = async () => (await frames(page)).filter((frame) => ["submit", "input", "keys", "pending-action"].includes(frame.type));
       const beforeRecovery = await inputFrames();
