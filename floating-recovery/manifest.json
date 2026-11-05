@@ -1,0 +1,48 @@
+{
+  "commit": "7d0f42915d1c39874706d33c048ccae7f73385b0",
+  "tree": "3704cca47914789e8b0ef8083e7a329f3a48031a",
+  "runtimeSourceSha256": {
+    "DESIGN.md": "bf800123af3a78f0046a6cb983d821d66896dab01b6da02836a76f2000854725",
+    "changelog.d/pending-transcript-recovery.md": "b3ca376310d4502cd13489a10f4488f561d5e8907d51eec0fb3a093402c4c3d4",
+    "scripts/chat-virtual-fixture.tsx": "1458150ebbcd8a5a5c2eda607e0e72c99c383918d5806f444c6bd8c735798022",
+    "scripts/sent-waiting-browser-qa.ts": "313daec78806436ac966f2c2e3ff4806ca2aea15d20420e8f4512ecc3f028468",
+    "scripts/terminal-autoswitch-demo-regression.ts": "5480d20008d8885a0ed09008f5e66715f8a5ab89f13744df97e203997bac70aa",
+    "src/components/ChatView.tsx": "c8548dfa7e00fd8e59ec6b5acaab4e700f5f1f8d0b080b72ae834bd2aa1b0f58",
+    "src/components/PaneTerminal.tsx": "4a8c0d4e4b42c0f5cef458ba3ce604dc8169edd40121c3e6770aacae280ae4f9",
+    "src/components/PendingMessages.css": "0496b7c7f8280a75da111f2331328d41742154410cbd9b94d5cc9bb7a11f0d41",
+    "src/components/PendingMessages.tsx": "1b103f6fd3c555a3d8fe8fb3fd3db20611657dade650a430cc2c1f35e4307d49",
+    "src/lib/i18n/composer.ja.ts": "364e24ab178c6a76347f0beb918e3dd2a6d16f116e3870fbda943602146782e5",
+    "src/lib/i18n/composer.ko.ts": "ccceef174a6a0e4b5057c1d0e27950677e85d4ecb54c14975e634312db402177",
+    "src/lib/i18n/composer.zh.ts": "3fefc7f688d3996db37945d6f2a479a8831ba47c2673e7303d75fb2e92711270",
+    "src/lib/machineSession.ts": "a456ed8a2e6376a757c7c0ea4329f7742cf8136132f5b07b0b24b7e1996af71b",
+    "src/lib/sentWaiting.ts": "0073325edef75e12ed513b1097c70b32de5088c08d089e8f0b518b399034bb12"
+  },
+  "deleted": [
+    "src/lib/pendingTranscript.ts",
+    "src/lib/pendingTranscript.test.ts"
+  ],
+  "review": {
+    "depth": "full",
+    "reviewers": 7,
+    "actionableFindings": 0,
+    "crossModel": "No external model review ran; in-process adversarial review completed.",
+    "closure": "Short-phone and final-row keyboard-dismiss gaps closed by production browser test extension; narrow review found no findings. Next-saved-row keyboard focus is not browser-covered."
+  },
+  "qa": {
+    "targetedUnit": 111,
+    "browserMatrixCases": 18,
+    "productionBrowserSuite": "terminal-autoswitch-demo-regression passed desktop/phone, light/dark, short390x470 disclosure geometry and keyboard dismissal",
+    "nativeCases": "idle confirmed; two Send now cases; copy refusal, terminal review, draft/focus, dismissal, next-message unblock and restored saved copy",
+    "projection": "codex_interrupt_unconfirmed -> submit_changed",
+    "notClaimed": "Exact historical remote cause; successful automatic-queue native receipt control"
+  },
+  "artifactSha256": {
+    "README.md": "9854eccbc64ab1fdf2089c61c44c4e54a22d1960f0ab1a26dd92af2335a892d0",
+    "reproduce.ts": "29d36aba911b00dc9f57c96dbf490f84a531f285b7877c7524ce323d225732ae",
+    "before-deployment/green.mp4": "aa5c283af67e60bfa4dbe04467a51d0c3f13cb5edf1bde8c4acd48ee31b631db",
+    "before-deployment/results.json": "5178cd65f2ca1fef8d7b63a92b81a95bd910c7e51442b481297fb46fcf939670",
+    "before-deployment/floating-short-phone.png": "79556c0724d46f1b9e7d1d33dba767094659cd43bec0567b4f6f521aab3989cd",
+    "before-deployment/floating-phone.png": "4b8abd6c2a05c1f7604b6a317d3a4b94da0232d202b248b8af777cead6e30f52",
+    "before-deployment/floating-desktop.png": "4861ef9328133b767cf539e4e869857512366cf5a7ebfea5f4dc0175deae56db"
+  }
+}

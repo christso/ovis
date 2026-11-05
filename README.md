@@ -2,7 +2,9 @@
 
 This orphan branch contains investigation artifacts only. It changes no Ovis source and is not part of upstream PR #2792.
 
-**Latest: [uncertain Send now now shares its transcript message](uncertain-transcript-status/README.md).** Before/after native MP4s include explicit generic-error compatibility injection.
+**Latest: [floating send recovery above the composer](floating-recovery/README.md).** Compact recovery keeps Dismiss reachable and folds duplicate text.
+
+**Earlier inline design: [uncertain Send now shares its transcript message](uncertain-transcript-status/README.md).** Preserved before/after native MP4s include explicit generic-error compatibility injection.
 
 **Earlier deployment: [both native green recordings](fork-fixes/deployed/README.md).** The sections below preserve the original investigation; the fork changes are separate PRs.
 
