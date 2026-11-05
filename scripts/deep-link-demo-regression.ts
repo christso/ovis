@@ -80,6 +80,23 @@ try {
       });
       console.log("PASS creation links honor their PC without a pane and never create on another PC when the target is missing");
 
+      // a creation link on the PC already shown opens over its pane: Cancel leaves that pane, not herdr's focused one
+      for (const pane of [INFRA, DOCS]) await withPage(browser, `?pane=${encodeURIComponent(pane)}`, async (page) => {
+        await waitSelected(page, pane);
+        await page.goto(`${url}?new=workspace&agent=codex`);
+        const dialog = page.getByRole("dialog", { name: "New workspace · workstation", exact: true });
+        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+        await waitSelected(page, pane);
+        await page.evaluate((here) => {
+          history.pushState(null, "", "?new=workspace&agent=codex");
+          history.pushState(null, "", here);
+        }, await page.evaluate(() => location.search));
+        await page.goBack();
+        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+        await waitSelected(page, pane);
+      });
+      console.log("PASS a creation link for the PC already shown keeps its pane, on load and on Back");
+
       // a link to a workspace opens the pane its row opens, and the address then names it all
       await withPage(browser, `?ws=${wsOf(INFRA)}`, async (page) => {
         await waitSelected(page, INFRA);
@@ -204,6 +221,21 @@ try {
         await page.locator('.agents-sidebar .agent-select[aria-current="true"]').waitFor();
         await waitQuery(page, "machine", null);
         assert.deepEqual(errors, []);
+        // Back off a creation link before the PCs are in, onto an entry that asks for nothing, drops the creation
+        await page.goto(`${url}?pane=${encodeURIComponent(INFRA)}`);
+        await waitSelected(page, INFRA);
+        await page.evaluate(() => {
+          history.pushState(null, "", "?");
+          history.pushState(null, "", "?new=workspace&agent=codex");
+          sessionStorage.setItem("hold-roster", "1");
+        });
+        await page.reload();
+        await page.waitForFunction(() => typeof (window as unknown as { __releaseRoster?: unknown }).__releaseRoster === "function" && document.querySelector(".sidebar-shell") !== null);
+        await page.goBack();
+        await waitQuery(page, "new", null);
+        await page.evaluate(() => (window as unknown as { __releaseRoster: () => void }).__releaseRoster());
+        await page.locator('.agents-sidebar .agent-select[aria-current="true"]').waitFor();
+        assert.equal(await page.getByRole("dialog", { name: /New workspace/ }).count(), 0, "an entry left before the roster arrived does not open its creation dialog");
         for (const machine of ["local", "removed"]) for (const forward of [false, true]) {
           await page.goto(`${url}?pane=${encodeURIComponent(INFRA)}`);
           await waitSelected(page, INFRA);

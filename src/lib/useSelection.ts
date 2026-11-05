@@ -32,8 +32,11 @@ export function useSelectionState({ initialLink }: { initialLink: AppLink | null
   const [selectedPaneId, setSelectedPaneId] = useState<string | null>(() => {
     if (initialLink?.pane) return initialLink.pane;
     // a link to a workspace opens the pane its row opens, once the roster is in (below)
-    if (initialLink && (initialLink.workspace || fileFromLink(initialLink) || initialLink.create)) return null;
-    return storedSelection()?.pane_id ?? null;
+    if (initialLink && (initialLink.workspace || fileFromLink(initialLink))) return null;
+    const stored = storedSelection();
+    // a creation link keeps this tab's pane when it names the same PC, and opens another PC's in front
+    if (initialLink?.create && stored?.machine_id !== initialLink.machine) return null;
+    return stored?.pane_id ?? null;
   });
   const [notificationViewTarget, setNotificationViewTarget] = useState<NotificationTarget | null>(
     () => notificationTargetFromSearch(pageSearch()),

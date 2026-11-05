@@ -115,10 +115,7 @@ try {
           await dialog.getByRole("combobox", { name: "Agent", exact: true }).click();
           await dialog.getByRole("option").filter({ hasText: "Build PC agent" }).waitFor();
           assert.equal(await dialog.getByRole("option").filter({ hasText: "Claude Code" }).count(), 0, "the visible choices come from the remote catalog, not the local catalog");
-          // picking a choice closes the list; an Escape can reach the dialog before the list's own handler is attached
-          await dialog.getByRole("option").filter({ hasText: "Codex" }).click();
-          await dialog.getByRole("listbox").waitFor({ state: "detached" });
-          await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+          // the next address loads the page afresh, so the open dialog and its list are left as they are
           await page.goto(`http://127.0.0.1:${server.port}/?pane=${encodeURIComponent(panes.api)}`);
           await page.locator('.agents-sidebar .agent-select[aria-current="true"]').first().waitFor({ state: "attached" });
           await page.evaluate(() => history.pushState(null, "", "?machine=remote&new=workspace&agent=codex&name=Forward"));

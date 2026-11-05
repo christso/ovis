@@ -69,7 +69,8 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
   useEffect(() => {
     if (locked !== false || machines.length === 0 || snapshot === null || linkWorkspaceId === undefined || !linkLanded) return;
     // A popped entry's PC can land before its fallback pane. Keep Forward until that pane is known.
-    if (poppedTo.current && selectedPaneId === null && snapshot.panes.length > 0) return;
+    // An offline PC never picks one, so its entry is written as it stands.
+    if (poppedTo.current && selectedPaneId === null && snapshot.panes.length > 0 && selectedMachine?.state === "connected") return;
     const link: AppLink = {
       machine: selectedMachineId, workspace: linkWorkspaceId, workspaceSlug: linkSlug, pane: selectedPaneId, view: selectedPaneId ? view : null, file: linkFile,
       settings: settingsOpen ? settingsPage : null, section: settingsOpen && settingsPage === settingsLinkPage ? settingsLinkSection : null,
@@ -89,7 +90,7 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
       if (fileLeft) window.history.replaceState({ [NAV_KEY]: true }, "", url);
       else window.history.pushState({ [NAV_KEY]: true }, "", url);
     } else window.history.replaceState(window.history.state, "", url);
-  }, [locked, machines.length, snapshot, linkLanded, selectedMachineId, selectedPaneId, linkWorkspaceId, linkSlug, linkFile, fileLeft, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, newSessionOpen, newTab, newFields, wideScreen, sidebarCollapsed, autoSelected]);
+  }, [locked, machines.length, snapshot, linkLanded, selectedMachine?.state, selectedMachineId, selectedPaneId, linkWorkspaceId, linkSlug, linkFile, fileLeft, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, newSessionOpen, newTab, newFields, wideScreen, sidebarCollapsed, autoSelected]);
 
 
   // a file a link named opens over its pane once the pane is shown, as the chat's file links do
@@ -118,7 +119,8 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
       // before the PCs are in, nothing can say the entry's PC is still set up: it waits as a link
       // opened with the page does, settled against its roster or answered with a note once they are
       if (machinesRef.current.length === 0) {
-        if (!link.pane && !link.workspace && !link.create) return;
+        // an entry that asks for nothing drops a creation the page or an earlier entry left waiting
+        if (!link.pane && !link.workspace && !link.create) { pendingCreate.current = null; return; }
         if (!link.create) setNewSessionOpen(false);
         pendingCreate.current = link.create ?? null;
         selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
@@ -138,7 +140,8 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
       else {
         const pane = machine?.snapshot ? resolveLink(machine.snapshot, link).pane : link.pane;
         if (pane === null) {
-          if (link.create) { poppedTo.current = true; selectTargetRef.current(link.machine, null); }
+          // the dialog opens over the pane already shown on its PC; another PC's fallback pane is picked
+          if (link.create && selectionRef.current.machineId !== link.machine) { poppedTo.current = true; selectTargetRef.current(link.machine, null); }
           return;
         }
         const current = selectionRef.current;
