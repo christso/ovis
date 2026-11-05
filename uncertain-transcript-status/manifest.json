@@ -1,0 +1,90 @@
+{
+  "commit": "de7ba960a5293bda67289f357476ac924ebfe69d",
+  "tree": "5c4be45285fce7b66a0f9258ef2b978c5cec7993",
+  "beforeCommit": "df1c489192cb52dea131bc4f206af5862b2e1018",
+  "runtimeSourceSha256": {
+    "scripts/chat-virtual-fixture.tsx": "403b31033e70c685a361d889daaf908a2ef524bc7788a99e893f99484d9b8d7b",
+    "scripts/sent-waiting-browser-qa.ts": "45dccd10e635f1d51068bb0a21db73c2e7e6ff9a053e28eb68ebae67ce5068d2",
+    "src/components/ChatView.tsx": "829c0819c8ac66358a2e6db610715d87333c9fe4816d56b6f82479f393234859",
+    "src/components/PaneTerminal.tsx": "0429dfafa5df7fa5873ae79fcac195534b245ae5152067404fb1a3163f37cb57",
+    "src/components/PendingMessages.css": "89633fb6b8871a40bee25d280d11587382d0c25df660600f997d8385c2a10465",
+    "src/components/PendingMessages.test.tsx": "6aeb801c282919923c7bc019042c54a66731cb5f3ce021c8b9431dc2f7483183",
+    "src/components/PendingMessages.tsx": "a7aa5d924f84c4972074bfc47fe2543b09c67db67881573eebdd6919f1854401",
+    "src/lib/i18n/composer.ja.ts": "95daf5087562b8a210f3de8ce67aeadea7575aab207fab1717362257397e6732",
+    "src/lib/i18n/composer.ko.ts": "3ea57dd08091445ced2b1539b39fd199d70defe16e5174e785519207620e2bcd",
+    "src/lib/i18n/composer.zh.ts": "d660436dc00016f1a25b726308e762ae171b84b93ccd5c9bce146129844ef647",
+    "src/lib/machineSession.ts": "d94da508b2ebc6ad83b60f988618a1c8e05fb1267b566f4ca47f35a3f7db66db",
+    "src/lib/pendingTranscript.test.ts": "467255cabee565d8dfb473047e7e521934823449d6cc0e4825ce5cc7a6c97e03",
+    "src/lib/pendingTranscript.ts": "a06f77eb25936282121038ba6b20486ca9b5f2bbec7a1de55fd1c1743d475477",
+    "src/lib/sentWaiting.ts": "17ca1d71fc7f02dea2516d59c8a87eb15c0f534ada648e50f2bcb5ba40af8b59"
+  },
+  "fast": {
+    "status": "success",
+    "exitCode": 0,
+    "checks": [
+      {
+        "name": "workflow syntax",
+        "status": "success"
+      },
+      {
+        "name": "generated types are fresh",
+        "status": "success"
+      },
+      {
+        "name": "generated themes are fresh",
+        "status": "success"
+      },
+      {
+        "name": "typecheck",
+        "status": "success"
+      },
+      {
+        "name": "build",
+        "status": "success"
+      },
+      {
+        "name": "unit tests",
+        "status": "success"
+      },
+      {
+        "name": "unpack actionlint",
+        "status": "success"
+      }
+    ],
+    "unit": "10635 pass, 0 fail, 41 skip; 663 files"
+  },
+  "qa": {
+    "status": "success",
+    "exitCode": 0,
+    "browserCases": 26,
+    "suites": [
+      "sent-waiting-browser-qa",
+      "chat-virtual-browser-qa",
+      "terminal-autoswitch-demo-regression",
+      "isolated native Codex compatibility"
+    ]
+  },
+  "review": {
+    "depth": "full",
+    "reviewers": 7,
+    "confirmedFindings": 3,
+    "resolved": 3,
+    "closure": "No remaining concrete defect found",
+    "crossModel": "Unavailable before egress (npm EOVERRIDE); in-process adversarial fallback"
+  },
+  "deployment": "pending; verification added after merge",
+  "artifactSha256": {
+    "README.md": "1119d3fe0d62e197b51dfc0019eb21ae35089d4a241a72a6b945eff976fa5e80",
+    "reproduce.ts": "9011fc7c576b9c9e7f594bd39900630054b9b73ad127a6122dce474120848285",
+    "after/green.mp4": "205946df6e25ea1f8a8db924ad2f338caf60a9708a4f64833f3fe35b797347f4",
+    "after/results.json": "11c550d7bc31de8095aba03aa5d68d5d054f1ca36439bf38eec2ff4b3839bbbe",
+    "after/after-dismiss.png": "cfb0efc96cacab7014956736ffec45d444658d1c04432df279ca426850890992",
+    "after/recovery-mobile.png": "a0fa2efd65bfff5eb22ef5f60fc39238c35fa623eb7f58fe83fca418cc9f3a83",
+    "after/recovery-desktop.png": "bd5640d6ec8dc04397388291c904eb436a5256bf51688e3a209b812a26a9f131",
+    "after/inline-phone.png": "7d84d413c80f8bc4057dc04e24556b47b89574b7be213cddaae732e30db0df7b",
+    "after/send-now-inline.png": "139f944e4fb3ae74fd55b7bd348e830c471ffcda15b9e3a348758d691346550b",
+    "before/results.json": "b35171c6c6270123023b0f41364f026bdaab8fe3619834ca01b3bbc5a2dd6f6b",
+    "before/reproduction.mp4": "1d752b71a3ac868b3e361d93eabbbec0589c78c73dbcdbc394a6781398d5a54e",
+    "before/duplicate.png": "6c1f5aa5ad246ac2d2a43e126c334b0d2d5b0cd2f92b46e02e6af4276095f50a"
+  }
+}

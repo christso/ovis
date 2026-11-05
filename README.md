@@ -2,7 +2,9 @@
 
 This orphan branch contains investigation artifacts only. It changes no Ovis source and is not part of upstream PR #2792.
 
-**Latest: [fork deployed, with both native green recordings](fork-fixes/deployed/README.md).** The sections below preserve the original investigation; the fork changes are separate PRs.
+**Latest: [uncertain Send now now shares its transcript message](uncertain-transcript-status/README.md).** Before/after native MP4s include explicit generic-error compatibility injection.
+
+**Earlier deployment: [both native green recordings](fork-fixes/deployed/README.md).** The sections below preserve the original investigation; the fork changes are separate PRs.
 
 **Follow-up: [native Codex dogfooding and UX findings](native-dogfood/README.md).** The newer runs use actual native transcripts and no forced transport failures. They reproduce the Send now warning in four fresh sessions and the faded placeholder under a simulated browser-clock/first-read condition. The sections below preserve the earlier controlled demo and acknowledgement-fault experiments.
 
