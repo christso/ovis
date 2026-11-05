@@ -124,17 +124,21 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
         if (!link.create) setNewSessionOpen(false);
         pendingCreate.current = link.create ?? null;
         selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
+        poppedTo.current = true;
+        // a creation-only entry names no place to settle: as when the page opens with one, its PC is
+        // the selection, which the first roster checks, connected or not
+        if (!link.pane && !link.workspace) return;
         pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
         linkSince.current = rosterSeq.current;
-        poppedTo.current = true;
         return;
       }
       const machine = machinesRef.current.find((candidate) => candidate.id === link.machine);
       const missing = !machine && machinesRef.current.length > 0;
       // the New workspace dialog is part of the address it was open on: Back closes it, Forward opens
       // it again, but not for a PC removed since
-      if (!link.create) setNewSessionOpen(false);
-      else if (!missing && !newSessionOpenRef.current) pendingCreate.current = link.create;
+      // an entry without one drops a creation still waiting; a dialog open for another PC gives way to the entry's
+      if (!link.create) { setNewSessionOpen(false); pendingCreate.current = null; }
+      else if (!missing && (!newSessionOpenRef.current || link.machine !== selectionRef.current.machineId)) { setNewSessionOpen(false); pendingCreate.current = link.create; }
       // an entry naming a PC since removed leaves the app where it is and says so, as a link to it would
       if (missing) setHeaderNote("machine-missing");
       else {

@@ -123,6 +123,23 @@ try {
           await page.goForward();
           await dialog.waitFor();
           assert.equal(await dialog.locator("h2").innerText(), "New workspace · Build PC", "Forward to a creation-only link selects the link's PC before opening its dialog");
+          // a dialog open for one PC gives way to the next entry's PC and fields
+          await page.evaluate(() => history.pushState(null, "", "?new=workspace&agent=codex&name=Here"));
+          await page.goBack();
+          await page.goForward();
+          await page.getByRole("dialog", { name: "New workspace \u00b7 Laptop", exact: true }).waitFor();
+          // a tab link to an offline PC waits for a pane; the entry after it drops it rather than opening it here
+          await page.goto(`http://127.0.0.1:${server.port}/?pane=${encodeURIComponent(panes.api)}`);
+          await page.locator('.agents-sidebar .agent-select[aria-current="true"]').first().waitFor({ state: "attached" });
+          const here = await page.evaluate(() => location.search);
+          await page.evaluate((search) => { history.pushState(null, "", "?machine=offline&new=tab&name=WRONG"); history.pushState(null, "", search); }, here);
+          await page.goBack();
+          await page.waitForFunction(() => new URLSearchParams(location.search).get("machine") === "offline");
+          await page.goForward();
+          await page.waitForFunction((search) => location.search === search, here);
+          await page.locator('.agents-sidebar .agent-select[aria-current="true"]').first().waitFor({ state: "attached" });
+          await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+          assert.equal(await page.getByRole("dialog", { name: /^New (tab|workspace)/ }).count(), 0, "an offline PC's tab link left behind opens nothing on this PC");
           console.log(`PASS ${phone ? "phone" : "desktop"} creation link loads the linked remote PC's dialog and agent choices without a pane`);
         } finally { await creationContext.close(); }
         const detachedContext = await browser.newContext(phone
