@@ -2770,7 +2770,10 @@ async function withoutOtherCodexStores(
 ): Promise<HerdrPane[]> {
   const remote = (list: readonly { argv?: string[] }[]) =>
     list.some(({ argv }) => argv?.some((arg) => arg === "--remote" || arg.startsWith("--remote=")));
-  if (processes.length === 0 || remote(processes)) return panes;
+  const rival = (pane: HerdrPane) => pane.pane_id !== paneId && resolveAgent(pane).agent === "codex"
+    && (pane.cwd == null || sameDirectory(pane.cwd, cwd));
+  // nothing to rule out: spare the process reads
+  if (processes.length === 0 || remote(processes) || !panes.some(rival)) return panes;
   const databaseIdentity = (home: string): string | null => {
     const file = statSync(realpathSync(join(home, "state_5.sqlite")), { bigint: true });
     return file.isFile() ? `${file.dev}:${file.ino}` : null;
@@ -2787,10 +2790,17 @@ async function withoutOtherCodexStores(
     if (store === null || (await storesOf(processes)).some((actual) => actual !== store)) return panes;
   } catch { return panes; }
   const kept = await Promise.all(panes.map(async (pane) => {
-    if (pane.pane_id === paneId || resolveAgent(pane).agent !== "codex"
-      || (pane.cwd != null && !sameDirectory(pane.cwd, cwd))) return pane;
+    if (!rival(pane)) return pane;
     try {
-      const { list } = await codexProcessesOf(pane.pane_id);
+      const info = await paneProcessInfo(pane.pane_id);
+      // a foreground process whose command line cannot be read may be a Codex of this store
+      const unread = (info?.foreground_processes ?? []).some(({ pid, argv }) => {
+        if (argv?.length) return false;
+        if (process.platform !== "linux") return true;
+        try { return readFileSync(`/proc/${pid}/cmdline`, "utf8").length === 0; } catch { return true; }
+      });
+      if (unread) return pane;
+      const { list } = await codexProcessesOf(pane.pane_id, info ?? null);
       if (list.length === 0 || remote(list)) return pane;
       // every Codex process of the peer must sit in a known, different store
       return (await storesOf(list)).every((theirs) => theirs !== null && theirs !== store) ? null : pane;
