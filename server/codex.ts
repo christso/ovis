@@ -2784,22 +2784,23 @@ async function withoutOtherCodexStores(
       const named = await certainProcessCodexHome(pid, argv ?? []);
       return named === null ? null : databaseIdentity(named);
     }));
+  // a foreground process whose command line cannot be read may be a Codex of any store
+  const unread = (info: ProcessInfo | undefined) => (info?.foreground_processes ?? []).some(({ pid, argv }) => {
+    if (argv?.length) return false;
+    if (process.platform !== "linux") return true;
+    try { return readFileSync(`/proc/${pid}/cmdline`, "utf8").length === 0; } catch { return true; }
+  });
   let store: string | null;
   try {
     store = databaseIdentity(home);
-    if (store === null || (await storesOf(processes)).some((actual) => actual !== store)) return panes;
+    if (store === null || unread(await paneProcessInfo(paneId))
+      || (await storesOf(processes)).some((actual) => actual !== store)) return panes;
   } catch { return panes; }
   const kept = await Promise.all(panes.map(async (pane) => {
     if (!rival(pane)) return pane;
     try {
       const info = await paneProcessInfo(pane.pane_id);
-      // a foreground process whose command line cannot be read may be a Codex of this store
-      const unread = (info?.foreground_processes ?? []).some(({ pid, argv }) => {
-        if (argv?.length) return false;
-        if (process.platform !== "linux") return true;
-        try { return readFileSync(`/proc/${pid}/cmdline`, "utf8").length === 0; } catch { return true; }
-      });
-      if (unread) return pane;
+      if (unread(info)) return pane;
       const { list } = await codexProcessesOf(pane.pane_id, info ?? null);
       if (list.length === 0 || remote(list)) return pane;
       // every Codex process of the peer must sit in a known, different store

@@ -1753,6 +1753,18 @@ shortIt("keeps a peer ambiguous while one of its foreground processes cannot be 
   expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
 });
 
+shortIt("keeps peers ambiguous while one of this pane's foreground processes cannot be read", async () => {
+  await shortSession();
+  foreground.push({ pid: 2147483647 });
+  const otherHome = join(root, "other-codex-home");
+  mkdirSync(otherHome);
+  fs.copyFileSync(join(home, "state_5.sqlite"), join(otherHome, "state_5.sqlite"));
+  const peer = await runningCodex(false, { ...process.env, CODEX_HOME: otherHome });
+  foregrounds.set("peer", [{ pid: peer.pid, argv: [join(root, "codex")] }]);
+  peerScreens.set("peer", "Working\u2026");
+  expect(await codexTranscriptPath(root, root, home, [fixturePane(root), fixturePane("peer")])).toBeNull();
+});
+
 shortIt("keeps peers ambiguous while any of this pane's Codex processes uses another store", async () => {
   await shortSession();
   const otherHome = join(root, "other-codex-home");
