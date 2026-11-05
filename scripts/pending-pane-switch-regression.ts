@@ -318,7 +318,7 @@ try {
   const uncertain = rows().filter({ hasText: disconnected.text });
   assert.equal(await uncertain.locator(".pending-message-send").count(), 0, "an uncertain copy never offers Send now");
   await report("idle"); await noBytes(delivered, "reconnect and readiness never replay disconnected pending input");
-  await uncertain.getByRole("button", { name: "Discard saved copy", exact: true }).click();
+  await uncertain.getByRole("button", { name: "Dismiss saved copy", exact: true }).click();
   await uncertain.waitFor({ state: "detached" });
 
   await report("working");

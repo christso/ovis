@@ -115,6 +115,7 @@ const BASE: Record<string, string> = {
   "Live terminal: coming to Windows PCs once herdr can attach there": "실시간 터미널: herdr가 Windows에서 attach를 지원하면 열립니다",
   "soon": "준비 중",
   "Terminal": "터미널",
+  "Show terminal": "터미널 보기",
   "herdr {version} · protocol {protocol}": "herdr {version} · 프로토콜 {protocol}",
   "live": "연결됨",
   "disconnected": "끊김",
@@ -292,7 +293,6 @@ const BASE: Record<string, string> = {
   "Skills": "스킬",
   "Not sent: send or discard the held input first.": "보내지 못했습니다: 보관한 입력을 먼저 보내거나 버리세요.",
   "Queue could not be saved. Keep this tab open or copy the messages before reloading.": "대기 메시지를 저장하지 못했습니다. 이 탭을 유지하거나 새로고침 전에 메시지를 복사하세요.",
-  "Queued messages": "대기 메시지",
   "Not confirmed. Check the terminal before sending again.": "전송 여부를 확인하지 못했습니다. 다시 보내기 전에 터미널을 확인하세요.",
   "Too large to attach: {name} ({size}). A file can be up to {limit}.": "첨부하기에는 너무 큽니다: {name} ({size}). 파일은 {limit}까지 첨부할 수 있습니다.",
   // ---- subscription usage ----
