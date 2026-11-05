@@ -7,6 +7,8 @@ The fork was deployed on 2026-11-05 at [`1b76b353024843301b4f2d9e6266531dad3fa2b
 | Browser clock +2 seconds; initial conversation request held until submit | Transcript message and full faded duplicate | One transcript message and a compact, expandable sent status; no faded duplicate |
 | Codex working; queued follow-up; Send now | Delivered follow-up with a generic unconfirmed card | One delivered follow-up; narrower interruption warning, folded saved text, visible recovery actions |
 
+All three fork PRs are now merged into [`christso/main` at `df1c4891`](https://github.com/christso/ovis/commit/df1c489192cb52dea131bc4f206af5862b2e1018). Every required PR check is green. The merged source tree is identical to the installed revision above; HTTPS health and client assets were rechecked after the merges. The running pin remains the tested deployment commit. See [merge and CI verification](merge-verification.json).
+
 ## Recordings
 
 - [Green Send now MP4](green-send-now.mp4): native idle control, busy command, queued follow-up, Send now, reload, exact copy, terminal inspection, draft preservation and saved-copy dismissal. [Desktop screenshot](send-now-desktop.png), [phone-width screenshot](send-now-phone-width.png), [results](green-send-now-results.json).
@@ -25,7 +27,7 @@ The first-read recording uses a 390 × 844 mobile/touch browser context. The Sen
 - [Fork PR #14](https://github.com/christso/ovis/pull/14): Send now evidence, recovery copy and controls.
 - [Fork PR #15](https://github.com/christso/ovis/pull/15): separate backport of upstream [Settings repair #2651](https://github.com/devswha/ovis/pull/2651), plus existing-tolerance corrections for animated geometry assertions. This addresses the independent Settings failure exposed by the broader browser CI run.
 
-The installed combination passed `bun run check fast`: 10,625 tests, zero failures, 41 repository skips, plus type, build, generated-file and workflow checks. The combined pending-pane, sent-waiting, terminal-peek, composer-fit and native lifecycle browser run passed. The device-security browser matrix passed five desktop/phone, language and theme configurations. The fork PRs remain open; full hosted CI was still running when this packet was published. The original upstream receipt draft [#2792](https://github.com/devswha/ovis/pull/2792) remains separate.
+The installed combination passed `bun run check fast`: 10,625 tests, zero failures, 41 repository skips, plus type, build, generated-file and workflow checks. The combined pending-pane, sent-waiting, terminal-peek, composer-fit and native lifecycle browser run passed. The device-security browser matrix passed five desktop/phone, language and theme configurations. All three fork PRs are merged with green Fast checks, Integration and browser, and Native Windows install checks. The initially failed browser jobs passed on retry without further source changes. Completed agent review summaries and finding resolutions were posted before merging; CodeRabbit did not review these fork PRs. Their clean, inactive worktree workspaces and branches were removed. The original upstream receipt draft [#2792](https://github.com/devswha/ovis/pull/2792) remains separate.
 
 ## Repeat from an Ovis checkout
 
