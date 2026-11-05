@@ -45,6 +45,8 @@ describe("a pending row's refusal note", () => {
   it("explains true unknown delivery and how to resolve its queue fence", () => {
     const html = render("submit_changed", "unknown", ["en"], false, "uncertain");
     expect(html).toContain("Saved copy · delivery unknown");
+    expect(html).toContain("<details");
+    expect(html).not.toContain("<details open");
     expect(html).toContain("This message may already have arrived.");
     expect(html).toContain("This copy will not resend automatically.");
     expect(html).toContain("Dismiss removes this browser&#x27;s saved copy.");
