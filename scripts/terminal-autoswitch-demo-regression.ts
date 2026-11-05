@@ -158,6 +158,13 @@ try {
       await context.addInitScript(({ theme, pane }) => {
         localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme, darkTheme: "amber", lightTheme: "amber", autoSendQueued: true }));
         localStorage.setItem(`ovis:view:${pane}`, "chat");
+        if (!localStorage.getItem("qa:recovery-seeded")) {
+          localStorage.setItem("qa:recovery-seeded", "true");
+          localStorage.setItem(`ovis:pending:${pane}`, JSON.stringify({ messages: [{
+            id: "acknowledged-send-now", request_id: 1, text: "Previously sent follow-up", state: "uncertain",
+            created_at: "2026-11-05T00:00:00Z", error: { code: "codex_interrupt_unconfirmed", message: "Sent to terminal; immediate interruption was not confirmed" },
+          }] }));
+        }
       }, { theme, pane: owner });
       const page = await context.newPage();
       const errors: string[] = [];
@@ -229,6 +236,53 @@ try {
         await page.waitForFunction(([pane, before]) => (window as unknown as PeekWindow).sentFrames
           .filter((frame) => frame.type === "input" && frame.pane_id === pane && frame.text === "\x1b").length > before, [owner, escapes] as const);
       };
+
+      // A restored acknowledged Send now copy is recovery UI, never another input command.
+      // The native Codex outcome is covered separately; this exercises the real peek/return client.
+      const recovery = chat(page).locator('.pending-message[data-state="uncertain"]');
+      await recovery.getByText("Sent to terminal · immediate interruption not confirmed", { exact: true }).waitFor();
+      assert.equal(await recovery.locator("details").getAttribute("open"), null, "the saved duplicate starts folded");
+      await recovery.locator("summary").click();
+      assert.equal(await recovery.locator(".pending-message-bubble").innerText(), "Previously sent follow-up");
+      await recovery.locator("summary").click();
+      await page.evaluate(() => {
+        const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard"), exec = document.execCommand;
+        Reflect.set(window, "restoreRecoveryClipboard", () => {
+          if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard); else Reflect.deleteProperty(navigator, "clipboard");
+          document.execCommand = exec;
+        });
+        Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("fixture clipboard refusal"); } } });
+        document.execCommand = () => false;
+      });
+      await recovery.getByRole("button", { name: "Copy message", exact: true }).click();
+      await page.waitForFunction(() => getSelection()?.toString() === "Previously sent follow-up");
+      assert.notEqual(await recovery.locator("details").getAttribute("open"), null, "clipboard refusal exposes selectable saved text");
+      await page.evaluate(() => { Reflect.get(window, "restoreRecoveryClipboard")(); getSelection()?.removeAllRanges(); });
+      await recovery.locator("summary").click();
+      await recovery.getByText("Dismiss removes this browser's saved copy. It does not cancel sent input; another connection may still hold the queue.", { exact: true }).waitFor();
+      await box(page).fill("Keep this draft while reviewing delivery");
+      await noteLog(page);
+      const inputFrames = async () => (await frames(page)).filter((frame) => ["submit", "input", "keys", "pending-action"].includes(frame.type));
+      const beforeRecovery = await inputFrames();
+      await recovery.getByRole("button", { name: "Show terminal", exact: true }).click();
+      await peek(page).waitFor();
+      await hint(page).getByText("Terminal", { exact: true }).waitFor();
+      assert.equal(await hint(page).getByText(AUTO_NOTE, { exact: true }).count(), 0, "review returns only by hand");
+      assert.equal(await chat(page).locator(".pending-messages").getAttribute("inert"), "");
+      assert.deepEqual(await inputFrames(), beforeRecovery, "opening the terminal writes no input");
+      await hint(page).getByRole("button", { name: "Back to Chat", exact: true }).click();
+      await expectReturned();
+      assert.equal(await box(page).inputValue(), "Keep this draft while reviewing delivery");
+      assert.equal(await chat(page).locator(".pending-messages").getAttribute("inert"), null);
+      assert.equal(await chat(page).locator(".composer-notice", { hasText: "still open in the terminal" }).count(), 0, "reviewing an empty input row creates no command guard");
+      assert.equal(await recovery.locator(".pending-message-send").count(), 0);
+      await recovery.getByRole("button", { name: "Dismiss saved copy", exact: true }).click();
+      await recovery.waitFor({ state: "detached" });
+      assert.deepEqual(await inputFrames(), beforeRecovery, "return and dismissal never resend or cancel native input");
+      assert.equal(await box(page).inputValue(), "Keep this draft while reviewing delivery");
+      assert.equal(await chat(page).getByRole("button", { name: "Send message", exact: true }).isEnabled(), true, "the composer remains usable");
+      await box(page).fill("");
+      console.log(`PASS ${tag}: restored Send now status preserves its draft and focus across terminal review, with no input or resend`);
 
       for (const mode of ["refused", "unconfirmed"]) {
         await page.evaluate((mode) => { Object.assign(window, { receiptMode: mode }); }, mode);

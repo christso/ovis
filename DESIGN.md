@@ -2683,7 +2683,24 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   acceptance and outcome recovery ([source research](docs/codex-unconfirmed/openclaw-research.md));
   it keeps Ovis's terminal send path and does not infer delivery from matching transcript text.
   Sending disables that item's actions; errors stay inline. Uncertain messages offer Copy and
-  Discard saved copy, with no retry action. Desktop and phones share this flow.
+  **Dismiss saved copy**, with no retry action. Desktop and phones share this flow.
+  For explicit Codex Send now, an acknowledged Enter followed by a failed interruption check
+  keeps the same non-resendable uncertain row with `codex_interrupt_unconfirmed`: **Sent to
+  terminal · immediate interruption not confirmed**. It proves a terminal write, not native
+  acceptance or interruption. Its saved text folds under **Saved message**, remaining selectable
+  and available to Copy. Other ambiguous delivery says **Saved copy · delivery unknown** and
+  explains that the message may already have arrived. Both explain that nothing resends
+  automatically. Dismissing an authoritative row releases its queue fence without cancelling
+  native input; dismissing a restored copy only removes this browser's copy. A held follower
+  carries a neutral review reason, never another row's terminal acknowledgement. **Show terminal** opens the existing manual peek over the mounted chat, preserving the composer
+  draft and return behavior. The exact live steering-panel guard for Escape stays unchanged.
+  The distinction follows [Claude Code's queued-versus-started input feedback](https://code.claude.com/docs/en/interactive-mode#queue-messages-while-claude-works)
+  and [Paseo's separate steering and interruption behaviors](https://paseo.sh/docs/cli#sending-messages).
+  [Codex's terminal workflow](https://developers.openai.com/codex/cli/features/) and
+  [T3 Code's control-surface documentation](https://github.com/pingdotgg/t3code#readme) were also
+  inspected; neither establishes a terminal-write receipt as proof of immediate interruption.
+  Ovis retains its explicit recovery copy because it bridges a terminal rather than owning the
+  native agent's queue. No comparator code or pixels are copied.
 - Accepted pending messages clear only the draft prefix acknowledged by the bridge. For agents
   other than Pi, actual Enter delivery removes the pending row and refreshes the transcript. For
   a message submitted from Ovis Chat to Pi, Enter changes it to a read-only **Sent to Pi ·

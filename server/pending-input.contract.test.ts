@@ -946,6 +946,46 @@ describe("connection-owned pending input", () => {
     await f.waitBytes("barrier\r");
     expect(f.bytes().split("held cross tab").length - 1).toBe(1);
   }, 30_000);
+  it("retains acknowledged Send now input when working Codex exposes no steering panel", async () => {
+    const f = await setup("codex-send-now-unconfirmed", "codex");
+    const message = await f.queue(1, "send this now");
+    const later = await f.queue(2, "later message");
+    f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: message.id, action: "steer" });
+    await f.waitBytes("\r");
+    // Matching words in scrollback are no authority to interrupt or release the saved copy.
+    await f.showScreen("› send this now\n• ACK\n• Working (2s • esc to interrupt)\n› Ask Codex to do anything\n");
+    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
+    const update = await f.socket.event((frame) => frame.messages.some((row) => row.id === message.id && row.state === "uncertain"));
+    expect(update.messages).toContainEqual(expect.objectContaining({ id: message.id, state: "uncertain", error: expect.objectContaining({ code: "codex_interrupt_unconfirmed" }) }));
+    expect(update.messages).toContainEqual(expect.objectContaining({ id: later.id, state: "held", error: expect.objectContaining({ code: "pending_review" }) }));
+    f.socket.send({ type: "pending-action", id: 11, pane_id: f.pane, pending_id: message.id, action: "steer" });
+    expect(await f.socket.action(11)).toMatchObject({ ok: false, code: "pending_uncertain" });
+    f.socket.send({ type: "submit", id: 3, pane_id: f.pane, text: "blocked by saved copy", payload: "unused", delivery: "queue" });
+    expect(await f.socket.result(3)).toMatchObject({ ok: false, code: "pending_uncertain" });
+    await f.state("idle");
+    f.socket.send({ type: "pending-action", id: 12, pane_id: f.pane, pending_id: message.id, action: "discard" });
+    expect(await f.socket.action(12)).toMatchObject({ ok: true });
+    await f.removed(message.id, "dismissed");
+    expect(f.bytes()).toBe(`${paste("send this now")}\r`);
+    await f.state("working");
+    const nextMessage = await f.queue(4, "queue unblocked");
+    expect(nextMessage.state).toBe("queued");
+    expect(f.bytes()).toBe(`${paste("send this now")}\r`);
+  }, 30_000);
+
+  it("keeps Send now delivery unknown when Enter was not acknowledged", async () => {
+    const f = await setup("codex-send-now-enter-refused", "codex");
+    const message = await f.queue(1, "send this now");
+    const hold = holdConnect("keys");
+    f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: message.id, action: "steer" });
+    await hold.reached;
+    f.socket.send({ type: "role", mode: "observe" });
+    await f.socket.wait((frame) => frame.type === "role-ack" && frame.mode === "observe");
+    hold.release();
+    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "submit_changed" });
+    expect(f.bytes()).toBe(paste("send this now"));
+  }, 30_000);
+
   it("interrupts an explicit Codex Send now only after its native steering panel appears", async () => {
     const f = await setup("codex-send-now", "codex"); const message = await f.queue(1, "send this now");
     f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: message.id, action: "steer" });
@@ -967,7 +1007,7 @@ describe("connection-owned pending input", () => {
     f.socket.send({ type: "role", mode: "observe" }); await f.socket.wait((frame) => frame.type === "role-ack" && frame.mode === "observe");
     f.socket.send({ type: "role", mode: "interact" }); await f.socket.wait((frame) => frame.type === "role-ack" && frame.mode === "interact");
     hold.release();
-    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "submit_changed" });
+    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
     expect(f.bytes()).toBe(`${paste("send this now")}\r`);
     expect((await f.socket.wait((frame) => frame.type === "pending-messages" && frame.messages.some((item: any) => item.id === message.id && item.state === "uncertain"))).messages[0].state).toBe("uncertain");
   }, 30_000);
@@ -980,7 +1020,7 @@ describe("connection-owned pending input", () => {
     // the panel was read in time; by the time herdr is written to, Codex may have taken the steering itself
     await Bun.sleep(1_600);
     hold.release();
-    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "submit_changed" });
+    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
     expect(f.bytes()).toBe(`${paste("send this now")}\r`);
   }, 30_000);
 
@@ -992,7 +1032,7 @@ describe("connection-owned pending input", () => {
     // the turn ended on its own: Escape would now cancel whatever Codex opened next
     await f.state("idle");
     hold.release();
-    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "submit_changed" });
+    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
     expect(f.bytes()).toBe(`${paste("send this now")}\r`);
   }, 30_000);
 
@@ -1009,7 +1049,7 @@ describe("connection-owned pending input", () => {
     const f = await setup("codex-menu-after-enter", "codex"); const message = await f.queue(1, "send this now");
     f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: message.id, action: "steer" });
     await f.waitBytes("\r"); await f.showScreen(approval);
-    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "submit_changed" });
+    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
     expect(f.bytes()).toBe(`${paste("send this now")}\r`);
     expect((await f.socket.wait((frame) => frame.type === "pending-messages" && frame.messages.some((item: any) => item.id === message.id && item.state === "uncertain"))).messages[0].state).toBe("uncertain");
   }, 30_000);
@@ -1018,7 +1058,7 @@ describe("connection-owned pending input", () => {
     const f = await setup("codex-detach-after-enter", "codex"); const message = await f.queue(1, "send this now");
     f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: message.id, action: "steer" });
     await f.waitBytes("\r"); f.socket.send({ type: "detach", pane_id: f.pane });
-    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "submit_changed" });
+    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
     expect(f.bytes()).toBe(`${paste("send this now")}\r`);
   }, 30_000);
 

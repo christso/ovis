@@ -1091,7 +1091,7 @@ export function PaneTerminal({
             <span className="terminal-command-label">
               <SquareTerminal aria-hidden="true" />
               <span className="terminal-command-words">
-                <span title={peek.command}>{t("{command} ran", { command: peek.command })}</span>
+                <span title={peek.command}>{peek.command ? t("{command} ran", { command: peek.command }) : t("Terminal")}</span>
                 {autoPeek !== null && <span className="terminal-command-note">{t("Chat may come back when you close it")}</span>}
               </span>
             </span>
@@ -1312,6 +1312,7 @@ export function PaneTerminal({
         onSendNow={(id) => actOnPending(id, "steer")}
         onEdit={(id) => actOnPending(id, "edit")}
         onDiscard={(id) => actOnPending(id, "discard")}
+        onShowTerminal={onOpenTerminal ? () => peekOutcome("") : undefined}
       />}
       {/* The prompt card's place: under the held messages (which fold to their caption while it is
           open), directly over the input card, on the same column. ChatView renders the card into

@@ -9,6 +9,18 @@ const storage = () => {
 const message = (id: string, state: PendingMessage["state"] = "queued", text = "check the tests"): PendingMessage => ({ id, request_id: 1, text, state, created_at: "2026-10-06T00:00:00Z" });
 
 describe("pending message ownership", () => {
+  it("restores the acknowledged Send now reason without restoring delivery authority", () => {
+    const port = storage(), store = new PendingMessageStore(() => port);
+    const error = { code: "codex_interrupt_unconfirmed", message: "Sent to terminal; immediate interruption was not confirmed" };
+    store.accept("p", { ...message("sent-once", "uncertain"), error }, "old");
+    store.suspendScope("old");
+    const restored = new PendingMessageStore(() => port);
+    expect(restored.read("p")).toEqual([expect.objectContaining({ id: "sent-once", state: "uncertain", serverOwned: false, error })]);
+    restored.publish("p", [], [], "new");
+    expect(restored.read("p")[0]?.error).toEqual(error);
+    restored.removeCopy("p", "sent-once");
+    expect(restored.read("p")).toEqual([]);
+  });
   it("settles a follow-up's exact resumed receipt after reload, never a same-text or live-owned row (#2421)", () => {
     const port = storage(), before = new PendingMessageStore(() => port);
     before.accept("p", message("delivered", "sending", "same"), "old");

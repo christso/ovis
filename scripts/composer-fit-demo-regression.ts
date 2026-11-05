@@ -847,7 +847,7 @@ try {
             const r = item.getBoundingClientRect(), size = parseFloat(getComputedStyle(item).getPropertyValue("--touch-target"));
             return r.width >= size && r.height >= size;
           })), true, "Copy and Discard keep the full touch target");
-          await page.getByRole("button", { name: "Discard saved copy", exact: true }).click();
+          await page.getByRole("button", { name: "Dismiss saved copy", exact: true }).click();
           await bubble.waitFor({ state: "hidden" });
         }
       });
