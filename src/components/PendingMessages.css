@@ -42,10 +42,50 @@
 
 .pending-message-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-1);
   max-width: 100%;
+}
+
+.pending-message-recovery ~ .pending-message-meta {
+  position: sticky;
+  bottom: 0;
+  align-self: stretch;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+.pending-message-saved {
+  max-width: 100%;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+}
+
+.pending-message-saved summary {
+  min-height: var(--control-h);
+  align-content: center;
+  cursor: pointer;
+}
+
+.pending-message-saved .pending-message-bubble {
+  max-width: 100%;
+  font-size: calc(var(--fs-md) * var(--chat-scale, 1));
+}
+
+.pending-message-recovery {
+  align-self: stretch;
+  margin-top: var(--space-1);
+}
+
+.pending-message-dismiss {
+  display: inline-flex;
+  gap: var(--space-1);
+  width: auto;
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: var(--fs-xs);
 }
 
 .pending-message-note {
@@ -78,6 +118,10 @@
 
   .pending-message-action {
     min-width: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+
+  .pending-message-saved summary {
     min-height: var(--touch-target);
   }
 }

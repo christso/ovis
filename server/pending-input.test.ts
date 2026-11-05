@@ -45,6 +45,24 @@ function fixture() {
   return { queue, receipts, enqueue, advance: (ms: number) => { now += ms; queue.expire(); } };
 }
 
+it("keeps acknowledged interruption evidence on its own row through a follower retry and reload", () => {
+  const f = fixture();
+  const first = f.enqueue(1), follower = f.enqueue(2);
+  expect(f.queue.claim(first, false)).toBe(true);
+  f.queue.settle(first, { code: "codex_interrupt_unconfirmed", message: "Enter acknowledged" }, true);
+  expect(first.message.error?.code).toBe("codex_interrupt_unconfirmed");
+  expect(follower.message).toMatchObject({ state: "held", error: { code: "pending_review" } });
+  const values = new Map<string, string>();
+  const port = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
+  const before = new PendingMessageStore(() => port);
+  before.accept("p", follower.message, "old");
+  before.suspendScope("old");
+  const retry = new PendingMessageStore(() => port);
+  expect(retry.unconfirm("p", follower.message.id)).toBe(true);
+  const reloaded = new PendingMessageStore(() => port);
+  expect(reloaded.read("p")).toEqual([expect.objectContaining({ state: "uncertain", serverOwned: false, error: expect.objectContaining({ code: "pending_review" }) })]);
+});
+
 describe("bridge pending input", () => {
   it.each(["submit_changed", "submit_partial", "submit_failed", "disconnected", "timeout", "unknown_failure"])(
     "retains ambiguous held-copy disposition across generations and dismissal: %s", async (code) => {

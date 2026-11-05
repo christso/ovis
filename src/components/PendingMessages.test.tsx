@@ -14,6 +14,7 @@ const render = (code: string, message: string, languages: string[], serverOwned 
       messages: [{ id: "p1", request_id: 1, text: "ls", state, created_at: "2026-10-14T00:00:00.000Z", serverOwned, error: { code, message } }],
       connected: true, blocked: false, unsaved: false, isBusy: () => false,
       onSendNow: async () => {}, onEdit: async () => {}, onDiscard: async () => {},
+      onShowTerminal: () => {},
     }) }));
   } finally {
     if (saved) Object.defineProperty(navigator, "languages", saved);
@@ -22,6 +23,46 @@ const render = (code: string, message: string, languages: string[], serverOwned 
 };
 
 describe("a pending row's refusal note", () => {
+  it.each(["en", "ko", "ja", "zh"] as const)("distinguishes acknowledged Send now input and offers recovery in %s", (language) => {
+    const html = render("codex_interrupt_unconfirmed", "confirmation timed out", [language], true, "uncertain");
+    for (const text of ["Sent to terminal · immediate interruption not confirmed", "Saved message", "Show terminal", "Dismiss saved copy",
+      "Check the terminal before sending again. This copy will not resend automatically.",
+      "Dismiss the saved copy to unblock the queue. This does not cancel input already sent to the agent."]) {
+      const translated = translate(language, text);
+      if (language !== "en") expect(translated).not.toBe(text);
+      expect(html).toContain(translated);
+    }
+    expect(html).toContain("<details");
+    expect(html).not.toContain("<details open");
+    expect(html).toContain('class="pending-message-bubble">ls</div>');
+    expect(html).toContain(`>${translate(language, "Dismiss saved copy")}</span>`);
+    expect(html).not.toContain("pending-message-send");
+    expect(html).not.toContain("Edit queued message");
+    expect(html).not.toContain("confirmation timed out");
+    expect(html).toContain(`aria-label="${translate(language, "Message status")}"`);
+  });
+
+  it("explains true unknown delivery and how to resolve its queue fence", () => {
+    const html = render("submit_changed", "unknown", ["en"], false, "uncertain");
+    expect(html).toContain("Saved copy · delivery unknown");
+    expect(html).toContain("This message may already have arrived.");
+    expect(html).toContain("This copy will not resend automatically.");
+    expect(html).toContain("Dismiss removes this browser&#x27;s saved copy.");
+    expect(html).toContain("It does not cancel sent input; another connection may still hold the queue.");
+    expect(html).not.toContain("Dismiss the saved copy to unblock the queue.");
+    expect(html).toContain(">Show terminal</button>");
+    expect(html).toContain(">Dismiss saved copy</span>");
+    expect(html).not.toContain("Sent to terminal");
+    expect(html).not.toContain("pending-message-send");
+  });
+
+  it("does not claim a later held row was sent when it inherits the earlier interruption fault", () => {
+    const html = render("pending_review", "An earlier message needs review", ["en"]);
+    expect(html).toContain("Not sent: review the earlier message in the terminal before sending this one.");
+    expect(html).not.toContain("Sent to terminal");
+    expect(html).toContain("pending-message-send");
+  });
+
   it("does not offer Edit on another tab's saved held copy", () => {
     const html = render("held_input", "held", ["en"], false);
     expect(html).not.toContain("Edit queued message");

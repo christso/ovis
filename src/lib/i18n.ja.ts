@@ -117,6 +117,7 @@ const BASE: Record<string, string> = {
   "Live terminal: coming to Windows PCs once herdr can attach there": "ライブターミナル: herdr が Windows でアタッチに対応したら使えます",
   "soon": "近日",
   "Terminal": "ターミナル",
+  "Show terminal": "ターミナルを表示",
   "herdr {version} · protocol {protocol}": "herdr {version} · プロトコル {protocol}",
   "live": "接続中",
   "disconnected": "切断",
@@ -294,7 +295,6 @@ const BASE: Record<string, string> = {
   "Skills": "スキル",
   "Not sent: send or discard the held input first.": "未送信: 先に保持した入力を送信するか破棄してください。",
   "Queue could not be saved. Keep this tab open or copy the messages before reloading.": "キューを保存できませんでした。このタブを開いたままにするか、再読み込みする前にメッセージをコピーしてください。",
-  "Queued messages": "キュー内のメッセージ",
   "Not confirmed. Check the terminal before sending again.": "送信を確認できませんでした。再送信する前にターミナルを確認してください。",
   "Too large to attach: {name} ({size}). A file can be up to {limit}.": "添付するには大きすぎます: {name}（{size}）。ファイルは {limit} まで添付できます。",
   // ---- subscription usage ----

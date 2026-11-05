@@ -1001,7 +1001,7 @@ try {
   await reportPending("idle"); await page.locator('.composer-status:not([data-status="working"])').waitFor();
   await page.waitForTimeout(NO_SEND_WAIT_MS); // fixed wait: readiness may not replay saved pending input
   assert.equal(pendingBytes(), `\u001b[200~${queuedTexts[0]}\u001b[201~\r\u001b`, "reload and readiness never replay saved pending input");
-  for (let left = 2; left > 0; left--) { await page.getByRole("button", { name: "Discard saved copy", exact: true }).first().click(); await until(async () => await pendingRows.count() === left - 1, "discard saved copy"); }
+  for (let left = 2; left > 0; left--) { await page.getByRole("button", { name: "Dismiss saved copy", exact: true }).first().click(); await until(async () => await pendingRows.count() === left - 1, "discard saved copy"); }
   console.log("PASS Send queues server-owned input, explicit Send now delivers once, and reload/readiness never replay uncertain copies");
 
   // Older releases saved editable held rows. Seed that documented storage format so the

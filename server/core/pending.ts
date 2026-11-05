@@ -96,6 +96,7 @@ const TARGET_CHANGED = { code: "pending_target_changed", message: "The pane's te
 const LAUNCH_GONE = { code: "first_message_launch_ended", message: "The agent started for this message has ended; review the message before sending it" };
 /** receipts of first messages kept per pane, so a connection that attaches later drops a stale copy */
 const FIRST_MESSAGE_RECEIPTS = 8;
+const pendingUncertain = (code: string | undefined): boolean => code === "submit_changed" || code === "codex_interrupt_unconfirmed";
 
 /**
  * The server's pending messages. `authorizeSocket`, `clientSnapshot`, `omo` and `queueHeld` belong to the
@@ -566,6 +567,7 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
     automatic: boolean, arrivedAt: number, committing: (working: boolean, restarting?: boolean) => void = () => {}, interruptWorkingCodex = false,
     requestId = 0, agentOnly = false, queued = false): Promise<SubmitReply> {
     let wrote = false;
+    let confirmingCodexInterruption = false;
     // a message for an agent alone pasted and then refused its Enter (#511): its text may sit in the input line, so it is
     // held for the user and never pasted again automatically
     let stranded = false;
@@ -687,6 +689,9 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
       }
       // the status the panel was read under; a status event since (a finish, an approval) stales the Escape
       let statusAtRead = pending.current(paneId);
+      // Enter has acknowledged. Failure from here can only leave immediate interruption
+      // unconfirmed; it cannot establish native acceptance or that nothing was sent.
+      confirmingCodexInterruption = interruptWorkingCodex && beforeEnter.identity.agent === "codex" && beforeEnter.working;
       await interruptCodexSteering(interruptWorkingCodex, closeMention(text), { agent: beforeEnter.identity.agent, working: beforeEnter.working, screen: beforeEnter.screen }, {
         read: async () => {
           const current = await pendingContext(owner, paneId, lease, identity, true);
@@ -698,6 +703,7 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
         // write is refused when the lease, the deadline or the pane's status moved meanwhile
         escape: (fresh) => paneSendKeys(paneId, ["Escape"], undefined, () => allowed() && fresh() && pending.current(paneId) === statusAtRead),
       });
+      confirmingCodexInterruption = false;
       noteSubmitted(paneId, sent, command, sentAt);
       if (command) watch?.commit(command, prompt, attached);
       return { ok: true };
@@ -705,7 +711,9 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
       watch?.cancel();
       // never retried, and uncertain (dispatchPending): the pane's queue waits behind it for the user
       if (stranded) return { ok: false, code: "pasted_not_sent", message: PASTED_NOT_SENT_MESSAGE };
-      const fault = error instanceof HerdrError && error.code === "submit_changed" ? pendingFault(error)
+      const fault = confirmingCodexInterruption
+        ? { code: "codex_interrupt_unconfirmed", message: "Sent to terminal; immediate interruption was not confirmed. Check the terminal before sending again." }
+        : error instanceof HerdrError && error.code === "submit_changed" ? pendingFault(error)
         : wrote ? { code: "submit_changed", message: "Pending-message delivery could not be confirmed. Check the terminal before sending again." } : pendingFault(error);
       if (automatic && !wrote && fault.code === "agent_blocked") pending.observe(paneId, "blocked", mark);
       // a queued request typed at once is refused as an immediate send is: with the draft (or box) its actions need
@@ -737,7 +745,7 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
     const fault = reply.ok ? undefined : unattended && retryable ? FIRST_MESSAGE_UNATTENDED : { code: reply.code!, message: reply.message! };
     // a paste left in the input line (#511) is uncertain like a delivery not confirmed: the pane's queue stops behind it, and
     // only the user copies or discards it
-    pending.settle(item, fault, reply.code === "submit_changed" || reply.code === "pasted_not_sent", automatic && retryable && !unattended);
+    pending.settle(item, fault, pendingUncertain(reply.code) || reply.code === "pasted_not_sent", automatic && retryable && !unattended);
     return reply;
   }
   function drainPending(paneId: string): void {
@@ -1189,10 +1197,10 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
                 dispatched = true;
                 return await dispatchPending(item, false, arrivedAt, true, client);
               } catch (error) { return { ok: false, ...pendingFault(error) }; }
-            }, message.resend_generation, (code) => code === "submit_changed");
+            }, message.resend_generation, pendingUncertain);
           // A saved copy may already have completed this ID on another connection.
           if (!dispatched && pending.get(client, item.paneId, item.message.id) === item && pending.claim(item, false))
-            pending.settle(item, reply.ok ? undefined : { code: reply.code!, message: reply.message! }, reply.code === "submit_changed");
+            pending.settle(item, reply.ok ? undefined : { code: reply.code!, message: reply.message! }, pendingUncertain(reply.code));
           // a pane's first message refused because what runs there is not what was launched for it, or that agent
           // ended: its card says so
           if (!dispatched && !isClient(item.owner) && (reply.code === TARGET_CHANGED.code || reply.code === LAUNCH_GONE.code)) pending.rehold(item, { code: reply.code, message: reply.message! });
