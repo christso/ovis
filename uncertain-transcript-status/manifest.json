@@ -72,10 +72,38 @@
     "closure": "No remaining concrete defect found",
     "crossModel": "Unavailable before egress (npm EOVERRIDE); in-process adversarial fallback"
   },
-  "deployment": "pending; verification added after merge",
+  "deployment": {
+    "url": "https://herdrweb.z.tsoyang.com/",
+    "revision": "de7ba960a5293bda67289f357476ac924ebfe69d",
+    "httpsHealthy": true,
+    "newOvisBoot": true,
+    "installedClientMatchesHttpsAsset": true,
+    "servedScripts": [
+      {
+        "path": "/assets/theme-bootstrap-f1c4fae877.js",
+        "sha256": "f1c4fae8772541bf7dd7a5fcd3b5ae691d986d2ae6cc5a105e5c8a573af1c446"
+      },
+      {
+        "path": "/assets/index-DsX__-yy.js",
+        "sha256": "39ffe2b34f1405aa97130bc04413d7acba2cd53beeb68e540af8ca682fb8f7b1"
+      }
+    ],
+    "htmlCacheControl": "no-cache",
+    "configurationPreserved": true,
+    "pairedDeviceIdentitiesPreserved": true,
+    "remoteBundlePinPreserved": true,
+    "herdrSocketUnchanged": true
+  },
   "artifactSha256": {
-    "README.md": "1119d3fe0d62e197b51dfc0019eb21ae35089d4a241a72a6b945eff976fa5e80",
+    "README.md": "0dc36a0593171e98a2f1b915582871d5138a25f94411252549f288c2a36814ca",
     "reproduce.ts": "9011fc7c576b9c9e7f594bd39900630054b9b73ad127a6122dce474120848285",
+    "deployed/green.mp4": "2a04f021a0919590245f68dc6e1e60f7487fb0969b104dcc63c89134954fa893",
+    "deployed/deployment-verification.json": "5fd8c44c7bce6f04595621b44f6b668bfdc348172536da5fa20f5e4e5a48b0e5",
+    "deployed/after-dismiss.png": "dad536482a62cf2c703cdc6518e10c2110db143d71b0ad24dd842d5cc5510249",
+    "deployed/recovery-mobile.png": "a0fa2efd65bfff5eb22ef5f60fc39238c35fa623eb7f58fe83fca418cc9f3a83",
+    "deployed/inline-phone.png": "244969c92a6416eb42b11a5c7ef332760a8db26b6cacaa0adc22ae2c685a47c2",
+    "deployed/send-now-inline.png": "abd7b29cf63b47335ffc97f3bbd8188663c2d59bd0cfb6a19c6633d6124a7d01",
+    "deployed/results.json": "a2b579beaa00649a078ce399f12189e46a243abbef54270f427996c72dbf1e33",
     "after/green.mp4": "205946df6e25ea1f8a8db924ad2f338caf60a9708a4f64833f3fe35b797347f4",
     "after/results.json": "11c550d7bc31de8095aba03aa5d68d5d054f1ca36439bf38eec2ff4b3839bbbe",
     "after/after-dismiss.png": "cfb0efc96cacab7014956736ffec45d444658d1c04432df279ca426850890992",
@@ -86,5 +114,12 @@
     "before/results.json": "b35171c6c6270123023b0f41364f026bdaab8fe3619834ca01b3bbc5a2dd6f6b",
     "before/reproduction.mp4": "1d752b71a3ac868b3e361d93eabbbec0589c78c73dbcdbc394a6781398d5a54e",
     "before/duplicate.png": "6c1f5aa5ad246ac2d2a43e126c334b0d2d5b0cd2f92b46e02e6af4276095f50a"
+  },
+  "installedNativeSmoke": {
+    "status": "passed",
+    "sourceRevision": "de7ba960a5293bda67289f357476ac924ebfe69d",
+    "faultInjected": true,
+    "projection": "codex_interrupt_unconfirmed -> submit_changed",
+    "results": "deployed/results.json"
   }
 }

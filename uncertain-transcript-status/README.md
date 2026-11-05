@@ -12,6 +12,10 @@ The fork now places uncertain-send recovery under a unique native transcript tur
 - [Source, checks and artifact hashes](manifest.json)
 - [Native test harness](reproduce.ts)
 
+## Deployed source verified
+
+The installed source at `de7ba960a5293bda67289f357476ac924ebfe69d` passed the same native smoke test after deployment. [Installed-source green MP4](deployed/green.mp4), [results](deployed/results.json), [phone screenshot](deployed/inline-phone.png), and [HTTPS/deployment verification](deployed/deployment-verification.json). The served client matches the installed build; configuration, device identities, bundle pin and Herdr socket were preserved. Merge remains gated on hosted CI.
+
 ## What the recordings establish
 
 These are isolated native Codex sessions, not recordings of a live user chat. Codex performs a short shell tool call; a follow-up is queued and sent with Send now. Native conversation responses are not fixtures. The harness deliberately projects `codex_interrupt_unconfirmed` as generic `submit_changed` in browser-bound WebSocket frames to exercise the generic uncertainty presentation reported by the user. Terminal input and native transcript content are unchanged.
