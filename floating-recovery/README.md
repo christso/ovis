@@ -23,6 +23,10 @@ Revision `7d0f42915d1c39874706d33c048ccae7f73385b0` is deployed at https://herdr
 
 The first installed-build attempt sent the follow-up before the browser had observed working status. It delivered once with no warning, so it did not exercise Send now. The final harness waits for the browser’s working state and requires an actual queued response before clicking Send now. Both queued cases then passed on the installed source. No application change was needed.
 
+## Merged and cleaned up
+
+[Fork PR #17](https://github.com/christso/ovis/pull/17) merged after all 12 distinct checks passed, including Integration and browser and Native Windows install. The [merge receipt](merge-verification.json) records the merge commit, tested head, matching deployed/main tree and check URLs. The source checkout is clean on `christso/main`; the finished feature worktree and local branch were removed. The runtime remains on the tested commit with the same tree as merged main.
+
 ## What was exercised
 
 The harness uses the real client/server and isolated native Codex sessions. Codex runs a short shell tool call; follow-ups go through the actual composer and Send now. Native transcripts are not fixtures. The browser-bound WebSocket deliberately maps `codex_interrupt_unconfirmed` to generic `submit_changed` to exercise the reported generic warning. It does not change input or native transcript content. This is controlled compatibility coverage, not proof of the exact acknowledgement failure on the user’s remote host.

@@ -1,0 +1,71 @@
+{
+  "pr": "https://github.com/christso/ovis/pull/17",
+  "state": "MERGED",
+  "mergedAt": "2026-11-05T09:32:03Z",
+  "mergeCommit": "674b86540a086d0f60c3bc8409b2937ac8791b68",
+  "testedHead": "7d0f42915d1c39874706d33c048ccae7f73385b0",
+  "mainAndDeployedTree": "3704cca47914789e8b0ef8083e7a329f3a48031a",
+  "deployedTreeMatchesMain": true,
+  "checks": [
+    {
+      "name": "Detect changes",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151450803"
+    },
+    {
+      "name": "Pull request title",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/42003140190/job/127163147333"
+    },
+    {
+      "name": "Native Windows mirrored terminal",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999679131/job/127151451136"
+    },
+    {
+      "name": "Native Windows install",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151530470"
+    },
+    {
+      "name": "Native macOS session identity",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151530519"
+    },
+    {
+      "name": "Rust PTY host",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151530433"
+    },
+    {
+      "name": "herdr-core live contract",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151530390"
+    },
+    {
+      "name": "Fast checks",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151530198"
+    },
+    {
+      "name": "Integration tests",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151530424"
+    },
+    {
+      "name": "Browser regression (ui-regression)",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151530490"
+    },
+    {
+      "name": "Browser regression (other scripts)",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127151530442"
+    },
+    {
+      "name": "Integration and browser",
+      "conclusion": "SUCCESS",
+      "url": "https://github.com/christso/ovis/actions/runs/41999678936/job/127162830319"
+    }
+  ]
+}
