@@ -209,4 +209,5 @@ export const CHAT_KO: Record<string, string> = {
   "Open link": "링크 열기",
   "Share link": "링크 공유",
   "Sent · waiting for the agent's next turn": "전송됨 · 에이전트의 다음 턴을 기다리는 중",
+  "Sent · waiting for transcript": "전송됨 · 대화 기록을 기다리는 중",
 };
