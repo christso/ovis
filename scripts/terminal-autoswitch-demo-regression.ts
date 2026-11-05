@@ -270,6 +270,28 @@ try {
         return buttons.map((button) => { const box = button.getBoundingClientRect(); return { label: button.textContent || button.getAttribute("aria-label"), visible: box.top >= list.top && box.bottom <= list.bottom }; });
       });
       assert.ok(controlBounds.every((button) => button.visible), `recovery controls remain wholly visible: ${JSON.stringify(controlBounds)}`);
+      if (touch) {
+        await page.setViewportSize({ width, height: 470 });
+        for (const expanded of [false, true]) {
+          await recovery.locator("details").evaluate((details, open) => { (details as HTMLDetailsElement).open = open; }, expanded);
+          await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+          const geometry = await recovery.evaluate((row) => {
+            const list = row.closest(".pending-messages")!.getBoundingClientRect();
+            const composer = row.closest(".terminal-stack")!.querySelector(".composer")!.getBoundingClientRect();
+            const controls = row.querySelector(".pending-message-meta")!.getBoundingClientRect();
+            const notes = [...row.children].filter((child) => child.matches(".pending-message-recovery"));
+            return {
+              aboveComposer: list.bottom <= composer.top,
+              outsideTranscript: row.closest('[role="log"]') === null,
+              notesVisible: notes.every((note) => { const box = note.getBoundingClientRect(); return box.top >= list.top && box.bottom <= controls.top; }),
+              controlsVisible: controls.top >= list.top && controls.bottom <= list.bottom && controls.bottom <= innerHeight,
+            };
+          });
+          assert.deepEqual(geometry, { aboveComposer: true, outsideTranscript: true, notesVisible: true, controlsVisible: true }, `short-phone recovery remains reachable, expanded=${expanded}`);
+        }
+        await recovery.locator("summary").click();
+        await page.setViewportSize({ width, height: 844 });
+      }
       await noteLog(page);
       const inputFrames = async () => (await frames(page)).filter((frame) => ["submit", "input", "keys", "pending-action"].includes(frame.type));
       const beforeRecovery = await inputFrames();
@@ -285,8 +307,10 @@ try {
       assert.equal(await chat(page).locator(".pending-messages").getAttribute("inert"), null);
       assert.equal(await chat(page).locator(".composer-notice", { hasText: "still open in the terminal" }).count(), 0, "reviewing an empty input row creates no command guard");
       assert.equal(await recovery.locator(".pending-message-send").count(), 0);
-      await recovery.getByRole("button", { name: "Dismiss saved copy", exact: true }).click();
+      await recovery.getByRole("button", { name: "Dismiss saved copy", exact: true }).focus();
+      await page.keyboard.press("Enter");
       await recovery.waitFor({ state: "detached" });
+      await page.waitForFunction((pane) => document.activeElement === document.querySelector(`.terminal-stack[data-pane-owner="${pane}"] .composer-text`), owner);
       assert.deepEqual(await inputFrames(), beforeRecovery, "return and dismissal never resend or cancel native input");
       assert.equal(await box(page).inputValue(), "Keep this draft while reviewing delivery");
       assert.equal(await chat(page).getByRole("button", { name: "Send message", exact: true }).isEnabled(), true, "the composer remains usable");

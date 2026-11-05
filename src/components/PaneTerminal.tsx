@@ -588,16 +588,6 @@ export function PaneTerminal({
   const queueOwner = paneId === null ? null : paneStorageId(machineId, paneId);
   const queued = useSyncExternalStore(queueStore.subscribe, () => queueStore.read(queueOwner ?? ""));
   const pending = useSyncExternalStore(pendingMessages.subscribe, () => pendingMessages.read(queueOwner ?? ""));
-  const [pendingTargets, setPendingTargets] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
-  const onPendingTarget = useCallback((id: string, target: HTMLElement | null): void => {
-    const key = JSON.stringify([queueOwner, id]);
-    setPendingTargets((before) => {
-      if (target === null ? !before.has(key) : before.get(key) === target) return before;
-      const next = new Map(before);
-      if (target === null) next.delete(key); else next.set(key, target);
-      return next;
-    });
-  }, [queueOwner]);
   useEffect(() => {
     if (!paneId || !queueOwner || !submitRetention) return;
     let release: (() => void) | undefined;
@@ -1206,7 +1196,6 @@ export function PaneTerminal({
             sentKey={chatSent}
             unsentKey={chatUnsent}
             pendingRows={pending}
-            onPendingTarget={onPendingTarget}
             localSend={chatLocalSend}
             navigation={chatNavigation}
             connected={connected}
@@ -1324,7 +1313,6 @@ export function PaneTerminal({
         onEdit={(id) => actOnPending(id, "edit")}
         onDiscard={(id) => actOnPending(id, "discard")}
         onShowTerminal={onOpenTerminal ? () => peekOutcome("") : undefined}
-        targetFor={(id) => pendingTargets.get(JSON.stringify([queueOwner, id]))}
       />}
       {/* The prompt card's place: under the held messages (which fold to their caption while it is
           open), directly over the input card, on the same column. ChatView renders the card into
