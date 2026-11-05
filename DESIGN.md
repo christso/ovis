@@ -2095,23 +2095,15 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   bubble. Matching and expiry stay unchanged; ambiguous status may remain for 60 seconds. This
   differs from the native Codex/Claude message lists because Ovis cannot establish a first-read
   turn identity from independent clocks; it preserves status without displaying a second turn.
-- An uncertain queued send uses one compact **Saved message** disclosure, including an older
-  bridge's generic delivery-unknown outcome. When this browser saw its sending frame before Enter,
-  the loaded pre-send transcript and the same native history may identify one new matching user
-  turn. The recovery controls then move under that turn: **Matching message in transcript · receipt
-  unconfirmed**, or **interruption unconfirmed** when Enter acknowledged. The full text stays folded.
-  A matching turn is presentation evidence, never a receipt: it cannot release the server's queue
-  fence, resend input or retire the saved copy. Older identical turns, multiple eligible turns or
-  competing attempts (including ordinary confirmed sends), a replaced PC/history and an unread
-  or undated baseline leave a compact notice above the composer. Uncertain placement omits the
-  ordinary waiting bubble’s coarse timestamp allowance. Focused, expanded or selected recovery
-  stays in place until that interaction ends. Reload uses the compact notice: placement evidence
-  is browser memory only.
-  A virtualized turn hosts controls only while mounted; its notice returns to the composer when it
-  leaves the DOM. This follows [Paseo's canonical user-message echo reconciliation](https://github.com/getpaseo/paseo/blob/main/docs/providers.md)
-  and [Claude Code's distinction between queued and sent entries](https://code.claude.com/docs/en/interactive-mode#queue-messages-while-claude-works).
-  Ovis cannot propagate its own message ID into a native transcript, so it keeps explicit uncertainty
-  and requires bounded, unique matching instead of treating equal text as an authoritative receipt.
+- An uncertain queued send keeps a raised recovery notice immediately above the composer, outside
+  transcript scrolling. Its **Dismiss saved copy** action stays visible when the reader scrolls or
+  the native message arrives; the saved text is folded behind **Saved message**, so the transcript
+  does not display a second message bubble. Copy and terminal review preserve the draft.
+  An exact sent/discarded receipt removes the notice automatically. Equal transcript text alone
+  cannot clear another attempt's queue fence. This follows [Claude Code's controls for taking back queued input](https://code.claude.com/docs/en/interactive-mode#queue-messages-while-claude-works)
+  rather than putting a blocking recovery action into scrollable history. It also follows [Paseo's canonical user echoes](https://github.com/getpaseo/paseo/blob/main/docs/providers.md)
+  by keeping recovery status separate from the native message. No transcript placement matcher or
+  portal is needed; uncertainty remains visible until its exact receipt or the reader resolves it.
 - An ordinary command sent from the chat says what became of it under its bubble (`.chat-outcome`,
   `lib/outcomeChip.ts`): one quiet `--fs-xs` line in `--text-dim` on the message's side, a 14px
   glyph and the state in words, read as a `role="status"` live region. It follows the delivery

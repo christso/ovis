@@ -62,7 +62,7 @@ try {
     } finally { await context.close(); }
   }
   for (const width of [390, 1280]) for (const machine of ["local", "remote-review-PC"]) {
-    for (const scenario of ["new-turn", "old-identical", "restored-copy", "other-history", "two-attempts", "engaged-row"]) {
+    for (const scenario of ["new-turn", "restored-copy", "two-attempts", "exact-receipt"]) {
       const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width === 390, hasTouch: width === 390, locale: "en-US" });
       try {
         await context.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en" })));
@@ -70,60 +70,56 @@ try {
         const errors: string[] = [];
         page.on("pageerror", (error) => errors.push(error.message));
         history = "review-history";
-        turns = [user(scenario === "old-identical" || scenario === "restored-copy" ? message : "Earlier message", Date.now() - 10_000)];
+        turns = [user(scenario === "restored-copy" ? message : "Earlier message", Date.now() - 10_000)];
         await page.goto(`http://127.0.0.1:${server.port}/`);
         await page.evaluate((machine) => window.chatQa.machine(machine), machine);
         await page.locator("[data-chat-row]").first().waitFor();
-        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-        await page.evaluate(({ text, capture }) => window.chatQa.recovery(text, "first", capture), { text: message, capture: scenario !== "restored-copy" });
-        if (scenario === "engaged-row") {
-          await page.locator(".pending-message-saved summary").focus();
-          await page.keyboard.press("Enter");
-          await page.getByRole("button", { name: "Dismiss saved copy", exact: true }).focus();
-        }
+        await page.evaluate(({ text, restored }) => window.chatQa.recovery(text, "first", restored), { text: message, restored: scenario === "restored-copy" });
         if (scenario === "two-attempts") await page.evaluate((text) => window.chatQa.recovery(text, "second"), message);
-        if (scenario !== "old-identical" && scenario !== "restored-copy") turns = [...turns, user(message, Date.now() + 1)];
-        if (scenario === "other-history") history = "replacement-history";
-        await page.evaluate(() => window.chatQa.refresh());
-        if (scenario === "new-turn" || scenario === "engaged-row") {
-          if (scenario === "engaged-row") {
-            await page.waitForFunction(() => document.querySelectorAll("[data-chat-row]").length === 2);
-            assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Dismiss saved copy");
-            assert.equal(await page.locator(".pending-message-saved").evaluate((node) => (node as HTMLDetailsElement).open), true);
-            assert.equal(await page.locator(".pending-messages-inline").count(), 0);
-            await page.locator(".pending-message-saved summary").focus();
+        const floating = page.locator(".terminal-stack > .pending-messages");
+        await floating.waitFor();
+        const dismiss = floating.getByRole("button", { name: "Dismiss saved copy", exact: true }).first();
+        if (scenario === "new-turn") {
+          await floating.locator("summary").first().focus();
           await page.keyboard.press("Enter");
-            await page.locator(".chat-view").evaluate((node) => { (node as HTMLElement).tabIndex = -1; (node as HTMLElement).focus(); });
-          }
-          const inline = page.locator(".chat-turn-user .pending-messages-inline");
-          await inline.waitFor();
-          assert.ok((await inline.innerText()).includes("Matching message in transcript · receipt unconfirmed"));
-          assert.equal(await inline.locator(".pending-message-bubble").isVisible(), false);
-          assert.equal(await page.locator(".pending-messages:not(.pending-messages-inline):visible").count(), 0);
-          assert.equal(await page.locator(".chat-turn-user").filter({ hasText: message }).count(), 1);
-          if (scenario === "new-turn" && width === 1280 && machine !== "local") {
-            turns = [...turns, ...Array.from({ length: 300 }, (_, index) => ({ ...user(`Later assistant reply ${index} ${"work details ".repeat(20)}`, Date.now() + index + 2), role: "assistant" as const }))];
-            await page.evaluate(() => window.chatQa.refresh());
-            await page.locator(".pending-messages:not(.pending-messages-inline)").waitFor();
-            assert.equal(await page.locator(".pending-message-bubble:visible").count(), 0, "a virtualized-away turn keeps compact recovery available");
-            await page.locator(".chat-view-virtual").evaluate((node) => { node.scrollTop = 0; node.dispatchEvent(new Event("scroll")); });
-            await inline.waitFor();
-            assert.equal(await page.locator(".pending-messages:not(.pending-messages-inline):visible").count(), 0);
-          }
-          await inline.getByRole("button", { name: "Dismiss saved copy", exact: true }).click();
-          await page.locator(".pending-messages").waitFor({ state: "detached" });
-          assert.equal(await page.locator(".chat-turn-user").filter({ hasText: message }).count(), 1);
-        } else {
-          const expected = scenario === "two-attempts" ? 2 : 1;
-          await page.waitForFunction((expected) => document.querySelectorAll("[data-chat-row]").length === expected, turns.length);
-          assert.equal(await page.locator(".pending-messages-inline").count(), 0, scenario);
-          assert.equal(await page.locator(".pending-message[data-state=uncertain]").count(), expected);
-          assert.equal(await page.locator(".pending-message-bubble:visible").count(), 0, "unknown copies stay folded when no safe association exists");
+          await dismiss.focus();
         }
-        assert.equal(await page.locator(".pending-message-send").count(), 0);
+        if (scenario !== "restored-copy") turns = [...turns, user(message, Date.now() + 1)];
+        await page.evaluate(() => window.chatQa.refresh());
+        await page.waitForFunction((expected) => document.querySelectorAll("[data-chat-row]").length === expected, turns.length);
+        assert.equal(await page.locator(".chat-turn-user .pending-message").count(), 0, "recovery controls must not scroll away inside the transcript");
+        assert.equal(await page.locator(".chat-turn-user").filter({ hasText: message }).count(), 1);
+        if (scenario === "new-turn") {
+          assert.equal(await dismiss.evaluate((node) => node === document.activeElement), true, "a delayed native echo keeps recovery focus");
+          assert.equal(await floating.locator("details").evaluate((node) => (node as HTMLDetailsElement).open), true);
+          await floating.locator("summary").focus();
+          await page.keyboard.press("Enter");
+        }
+        assert.equal(await floating.locator(".pending-message-bubble:visible").count(), 0, "no duplicate message text is displayed");
+        assert.equal(await floating.locator(".pending-message-send").count(), 0, "an uncertain copy never offers a resend");
+        assert.ok(await floating.evaluate((node) => getComputedStyle(node).boxShadow !== "none"), "recovery has its own floating card");
+        if (scenario === "exact-receipt") {
+          await page.evaluate(() => window.chatQa.receipt("another-attempt"));
+          assert.equal(await floating.locator(".pending-message").count(), 1, "an unrelated receipt cannot hide the warning");
+          await page.evaluate(() => window.chatQa.receipt("first"));
+          await floating.waitFor({ state: "detached" });
+        } else {
+          const before = await floating.boundingBox();
+          turns = [...turns, ...Array.from({ length: 300 }, (_, index) => ({ ...user(`Later assistant reply ${index} ${"work details ".repeat(20)}`, Date.now() + index + 2), role: "assistant" as const }))];
+          await page.evaluate(() => window.chatQa.refresh());
+          await page.locator(".chat-view-virtual").evaluate((node) => { node.scrollTop = node.scrollHeight; node.dispatchEvent(new Event("scroll")); });
+          await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          const after = await floating.boundingBox(), button = await dismiss.boundingBox();
+          assert.ok(before && after && Math.abs(before.y - after.y) < 2, "transcript scrolling does not move recovery away from the composer");
+          assert.ok(button && after && button.y >= after.y && button.y + button.height <= 844, "Dismiss remains reachable in the floating notice");
+          while (await floating.count() > 0) {
+            await floating.getByRole("button", { name: "Dismiss saved copy", exact: true }).first().click();
+          }
+        }
+        assert.equal(turns.filter((turn) => turn.role === "user" && turn.parts.some((part) => part.kind === "text" && part.text === message)).length, 1);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
         assert.deepEqual(errors, []);
-        console.log(`PASS ${width}px ${machine} ${scenario}: one message presentation, recovery remains non-resendable`);
+        console.log(`PASS ${width}px ${machine} ${scenario}: floating recovery stays reachable; exact receipts remove it without resending`);
       } finally { await context.close(); }
     }
   }
