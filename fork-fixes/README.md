@@ -1,5 +1,7 @@
 # Fork improvements: red and green native runs
 
+**Deployed follow-up: [both native green recordings and installed-build verification](deployed/README.md).** The later packet records the exact installed combination and keeps the baseline experiments below for comparison.
+
 Both symptoms were reproduced again on fork base `e6f3016d3e2e8f912a3c87570b2f9211a0844e82`, independently of the upstream receipt PR. The native runs use Codex 0.166.0, Herdr 0.9.5, actual transcripts, isolated application state and a disposable native home. No delivery failure or transcript record is fabricated. The clock cases explicitly simulate a browser clock two seconds ahead and hold its initial conversation request until after submit.
 
 ## First-read sent status

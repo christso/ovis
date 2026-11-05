@@ -2,6 +2,8 @@
 
 This orphan branch contains investigation artifacts only. It changes no Ovis source and is not part of upstream PR #2792.
 
+**Latest: [fork deployed, with both native green recordings](fork-fixes/deployed/README.md).** The sections below preserve the original investigation; the fork changes are separate PRs.
+
 **Follow-up: [native Codex dogfooding and UX findings](native-dogfood/README.md).** The newer runs use actual native transcripts and no forced transport failures. They reproduce the Send now warning in four fresh sessions and the faded placeholder under a simulated browser-clock/first-read condition. The sections below preserve the earlier controlled demo and acknowledgement-fault experiments.
 
 ## What is reproduced
@@ -78,7 +80,7 @@ ffmpeg -i input.webm -c:v libx264 -pix_fmt yuv420p -crf 24 -movflags +faststart 
 
 To run the separate pending-card probe from an Ovis checkout, build the app first, then use `bun run check run bun /path/to/local-uncertain-card/reproduce.ts`. It uses only an isolated test session and its own temporary state.
 
-No application fix, version bump, deployment, or change to PR #2792 is included.
+The original investigation above contains no application fix, version bump, deployment, or change to PR #2792. The later fork deployment and green recordings are linked at the top of this page.
 
 ## Fork improvements
 

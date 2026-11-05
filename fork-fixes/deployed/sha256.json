@@ -1,0 +1,15 @@
+{
+  "README.md": "f4b4f830b473848e44ba7aae438b4971d66627f7d226931a3494ddf0c9912b95",
+  "deployment-verification.json": "79cc9f84311dd852649318058710d4c63a0458999ebb3977bce633c8d1ddd21d",
+  "first-read-after-reload.png": "0543eecc9c72ea26db8a3528bb05668f792da423e88d3ac38128370b6e3f1d89",
+  "first-read-touch.png": "fc7bffdaa3b81207d5a6f4111dff890c95cf1edc22be50e9f283770aaf619c19",
+  "green-clock-results.json": "9078723915dce6ec245bb3d70a83ffab41c88770b8edf383cecd6ea22c2e3e71",
+  "green-first-read-touch.mp4": "d29d99ca77712b1cc7139d4cb2c73d68581399f05f193307c38594521c6d03ae",
+  "green-send-now-results.json": "60e9cc4e7f23b8825591aa0e97897f0b5e1f6588f3529a0100fa76612f0e52b0",
+  "green-send-now.mp4": "161ffd4d9014d65075f960efa49937aad44ed518432b5c3c5b6bdc8e14dc8f51",
+  "reproduce-clock.ts": "1237edfa721a5c018c15b0abb71bd234d80fbfa58956fa79ce9ecebc1ae9829a",
+  "reproduce-send-now.ts": "6279bd207e6f5b94cf06dd14ef132ac153c7c45209f97ae26295e750c9df04e7",
+  "send-now-desktop.png": "096375e9a36676d6bc3ed8efa9442c0d32fd6983c4e12dce89cabb2e71a1263d",
+  "send-now-phone-width.png": "941b128a5a207c3bb71db70faf0c3d763e2b132366cef825473d361a924cc869",
+  "terminal-peek-phone-width.png": "08033ef1fecc4ecde5b5287a4b8fe1a3aaad250fd292a4034647b95667e028bf"
+}

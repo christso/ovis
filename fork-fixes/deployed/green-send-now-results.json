@@ -1,0 +1,228 @@
+{
+  "results": [
+    {
+      "label": "idle-1",
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "durationMs": 4128,
+      "reply": {
+        "ok": true
+      },
+      "userTurns": 1,
+      "uncertainCards": 0,
+      "fadedBubbles": 0,
+      "duplicateFrames": 0,
+      "relatedSubmits": 1
+    },
+    {
+      "label": "send-now-1",
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "durationMs": 5300,
+      "reply": {
+        "ok": true,
+        "pending": "queued"
+      },
+      "userTurns": 1,
+      "uncertainCards": 1,
+      "fadedBubbles": 0,
+      "duplicateFrames": 0,
+      "relatedSubmits": 1
+    },
+    {
+      "label": "reload-and-dismiss",
+      "nativeAgent": true,
+      "source": "codex-transcript",
+      "uncertainBefore": 1,
+      "uncertainAfter": 0,
+      "userTurnsBefore": 3,
+      "userTurnsAfter": 3,
+      "newSubmits": 0,
+      "queueAccessibleLabel": "Message status",
+      "buttons": [
+        {
+          "label": null,
+          "title": null,
+          "text": "Show terminal"
+        },
+        {
+          "label": "Copied",
+          "title": "Copy message",
+          "text": ""
+        },
+        {
+          "label": "Dismiss saved copy",
+          "title": "Dismiss saved copy",
+          "text": "Dismiss saved copy"
+        }
+      ],
+      "recovery": {
+        "copyExact": true,
+        "peekAndReturn": true,
+        "draftPreserved": true,
+        "mobileOverflow": false,
+        "newSubmits": 0,
+        "newInputActions": 0
+      }
+    }
+  ],
+  "errors": [],
+  "steeringRecords": [
+    {
+      "explicit": true,
+      "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files.",
+      "submittedWorking": true,
+      "reads": [
+        {
+          "at": 1793843540553,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843540623,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843540679,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843540736,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843540793,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843540848,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843540904,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843540961,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541018,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541075,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541133,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541201,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541269,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541340,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541396,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541453,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541508,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541564,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541621,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541778,
+          "working": true,
+          "panelMatches": false
+        },
+        {
+          "at": 1793843541937,
+          "working": true,
+          "panelMatches": false
+        }
+      ],
+      "escapes": 0,
+      "error": "Error: Codex immediate delivery was not confirmed. Check the terminal before sending again."
+    }
+  ],
+  "protocol": [
+    {
+      "type": "submit-result",
+      "ok": true
+    },
+    {
+      "type": "submit-result",
+      "ok": true
+    },
+    {
+      "type": "submit-result",
+      "ok": true
+    },
+    {
+      "type": "pending-result",
+      "ok": false,
+      "code": "codex_interrupt_unconfirmed"
+    }
+  ],
+  "actions": [
+    {
+      "type": "submit",
+      "text": "Reply with exactly ACK-IDLE-1. Do not run tools or read or write files."
+    },
+    {
+      "type": "submit",
+      "text": "Run exactly one shell command: sleep 8. Then reply with ACK-BUSY-send-now-1. Do not read or write any files or do anything else."
+    },
+    {
+      "type": "submit",
+      "text": "Reply with exactly ACK-FOLLOW-send-now-1. Do not run tools or read or write files."
+    },
+    {
+      "type": "pending-action",
+      "action": "steer"
+    }
+  ],
+  "sourceRevision": "1b76b353024843301b4f2d9e6266531dad3fa2bf"
+}

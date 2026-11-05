@@ -1,0 +1,67 @@
+{
+  "results": [
+    {
+      "name": "clock-aligned-loaded",
+      "offset": 0,
+      "hold": false,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T01:53:04.849Z",
+      "serverObservedSendTime": 1793843583242,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "compactStatuses": 0,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "clock-ahead-loaded",
+      "offset": 2000,
+      "hold": false,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T01:53:15.377Z",
+      "serverObservedSendTime": 1793843594842,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "compactStatuses": 0,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "clock-ahead-first-read",
+      "offset": 2000,
+      "hold": true,
+      "nativeAgent": true,
+      "transcriptFixture": false,
+      "faultInjected": false,
+      "source": "codex-transcript",
+      "submitCount": 1,
+      "userTurns": 1,
+      "nativeTimestamp": "2026-11-05T01:53:26.344Z",
+      "serverObservedSendTime": 1793843605875,
+      "fadedBubbles": 0,
+      "uncertainCards": 0,
+      "compactStatuses": 1,
+      "horizontalOverflow": false,
+      "fadedAfterReload": 0,
+      "submitsAfterReload": 0
+    }
+  ],
+  "errors": [],
+  "sourceRevision": "1b76b353024843301b4f2d9e6266531dad3fa2bf",
+  "browserContext": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "isMobile": true,
+    "hasTouch": true
+  }
+}
