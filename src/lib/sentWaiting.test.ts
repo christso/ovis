@@ -60,6 +60,29 @@ describe("waitingText", () => {
     expect(waitingText(repeated, [earlier])).toBe(send.text);
   });
 
+  it("retains unread sends past an older identical precise turn, without adopting the first read as their baseline or claiming its identity", () => {
+    const key = waitingKey("local", "unread-precise-repeat");
+    const pc = Date.parse("2026-10-29T10:00:00Z");
+    const earlier = user("repeat", pc + 123);
+    try {
+      rememberWaitingSend(key, "repeat", pc + 2_000, waitingBaseline(key));
+      rememberWaitingSend(key, "repeat", pc + 2_000, waitingBaseline(key));
+      const original = currentWaitingSends(key);
+      const history = [earlier, { ...assistant("done"), ts: new Date(pc + 456).toISOString() }];
+      settleWaitingSends(key, history, pc + 3_000, true);
+      settleWaitingSends(key, history, pc + 4_000, true);
+      expect(currentWaitingSends(key)).toBe(original);
+      expect(original.map((item) => item.after)).toEqual([null, null]);
+      expect(waitingBaseline(key)).not.toBeNull();
+      // A genuinely eligible turn still acknowledges only one send, even on repeated reads.
+      const next = [...history, user("repeat", pc + 5_123)];
+      settleWaitingSends(key, next, pc + 7_000, true);
+      expect(currentWaitingSends(key)).toEqual([original[1]!]);
+      settleWaitingSends(key, next, pc + 8_000, true);
+      expect(currentWaitingSends(key)).toEqual([original[1]!]);
+    } finally { forgetWaitingSends(key); }
+  });
+
   it("does not settle pending yes from yes, please proceed with the changes", () => {
     expect(waitingText({ ...send, text: "yes" }, [user("yes, please proceed with the changes")])).toBe("yes");
   });

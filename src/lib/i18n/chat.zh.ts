@@ -209,4 +209,5 @@ export const CHAT_ZH: Record<string, string> = {
   "Open link": "打开链接",
   "Share link": "分享链接",
   "Sent · waiting for the agent's next turn": "已发送 · 等待 agent 的下一轮",
+  "Sent · waiting for transcript": "已发送 · 等待对话记录",
 };

@@ -1159,6 +1159,29 @@ ol.markdown-list {
   gap: var(--space-2);
 }
 
+.chat-sent-status {
+  align-self: flex-end;
+  max-width: 100%;
+  color: var(--text-dim);
+  font-size: var(--chat-fs-sm);
+}
+
+.chat-sent-status > summary {
+  min-height: var(--chip-h);
+  cursor: pointer;
+}
+
+.chat-sent-status-text {
+  margin-top: var(--space-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+@media (pointer: coarse) {
+  .chat-sent-status > summary { min-height: var(--touch-target); }
+}
+
 .chat-turn-waiting .chat-bubble {
   color: var(--text-dim);
   white-space: pre-wrap;
