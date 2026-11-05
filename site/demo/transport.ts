@@ -1288,10 +1288,17 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
   if (path === "/api/herdr/update") return json({ supported: false, phase: "idle", server_version: null, binary_version: null, stale: false, output: null, finished_at: null }, 200, { "cache-control": "no-store" });
   if (path === "/api/portal") return json(demoPortal(), 200, { "cache-control": "no-store" });
   if (path === "/api/relay") return json(demoRelayStatus(), 200, { "cache-control": "no-store" });
-  if (path === "/api/relay/start" || path === "/api/relay/stop" || path === "/api/relay/offer" || path === "/api/relay/reset-identity") {
+  if (path === "/api/relay/start" || path === "/api/relay/stop" || path === "/api/relay/offer" || path === "/api/relay/reset-identity"
+    || path === "/api/relay/link" || path === "/api/relay/pairing") {
     if (method !== "POST") return error("method_not_allowed", "Use GET for status and POST for relay actions.", 405);
     if (demoAuth.role === "watch") return error("read_only", "this device can only watch", 403);
     if (path === "/api/relay/offer") return demoRelayOffer();
+    if (path === "/api/relay/link") {
+      if (!demoRelayOnline) return error("relay_off", "Start the relay before pairing.", 409);
+      return json({ url: encodeOffer({ v: 1, server_id: demoRelayServerId(), server_public_key: DEMO_RELAY_PUBLIC_KEY, relay: DEMO_RELAY }, DEMO_RELAY_APP) }, 200, { "cache-control": "no-store" });
+    }
+    // no phone ever compares digits with the demo, so none is waiting to be approved
+    if (path === "/api/relay/pairing") return error("relay_pairing_gone", "That phone is no longer waiting: it left, was decided, or its time ran out.", 404);
     if (path === "/api/relay/start") demoRelayOnline = true;
     else if (path === "/api/relay/stop") demoRelayOnline = false;
     // a new identity: the offers made so far name a PC that no longer exists; the link stays as it was
@@ -2291,6 +2298,9 @@ class DemoSocket extends EventTarget {
       if (this.requests.size > 128) this.requests.delete(this.requests.keys().next().value!);
     }
     switch (message.type) {
+      case "machine-events":
+        // Not advertised by the demo: its machine document still arrives through its SSE stand-in.
+        break;
       case "role":
         this.mode = message.mode === "observe" ? "observe" : "interact";
         if (this.mode === "observe") this.holdPending(undefined, "read_only", "This connection now only watches. Pending messages will not be sent automatically.");
