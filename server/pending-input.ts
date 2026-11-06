@@ -33,7 +33,7 @@ export interface PendingRecord<Owner, Lease> {
 }
 type Fault = { code: string; message: string };
 interface HeldCopyReply { ok: boolean; code?: string; message?: string }
-type Removed = { id: string; outcome: "sent" | "discarded" | "dismissed" };
+type Removed = { id: string; outcome: "sent" | "discarded" | "consumed" | "dismissed" };
 /** `by`: the message whose send opened the gate */
 interface TurnGate { by: string; committed: boolean; sawWorking: boolean; completed: boolean; deadline: number | null; restart?: "interruption" | "working" }
 const ready = (status: AgentStatus | undefined) => status === "idle" || status === "done";
@@ -96,6 +96,7 @@ export class PendingInputs<Owner, Lease> {
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw new PendingInputError("invalid_submit_id", "This resend id already belongs to another message");
     }
+    if (outcome?.paneId === paneId && outcome.outcome === "consumed") return Promise.resolve({ ok: true });
     if (outcome?.paneId === paneId && outcome.outcome === "dismissed"
       || this.records.get(id)?.paneId === paneId && this.records.get(id)?.message.state === "uncertain"
       || [...this.resends.values()].some((entry) => entry.id === id && entry.paneId === paneId && entry.uncertain)) {
@@ -236,6 +237,13 @@ export class PendingInputs<Owner, Lease> {
     // the pane's other messages wait behind it, each for its own reason: a paste left in the input line is that message's alone (#511)
     if (uncertain) this.holdPane(item.paneId, fault.code === "pasted_not_sent" ? BEHIND_PASTE : fault.code === "codex_interrupt_unconfirmed" ? BEHIND_REVIEW : fault);
     this.publish(item.owner, item.paneId);
+  }
+
+  /** Native transcript evidence settles only this uncertain ID; held followers stay held. */
+  confirmRecorded(item: PendingRecord<Owner, Lease>): boolean {
+    if (this.records.get(item.message.id) !== item || item.inFlight || item.message.state !== "uncertain") return false;
+    this.finish(item, "consumed");
+    return true;
   }
 
   discard(item: PendingRecord<Owner, Lease>, withdrawalOnly = false): boolean {

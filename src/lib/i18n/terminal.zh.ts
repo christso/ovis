@@ -17,7 +17,6 @@ export const TERMINAL_ZH: Record<string, string> = {
   "Drop on the right": "放到右侧",
   "Live terminal is coming to Windows PCs: herdr cannot attach a terminal there yet. The chat lens works now.": "Windows PC 的实时终端即将推出：herdr 目前还不能在 Windows 上附加终端。聊天视图现在即可使用。",
   "Terminal for {title}": "{title} 终端",
-  "Queued messages": "排队的消息",
   "Pane name": "窗格名称",
   "A tab needs a name.": "标签页需要一个名称。",
   "Terminal keys": "终端按键",
@@ -121,4 +120,5 @@ export const TERMINAL_ZH: Record<string, string> = {
   "Show keyboard": "显示键盘",
   "Hide keyboard": "隐藏键盘",
   "Recover unsent text": "恢复未发送的文本",
+  "Show terminal": "显示终端",
 };

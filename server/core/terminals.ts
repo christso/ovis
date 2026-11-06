@@ -68,7 +68,7 @@ export function createTerminalRegistry({ options, clients, stopped, terminalAtta
   holdPendingPane: (paneId: string, fault: { code: string; message: string }) => void;
   /** a connection joined the pane's attachment: the pending messages queued for the pane are told to it, and may go through it */
   attached: (client: Client, paneId: string) => void;
-  /** a native transcript changed: reconcile Ovis-origin Pi receipts before notifying readers */
+  /** a native transcript changed: reconcile Ovis-origin native receipts */
   transcriptChanged?: (paneId: string) => void;
   /** the pane's terminal takes input again: a pending message waiting for a typist may go now */
   inputReady: (paneId: string) => void;

@@ -63,6 +63,18 @@ it("keeps acknowledged interruption evidence on its own row through a follower r
   expect(reloaded.read("p")).toEqual([expect.objectContaining({ state: "uncertain", serverOwned: false, error: expect.objectContaining({ code: "pending_review" }) })]);
 });
 
+it("clears a native-recorded uncertain send without draining held followers or allowing a resend", async () => {
+  const f = fixture(), first = f.enqueue(1), follower = f.enqueue(2);
+  expect(f.queue.claim(first, false)).toBe(true);
+  f.queue.settle(first, { code: "codex_interrupt_unconfirmed", message: "unconfirmed" }, true);
+  expect(f.queue.confirmRecorded(first)).toBe(true);
+  expect(f.queue.confirmRecorded(first)).toBe(false);
+  expect(f.queue.outcome("a", "p1", first.message.id)).toBe("consumed");
+  expect(f.queue.list("a", "p1")).toMatchObject([{ id: follower.message.id, state: "held" }]);
+  expect(await f.queue.resend("p1", first.message.id, "same", async () => { throw new Error("confirmed input must never resend"); })).toEqual({ ok: true });
+  expect(f.receipts.at(-1)?.removed).toEqual([{ id: first.message.id, outcome: "consumed" }]);
+});
+
 describe("bridge pending input", () => {
   it.each(["submit_changed", "submit_partial", "submit_failed", "disconnected", "timeout", "unknown_failure"])(
     "retains ambiguous held-copy disposition across generations and dismissal: %s", async (code) => {

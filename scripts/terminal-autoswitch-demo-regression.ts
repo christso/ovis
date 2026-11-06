@@ -166,15 +166,6 @@ try {
       await page.goto(`${server.url}?pane=${encodeURIComponent(owner)}`);
       await chat(page).locator(".composer").waitFor();
       await appFaces(page);
-      await page.waitForFunction(() => (window as unknown as PeekWindow).promptReads > 0);
-      await page.evaluate((pane) => Reflect.get(window, "demoSocket").push({ type: "pending-messages", pane_id: pane, messages: [{
-        id: "acknowledged-send-now", request_id: 1, text: "Previously sent follow-up", state: "uncertain",
-        created_at: "2026-11-05T00:00:00Z", error: { code: "codex_interrupt_unconfirmed", message: "Sent to terminal; immediate interruption was not confirmed" },
-      }] }), owner);
-      await chat(page).locator('.pending-message[data-state="uncertain"]').waitFor();
-      await page.reload();
-      await chat(page).locator(".composer").waitFor();
-      await appFaces(page);
       page.on("console", (message) => { if (message.type() === "error") console.error(message.text()); });
       // The exact menu row proves that the shared command catalog has loaded.
       await box(page).fill("/conf");
@@ -238,85 +229,6 @@ try {
         await page.waitForFunction(([pane, before]) => (window as unknown as PeekWindow).sentFrames
           .filter((frame) => frame.type === "input" && frame.pane_id === pane && frame.text === "\x1b").length > before, [owner, escapes] as const);
       };
-
-      // A restored acknowledged Send now copy is recovery UI, never another input command.
-      // The native Codex outcome is covered separately; this exercises the real peek/return client.
-      const recovery = chat(page).locator('.pending-message[data-state="uncertain"]');
-      await recovery.getByText("Sent to terminal · immediate interruption not confirmed", { exact: true }).waitFor();
-      assert.equal(await recovery.locator("details").getAttribute("open"), null, "the saved duplicate starts folded");
-      await recovery.locator("summary").click();
-      assert.equal(await recovery.locator(".pending-message-bubble").innerText(), "Previously sent follow-up");
-      await recovery.locator("summary").click();
-      await page.evaluate(() => {
-        const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard"), exec = document.execCommand;
-        Reflect.set(window, "restoreRecoveryClipboard", () => {
-          if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard); else Reflect.deleteProperty(navigator, "clipboard");
-          document.execCommand = exec;
-        });
-        Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("fixture clipboard refusal"); } } });
-        document.execCommand = () => false;
-      });
-      await recovery.locator("summary").click();
-      await recovery.getByRole("button", { name: "Copy message", exact: true }).click();
-      await page.waitForFunction(() => getSelection()?.toString() === "Previously sent follow-up");
-      assert.notEqual(await recovery.locator("details").getAttribute("open"), null, "clipboard refusal exposes selectable saved text");
-      await page.evaluate(() => { Reflect.get(window, "restoreRecoveryClipboard")(); getSelection()?.removeAllRanges(); });
-      await recovery.getByText("Dismiss removes this browser's saved copy. It does not cancel sent input; another connection may still hold the queue.", { exact: true }).waitFor();
-      await recovery.locator("summary").click();
-      assert.ok((await recovery.boundingBox())!.height <= 64, "unmatched recovery is one compact disclosure without a raised card");
-      await box(page).fill("Keep this draft while reviewing delivery");
-      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-      await capture(page, `${tag}-recovery-controls`);
-      const controlBounds = await recovery.locator(".pending-message-dismiss").evaluateAll((buttons) => {
-        const list = document.querySelector(".pending-messages")!.getBoundingClientRect();
-        return buttons.map((button) => { const box = button.getBoundingClientRect(); return { label: button.textContent || button.getAttribute("aria-label"), visible: box.top >= list.top && box.bottom <= list.bottom }; });
-      });
-      assert.ok(controlBounds.every((button) => button.visible), `recovery controls remain wholly visible: ${JSON.stringify(controlBounds)}`);
-      if (touch) {
-        await page.setViewportSize({ width, height: 470 });
-        for (const expanded of [false, true]) {
-          await recovery.locator("details").evaluate((details, open) => { (details as HTMLDetailsElement).open = open; }, expanded);
-          await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-          const geometry = await recovery.evaluate((row) => {
-            const list = row.closest(".pending-messages")!.getBoundingClientRect();
-            const composer = row.closest(".terminal-stack")!.querySelector(".composer")!.getBoundingClientRect();
-            const controls = row.querySelector(".pending-message-dismiss")!.getBoundingClientRect();
-            return {
-              aboveComposer: list.bottom <= composer.top,
-              outsideTranscript: row.closest('[role="log"]') === null,
-              controlsVisible: controls.top >= list.top && controls.bottom <= list.bottom && controls.bottom <= innerHeight,
-            };
-          });
-          assert.deepEqual(geometry, { aboveComposer: true, outsideTranscript: true, controlsVisible: true }, `short-phone recovery remains reachable, expanded=${expanded}`);
-        }
-        await recovery.locator("summary").click();
-        await page.setViewportSize({ width, height: 844 });
-      }
-      await noteLog(page);
-      const inputFrames = async () => (await frames(page)).filter((frame) => ["submit", "input", "keys", "pending-action"].includes(frame.type));
-      const beforeRecovery = await inputFrames();
-      await recovery.locator("summary").click();
-      await recovery.getByRole("button", { name: "Show terminal", exact: true }).click();
-      await peek(page).waitFor();
-      await hint(page).getByText("Terminal", { exact: true }).waitFor();
-      assert.equal(await hint(page).getByText(AUTO_NOTE, { exact: true }).count(), 0, "review returns only by hand");
-      assert.equal(await chat(page).locator(".pending-messages").getAttribute("inert"), "");
-      assert.deepEqual(await inputFrames(), beforeRecovery, "opening the terminal writes no input");
-      await hint(page).getByRole("button", { name: "Back to Chat", exact: true }).click();
-      await expectReturned();
-      assert.equal(await box(page).inputValue(), "Keep this draft while reviewing delivery");
-      assert.equal(await chat(page).locator(".pending-messages").getAttribute("inert"), null);
-      assert.equal(await chat(page).locator(".composer-notice", { hasText: "still open in the terminal" }).count(), 0, "reviewing an empty input row creates no command guard");
-      assert.equal(await recovery.locator(".pending-message-send").count(), 0);
-      await recovery.getByRole("button", { name: "Dismiss saved copy", exact: true }).focus();
-      await page.keyboard.press("Enter");
-      await recovery.waitFor({ state: "detached" });
-      await page.waitForFunction((pane) => document.activeElement === document.querySelector(`.terminal-stack[data-pane-owner="${pane}"] .composer-text`), owner);
-      assert.deepEqual(await inputFrames(), beforeRecovery, "return and dismissal never resend or cancel native input");
-      assert.equal(await box(page).inputValue(), "Keep this draft while reviewing delivery");
-      assert.equal(await chat(page).getByRole("button", { name: "Send message", exact: true }).isEnabled(), true, "the composer remains usable");
-      await box(page).fill("");
-      console.log(`PASS ${tag}: restored Send now status preserves its draft and focus across terminal review, with no input or resend`);
 
       for (const mode of ["refused", "unconfirmed"]) {
         await page.evaluate((mode) => { Object.assign(window, { receiptMode: mode }); }, mode);

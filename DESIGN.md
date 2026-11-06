@@ -2095,25 +2095,11 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   bubble. Matching and expiry stay unchanged; ambiguous status may remain for 60 seconds. This
   differs from the native Codex/Claude message lists because Ovis cannot establish a first-read
   turn identity from independent clocks; it preserves status without displaying a second turn.
-- An uncertain queued send uses a compact disclosure immediately above the composer. Its status
-  and icon-only **Dismiss saved copy** action stay available; expanding the status reveals saved
-  text, Copy, terminal review and the delivery explanation. There is no raised recovery card.
-  Once the same PC, pane and native history record a unique new user turn for an observed sending
-  attempt, its compact status says **Matching message in chat · delivery unconfirmed** (or
-  **Matching message in chat · interruption unconfirmed** for Codex Send now). Its disclosure omits the duplicate text and
-  Copy button; the native turn supplies those. The recovery control remains available for checking
-  the terminal and explicit dismissal. Matching changes only presentation: it sends nothing,
-  settles no delivery receipt, changes no draft and releases no queue fence.
-  Matching uses the pre-send transcript baseline, timestamps and terminal text normalization.
-  It declines timestamps before the browser's send time instead of treating transcript idle age
-  as clock skew. A matching message describes visible content, not proof of this attempt's delivery
-  across independent clocks.
-  Older identical turns, competing attempts, previously claimed echoes, changed histories and
-  restored copies without live attempt evidence stay compact for explicit review. This follows
-  [Paseo's canonical user echoes](https://github.com/getpaseo/paseo/blob/main/docs/providers.md)
-  by showing a recorded message once, and keeps
-  [Claude Code's explicit controls for queued input](https://code.claude.com/docs/en/interactive-mode#queue-messages-while-claude-works)
-  for sends that remain ambiguous. No comparator code or pixels are copied.
+- Uncertain sends use upstream's original saved-message bubble, **Not confirmed. Check the
+  terminal before sending again.**, Copy and **Discard saved copy**. There is no fork-specific
+  recovery card, compact disclosure, terminal-peek button or browser transcript matcher.
+  This follows upstream Ovis's recovery flow and keeps the explicit queue controls of
+  [Claude Code](https://code.claude.com/docs/en/interactive-mode#queue-messages-while-claude-works).
 - An ordinary command sent from the chat says what became of it under its bubble (`.chat-outcome`,
   `lib/outcomeChip.ts`): one quiet `--fs-xs` line in `--text-dim` on the message's side, a 14px
   glyph and the state in words, read as a `role="status"` live region. It follows the delivery
@@ -2705,29 +2691,25 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   connection, a missing or expired receipt, and an ambiguous send stay unchanged. This extends
   Ovis's Pi receipt-recovery pattern and follows OpenClaw's separation of request identity,
   acceptance and outcome recovery ([source research](docs/codex-unconfirmed/openclaw-research.md));
-  it keeps Ovis's terminal send path. Live attempt matching may suppress duplicate saved text
-  after its unique native user turn appears, without claiming immediate interruption or settling
-  its queue state.
-  Sending disables that item's actions; errors stay inline. Uncertain messages offer Copy and
-  **Dismiss saved copy**, with no retry action. Desktop and phones share this flow.
-  For explicit Codex Send now, an acknowledged Enter followed by a failed interruption check
-  keeps the same non-resendable uncertain row with `codex_interrupt_unconfirmed`: **Sent to
-  terminal · immediate interruption not confirmed**. It proves a terminal write, not native
-  acceptance or interruption. Its saved text folds under the compact status disclosure, remaining selectable
-  and available to Copy. Other ambiguous delivery says **Saved copy · delivery unknown** and
-  explains that the message may already have arrived. Both explain that nothing resends
-  automatically. Dismissing an authoritative row releases its queue fence without cancelling
-  native input; dismissing a restored copy only removes this browser's copy. A held follower
-  carries a neutral review reason, never another row's terminal acknowledgement. **Show terminal** opens the existing manual peek over the mounted chat, preserving the composer
-  draft and return behavior. The exact live steering-panel guard for Escape stays unchanged.
-  The distinction follows [Claude Code's queued-versus-started input feedback](https://code.claude.com/docs/en/interactive-mode#queue-messages-while-claude-works)
-  and [Paseo's separate steering and interruption behaviors](https://paseo.sh/docs/cli#sending-messages).
-  [Codex's terminal workflow](https://developers.openai.com/codex/cli/features/) and
-  [T3 Code's control-surface documentation](https://github.com/pingdotgg/t3code#readme) were also
-  inspected; neither establishes a terminal-write receipt as proof of immediate interruption.
-  Ovis retains its explicit recovery copy because it bridges a terminal rather than owning the
-  native agent's queue. No comparator code or pixels are copied. Recovery actions stay visible
-  at the foot of the scrollable saved-copy area, including on touch screens.
+  it keeps Ovis's terminal send path. Sending disables that item's actions; errors stay inline.
+  Uncertain messages offer Copy and **Discard saved copy**, with no retry action. Desktop and
+  phones share this flow.
+  A Codex Send now whose interruption check times out may still have reached Codex. Before its
+  Enter, the bridge captures the bound native rollout's session, file identity and append boundary.
+  A unique new plain `event_msg/user_message` after that boundary and server-side send time
+  confirms its saved ID through a **consumed** receipt. The notice then disappears automatically,
+  including after a same-browser/device reconnect, without a second waiting bubble or another key.
+  Later held messages stay held. Native confirmation proves recorded delivery, not immediate
+  interruption. Successful ordinary sends and terminal input-line submissions reserve their
+  native echoes too; an Enter with a lost reply remains a reservation, never automatic delivery
+  proof. One record cannot settle overlapping identical sends. Transient identity, placement
+  and file-read failures receive at most three fresh probes without another append or input. Missing bindings, competing matches, partial writes,
+  replacement sessions and unsupported native formats retain the original warning. Reads and
+  retained attempts are bounded; exhausted evidence never turns into guessed confirmation.
+  Codex's TUI exposes no Ovis submission ID. Identical input submitted independently in the same
+  native session after the anchor can remain indistinguishable; content is a scoped correlator,
+  not a global search or a receipt supplied by the browser. This extends Ovis's existing Pi native
+  receipt flow, rather than adding a new recovery interaction. No comparator code is copied.
 - Accepted pending messages clear only the draft prefix acknowledged by the bridge. For agents
   other than Pi, actual Enter delivery removes the pending row and refreshes the transcript. For
   a message submitted from Ovis Chat to Pi, Enter changes it to a read-only **Sent to Pi ·

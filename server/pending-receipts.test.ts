@@ -4,9 +4,9 @@ import { PendingReceipts } from "./pending-receipts.ts";
 it("keeps exact dispositions within their pane, browser and device owner, without message text", () => {
   const history = new PendingReceipts();
   const owner = JSON.stringify(["device", "browser"]);
-  history.remember("p", owner, [{ id: "one", outcome: "sent" }, { id: "two", outcome: "discarded" }]);
+  history.remember("p", owner, [{ id: "one", outcome: "sent" }, { id: "two", outcome: "discarded" }, { id: "native", outcome: "consumed" }]);
   expect(history.read("p", owner)).toEqual([
-    { id: "one", outcome: "sent", resumed: true }, { id: "two", outcome: "discarded", resumed: true },
+    { id: "one", outcome: "sent", resumed: true }, { id: "two", outcome: "discarded", resumed: true }, { id: "native", outcome: "consumed", resumed: true },
   ]);
   expect(history.read("other", owner)).toEqual([]);
   expect(history.read("p", JSON.stringify(["device", "other"]))).toEqual([]);

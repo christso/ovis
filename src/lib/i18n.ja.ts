@@ -117,7 +117,6 @@ const BASE: Record<string, string> = {
   "Live terminal: coming to Windows PCs once herdr can attach there": "ライブターミナル: herdr が Windows でアタッチに対応したら使えます",
   "soon": "近日",
   "Terminal": "ターミナル",
-  "Show terminal": "ターミナルを表示",
   "herdr {version} · protocol {protocol}": "herdr {version} · プロトコル {protocol}",
   "live": "接続中",
   "disconnected": "切断",
@@ -358,6 +357,7 @@ const BASE: Record<string, string> = {
   "Weekly": "週次",
   "Open terminal": "ターミナルを開く",
   "Sign in to {agent}": "{agent} にサインイン",
+  "Queued messages": "キュー内のメッセージ",
 };
 
 /** The parts JA is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */

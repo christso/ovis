@@ -13,6 +13,7 @@ import { OmoStatus } from "./omo-status.ts";
 import * as claudeStore from "./claude-store.ts";
 import * as agentLaunchModule from "./agent-launch.ts";
 import * as piModule from "./pi.ts";
+import * as codexModule from "./codex.ts";
 import { MachineManager } from "./machines.ts";
 import { descriptorPath } from "./bridge.ts";
 import { DeviceStore } from "./devices.ts";
@@ -69,6 +70,15 @@ mock.module("./pi.ts", () => ({
     return path ? existsSync(path) ? { path } : { unwritten: { id: basename(path, ".jsonl"), path } }
       : realPiTranscriptPath(paneId, ...args as Parameters<typeof realPiTranscriptPath> extends [string, ...infer Rest] ? Rest : never);
   },
+}));
+const fakeCodexTranscripts = new Map<string, string>();
+const realCodexHome = codexModule.paneCodexHomePlaced, realCodexRollout = codexModule.codexOpenRollout, realCodexTranscript = codexModule.codexTranscriptPath;
+mock.module("./codex.ts", () => ({
+  ...codexModule,
+  paneCodexHomePlaced: async (...args: Parameters<typeof realCodexHome>) => fakeCodexTranscripts.has(args[0])
+    ? { home: root, placed: true } : realCodexHome(...args),
+  codexOpenRollout: async (...args: Parameters<typeof realCodexRollout>) => fakeCodexTranscripts.get(args[0]) ?? realCodexRollout(...args),
+  codexTranscriptPath: async (...args: Parameters<typeof realCodexTranscript>) => fakeCodexTranscripts.get(args[0]) ?? realCodexTranscript(...args),
 }));
 // The create routes' launch, for the first-message cases: nothing is started (an agent kind may be a
 // real program on this PC); the case starts its recorder in the pane itself, after the route answered,
@@ -159,6 +169,7 @@ beforeAll(() => {
 afterEach(async () => {
   for (const item of active.splice(0)) { for (const socket of item.sockets) socket.close(); item.stop(); await herdrRpc("workspace.close", { workspace_id: item.workspace }).catch(() => undefined); }
   fakePiTranscripts.clear();
+  fakeCodexTranscripts.clear();
   unavailablePiTranscripts.clear();
   failedPiIdentityLookups.clear();
 });
@@ -192,7 +203,7 @@ async function setup(label: string, agent = "claude", screen = "› Message\n", 
       await herdrRpc("pane.report_agent_session", { pane_id: pane, source: "herdr:pi", agent, seq: piSeq++, agent_session_path: piTranscript, session_start_source: "startup" });
     } else await herdrRpc("pane.report_agent", { pane_id: pane, source: "manual", agent, state: "working" });
   }
-  const server = createServer({ ...options, port: 0, stateDir: join(root, `state-${id}`) });
+  const server = createServer({ codexHome: join(root, "codex-store"), ...options, port: 0, stateDir: join(root, `state-${id}`) });
   entry.stop = server.stop;
   const socket = new Socket(server.port); entry.sockets.push(socket);
   await socket.attach(pane);
@@ -230,7 +241,7 @@ async function setup(label: string, agent = "claude", screen = "› Message\n", 
 }
 
 describe("resumable pending dispositions", () => {
-  it.each(["sent", "discarded", "late"] as const)("recovers a relayed Codex %s receipt without typing again or sharing it with another device", async (outcome) => {
+  it.each(["sent", "discarded", "consumed", "late"] as const)("recovers a relayed Codex %s receipt without typing again or sharing it with another device", async (outcome) => {
     const f = await setup("remote-codex-resume", "codex", "› Message\n", { registerBridge: true, machines: false });
     const descriptor = JSON.parse(readFileSync(descriptorPath(), "utf8")) as { token: string };
     const endpoint = MachineManager.prototype.endpoint;
@@ -260,7 +271,16 @@ describe("resumable pending dispositions", () => {
       browser.send({ type: "submit", id: 983, pane_id: f.pane, text: "remote follow-up", payload: "unused\r", delivery: "queue" });
       const row = (await browser.result(983)).pending;
       expect(row?.id).toBeString();
-      if (outcome === "discarded") {
+      if (outcome === "consumed") {
+        const transcript = join(root, "remote-native-receipt.jsonl");
+        writeFileSync(transcript, JSON.stringify({ type: "session_meta", payload: { id: "remote-native-session", cwd: root } }) + "\n");
+        fakeCodexTranscripts.set(f.pane, transcript);
+        browser.send({ type: "conversation-watch", pane_id: f.pane, enabled: true });
+        await browser.wait((frame) => frame.type === "conversation-changed" && frame.pane_id === f.pane && !frame.signature.startsWith("unavailable:"));
+        browser.send({ type: "pending-action", id: 984, pane_id: f.pane, pending_id: row.id, action: "steer" });
+        expect(await browser.action(984)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
+        appendFileSync(transcript, JSON.stringify({ type: "event_msg", timestamp: new Date().toISOString(), payload: { type: "user_message", message: row.text } }) + "\n");
+      } else if (outcome === "discarded") {
         browser.send({ type: "pending-action", id: 984, pane_id: f.pane, pending_id: row.id, action: "discard" });
         expect((await browser.action(984)).ok).toBe(true);
       } else {
@@ -269,7 +289,7 @@ describe("resumable pending dispositions", () => {
         if (outcome === "late") await reached.promise;
         await f.waitBytes(`${paste(row.text)}\r`);
       }
-      const expected = outcome === "discarded" ? "discarded" : "sent";
+      const expected = outcome === "discarded" ? "discarded" : outcome === "consumed" ? "consumed" : "sent";
       if (outcome !== "late") await f.removed(row.id, expected, browser);
       const bytes = f.bytes();
       await browser.disconnect();
@@ -946,6 +966,25 @@ describe("connection-owned pending input", () => {
     await f.waitBytes("barrier\r");
     expect(f.bytes().split("held cross tab").length - 1).toBe(1);
   }, 30_000);
+  it("reconciles a late Codex native append through the production conversation watcher", async () => {
+    const transcript = join(root, "codex-native-receipt.jsonl");
+    writeFileSync(transcript, JSON.stringify({ type: "session_meta", timestamp: new Date().toISOString(), payload: { id: "receipt-session", cwd: root } }) + "\n");
+    const f = await setup("codex-native-receipt", "codex", "• Working (2s • esc to interrupt)\n› Ask Codex to do anything\n");
+    fakeCodexTranscripts.set(f.pane, transcript);
+    f.socket.send({ type: "conversation-watch", pane_id: f.pane, enabled: true });
+    await f.socket.wait((frame) => frame.type === "conversation-changed" && frame.pane_id === f.pane && !frame.signature.startsWith("unavailable:"));
+    const row = await f.queue(1, "the native transcript confirms this message");
+    const follower = await f.queue(2, "later held message");
+    f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: row.id, action: "steer" });
+    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
+    const before = f.bytes();
+    appendFileSync(transcript, JSON.stringify({ type: "event_msg", timestamp: new Date().toISOString(), payload: { type: "user_message", message: row.text } }) + "\n");
+    const confirmed = await f.removed(row.id, "consumed");
+    expect(confirmed.messages).toMatchObject([{ id: follower.id, state: "held" }]);
+    expect(confirmed.messages.some((message: PendingMessage) => message.id === row.id)).toBe(false);
+    expect(f.bytes()).toBe(before);
+  }, 30_000);
+
   it("retains acknowledged Send now input when working Codex exposes no steering panel", async () => {
     const f = await setup("codex-send-now-unconfirmed", "codex");
     const message = await f.queue(1, "send this now");

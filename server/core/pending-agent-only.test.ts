@@ -1,5 +1,6 @@
 import { afterEach, expect, it, mock, spyOn } from "bun:test";
 import * as herdr from "../herdr/client.ts";
+import * as codex from "../codex.ts";
 import * as processStart from "../process-start.ts";
 import * as gjcRuntime from "../gjc-runtime.ts";
 import * as omoModule from "../omo.ts";
@@ -27,6 +28,13 @@ function delivery(foreground: { pid: number; name: string; argv0?: string; argv?
     return { pane_id: "p", shell_pid: 41000, foreground_processes: [{ argv: [shown.name], ...shown }] } as Awaited<ReturnType<typeof herdr.paneProcessInfo>>;
   });
   spyOn(processStart, "processStartedAtAsync").mockResolvedValue(1000);
+  // Native receipt lookup stays inside this fake pane; it must never discover a real Codex store.
+  // Its process read also preserves the regression seam for a failed lookup before Enter.
+  spyOn(codex, "paneCodexHomePlaced").mockImplementation(async () => {
+    await herdr.paneProcessInfo("p");
+    return { home: "/unused-codex-store", placed: true };
+  });
+  spyOn(codex, "codexOpenRollout").mockResolvedValue(null);
   spyOn(herdr, "paneRead").mockImplementation(async () => ({ text: screen }) as Awaited<ReturnType<typeof herdr.paneRead>>);
   const hooks: { paste?: () => void } = {};
   spyOn(herdr, "paneSendText").mockImplementation(async (_pane, text) => { if (count.atPaste < 0) count.atPaste = count.reads; writes.push(text); hooks.paste?.(); if (afterPaste !== undefined) screen = afterPaste; });
@@ -44,7 +52,11 @@ function delivery(foreground: { pid: number; name: string; argv0?: string; argv?
   } as unknown as Parameters<typeof createPendingDelivery>[0]);
   const submit = (id: number, delivery: "immediate" | "queue" | "hold", text = "> backup.txt\nkeep it") => pending.pendingFrames.submit(owner as never,
     { type: "submit", id, pane_id: "p", text, payload: delivery === "immediate" ? "> backup.txt\rkeep it" : "unused", delivery, agent_only: true } as never);
-  const sendNow = (id: number, pendingId: string) => pending.pendingFrames["pending-action"](owner as never, { type: "pending-action", id, pane_id: "p", pending_id: pendingId, action: "steer" } as never);
+  const sendNow = async (id: number, pendingId: string) => {
+    await pending.pendingFrames["pending-action"](owner as never, { type: "pending-action", id, pane_id: "p", pending_id: pendingId, action: "steer" } as never);
+    // Finish receipt observation before the next fixture replaces the shared RPC spies.
+    await tail;
+  };
   const result = (type: string, id: number) => frames.find((frame) => frame.type === type && frame.id === id);
   const setStatus = (next: string) => { pane.agent_status = next; pending.pending.status("p", next as never); pending.drainPending("p"); };
   return { writes, submitted, submit, sendNow, result, front, count, setStatus, hooks, pane, frames, screen: (text: string) => { screen = text; }, settled: () => tail };
