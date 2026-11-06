@@ -62,7 +62,7 @@ try {
     } finally { await context.close(); }
   }
   for (const width of [390, 1280]) for (const machine of ["local", "remote-review-PC"]) {
-    for (const scenario of ["new-turn", "restored-copy", "two-attempts", "exact-receipt"]) {
+    for (const scenario of ["new-turn", "copy-focus", "restored-copy", "two-attempts", "exact-receipt"]) {
       const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width === 390, hasTouch: width === 390, locale: "en-US" });
       try {
         await context.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en" })));
@@ -78,31 +78,39 @@ try {
         if (scenario === "two-attempts") await page.evaluate((text) => window.chatQa.recovery(text, "second"), message);
         const floating = page.locator(".terminal-stack > .pending-messages");
         await floating.waitFor();
+        for (const row of await floating.locator(".pending-message").all()) {
+          assert.ok((await row.boundingBox())!.height <= 64, "a collapsed recovery row stays compact");
+        }
+        assert.equal(await floating.evaluate((node) => getComputedStyle(node).boxShadow), "none", "the raised recovery box is removed");
         const dismiss = floating.getByRole("button", { name: "Dismiss saved copy", exact: true }).first();
-        if (scenario === "new-turn") {
+        if (scenario === "new-turn" || scenario === "copy-focus") {
           await floating.locator("summary").first().focus();
           await page.keyboard.press("Enter");
-          await dismiss.focus();
+          if (scenario === "copy-focus") await floating.getByRole("button", { name: "Copy message", exact: true }).focus();
+          else await dismiss.focus();
         }
-        if (scenario !== "restored-copy") turns = [...turns, user(message, Date.now() + 1)];
+        if (scenario === "new-turn" || scenario === "copy-focus" || scenario === "two-attempts") turns = [...turns, user(message, Date.now() + 1)];
         await page.evaluate(() => window.chatQa.refresh());
         await page.waitForFunction((expected) => document.querySelectorAll("[data-chat-row]").length === expected, turns.length);
         assert.equal(await page.locator(".chat-turn-user .pending-message").count(), 0, "recovery controls must not scroll away inside the transcript");
-        assert.equal(await page.locator(".chat-turn-user").filter({ hasText: message }).count(), 1);
-        if (scenario === "new-turn") {
-          assert.equal(await dismiss.evaluate((node) => node === document.activeElement), true, "a delayed native echo keeps recovery focus");
+        assert.equal(await page.locator(".chat-turn-user").filter({ hasText: message }).count(), scenario === "exact-receipt" ? 0 : 1);
+        if (scenario === "new-turn" || scenario === "copy-focus") {
+          await floating.getByText("Matching message in chat · delivery unconfirmed", { exact: true }).waitFor();
+          assert.equal(await floating.locator(".pending-message-bubble").count(), 0, "the recorded message is not duplicated even in expanded recovery");
+          const focusedControl = scenario === "copy-focus" ? floating.locator("summary") : dismiss;
+          await focusedControl.evaluate((node) => { if (node !== document.activeElement) throw new Error("native echo must preserve recovery keyboard focus"); });
           assert.equal(await floating.locator("details").evaluate((node) => (node as HTMLDetailsElement).open), true);
-          await floating.locator("summary").focus();
-          await page.keyboard.press("Enter");
+          assert.equal(await floating.locator('.pending-message[data-state="uncertain"]').count(), 1, "matching changes presentation without settling the queue");
+          await floating.locator("summary").click();
         }
         assert.equal(await floating.locator(".pending-message-bubble:visible").count(), 0, "no duplicate message text is displayed");
         assert.equal(await floating.locator(".pending-message-send").count(), 0, "an uncertain copy never offers a resend");
-        assert.ok(await floating.evaluate((node) => getComputedStyle(node).boxShadow !== "none"), "recovery has its own floating card");
         if (scenario === "exact-receipt") {
           await page.evaluate(() => window.chatQa.receipt("another-attempt"));
           assert.equal(await floating.locator(".pending-message").count(), 1, "an unrelated receipt cannot hide the warning");
           await page.evaluate(() => window.chatQa.receipt("first"));
           await floating.waitFor({ state: "detached" });
+          turns = [...turns, user(message, Date.now() + 1)];
         } else {
           const before = await floating.boundingBox();
           turns = [...turns, ...Array.from({ length: 300 }, (_, index) => ({ ...user(`Later assistant reply ${index} ${"work details ".repeat(20)}`, Date.now() + index + 2), role: "assistant" as const }))];
@@ -110,16 +118,14 @@ try {
           await page.locator(".chat-view-virtual").evaluate((node) => { node.scrollTop = node.scrollHeight; node.dispatchEvent(new Event("scroll")); });
           await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
           const after = await floating.boundingBox(), button = await dismiss.boundingBox();
-          assert.ok(before && after && Math.abs(before.y - after.y) < 2, "transcript scrolling does not move recovery away from the composer");
-          assert.ok(button && after && button.y >= after.y && button.y + button.height <= 844, "Dismiss remains reachable in the floating notice");
-          while (await floating.count() > 0) {
-            await floating.getByRole("button", { name: "Dismiss saved copy", exact: true }).first().click();
-          }
+          assert.ok(before && after && Math.abs(before.y - after.y) < 2, "scrolling does not move compact recovery away from the composer");
+          assert.ok(button && after && button.y >= after.y && button.y + button.height <= 844, "Dismiss remains reachable");
+          while (await floating.count() > 0) await floating.getByRole("button", { name: "Dismiss saved copy", exact: true }).first().click();
         }
         assert.equal(turns.filter((turn) => turn.role === "user" && turn.parts.some((part) => part.kind === "text" && part.text === message)).length, 1);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
         assert.deepEqual(errors, []);
-        console.log(`PASS ${width}px ${machine} ${scenario}: floating recovery stays reachable; exact receipts remove it without resending`);
+        console.log(`PASS ${width}px ${machine} ${scenario}: compact recovery; unique echoes hide duplicate text; recovery preserves queue state`);
       } finally { await context.close(); }
     }
   }

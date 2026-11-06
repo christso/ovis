@@ -588,6 +588,11 @@ export function PaneTerminal({
   const queueOwner = paneId === null ? null : paneStorageId(machineId, paneId);
   const queued = useSyncExternalStore(queueStore.subscribe, () => queueStore.read(queueOwner ?? ""));
   const pending = useSyncExternalStore(pendingMessages.subscribe, () => pendingMessages.read(queueOwner ?? ""));
+  const [recordedPending, setRecordedPending] = useState<{ owner: string | null; ids: readonly string[] }>({ owner: null, ids: [] });
+  const onPendingMatches = useCallback((ids: readonly string[]): void => {
+    setRecordedPending((current) => current.owner === queueOwner && current.ids.length === ids.length && current.ids.every((id, index) => id === ids[index])
+      ? current : { owner: queueOwner, ids });
+  }, [queueOwner]);
   useEffect(() => {
     if (!paneId || !queueOwner || !submitRetention) return;
     let release: (() => void) | undefined;
@@ -1196,6 +1201,7 @@ export function PaneTerminal({
             sentKey={chatSent}
             unsentKey={chatUnsent}
             pendingRows={pending}
+            onPendingMatches={onPendingMatches}
             localSend={chatLocalSend}
             navigation={chatNavigation}
             connected={connected}
@@ -1302,6 +1308,7 @@ export function PaneTerminal({
         key={`pending-${queueOwner}`}
         active={active}
         inert={peek !== null}
+        recorded={recordedPending.owner === queueOwner ? recordedPending.ids : []}
         messages={pending.map((message) => !message.serverOwned || pendingMessages.isOwned(queueOwner, message.id, pendingScopeRef.current)
           ? message : { ...message, serverOwned: false, state: "uncertain" as const })}
         connected={connected}

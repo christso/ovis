@@ -256,16 +256,18 @@ try {
         Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("fixture clipboard refusal"); } } });
         document.execCommand = () => false;
       });
+      await recovery.locator("summary").click();
       await recovery.getByRole("button", { name: "Copy message", exact: true }).click();
       await page.waitForFunction(() => getSelection()?.toString() === "Previously sent follow-up");
       assert.notEqual(await recovery.locator("details").getAttribute("open"), null, "clipboard refusal exposes selectable saved text");
       await page.evaluate(() => { Reflect.get(window, "restoreRecoveryClipboard")(); getSelection()?.removeAllRanges(); });
-      await recovery.locator("summary").click();
       await recovery.getByText("Dismiss removes this browser's saved copy. It does not cancel sent input; another connection may still hold the queue.", { exact: true }).waitFor();
+      await recovery.locator("summary").click();
+      assert.ok((await recovery.boundingBox())!.height <= 64, "unmatched recovery is one compact disclosure without a raised card");
       await box(page).fill("Keep this draft while reviewing delivery");
       await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
       await capture(page, `${tag}-recovery-controls`);
-      const controlBounds = await recovery.locator(".pending-message-meta button").evaluateAll((buttons) => {
+      const controlBounds = await recovery.locator(".pending-message-dismiss").evaluateAll((buttons) => {
         const list = document.querySelector(".pending-messages")!.getBoundingClientRect();
         return buttons.map((button) => { const box = button.getBoundingClientRect(); return { label: button.textContent || button.getAttribute("aria-label"), visible: box.top >= list.top && box.bottom <= list.bottom }; });
       });
@@ -278,16 +280,14 @@ try {
           const geometry = await recovery.evaluate((row) => {
             const list = row.closest(".pending-messages")!.getBoundingClientRect();
             const composer = row.closest(".terminal-stack")!.querySelector(".composer")!.getBoundingClientRect();
-            const controls = row.querySelector(".pending-message-meta")!.getBoundingClientRect();
-            const notes = [...row.children].filter((child) => child.matches(".pending-message-recovery"));
+            const controls = row.querySelector(".pending-message-dismiss")!.getBoundingClientRect();
             return {
               aboveComposer: list.bottom <= composer.top,
               outsideTranscript: row.closest('[role="log"]') === null,
-              notesVisible: notes.every((note) => { const box = note.getBoundingClientRect(); return box.top >= list.top && box.bottom <= controls.top; }),
               controlsVisible: controls.top >= list.top && controls.bottom <= list.bottom && controls.bottom <= innerHeight,
             };
           });
-          assert.deepEqual(geometry, { aboveComposer: true, outsideTranscript: true, notesVisible: true, controlsVisible: true }, `short-phone recovery remains reachable, expanded=${expanded}`);
+          assert.deepEqual(geometry, { aboveComposer: true, outsideTranscript: true, controlsVisible: true }, `short-phone recovery remains reachable, expanded=${expanded}`);
         }
         await recovery.locator("summary").click();
         await page.setViewportSize({ width, height: 844 });
@@ -295,6 +295,7 @@ try {
       await noteLog(page);
       const inputFrames = async () => (await frames(page)).filter((frame) => ["submit", "input", "keys", "pending-action"].includes(frame.type));
       const beforeRecovery = await inputFrames();
+      await recovery.locator("summary").click();
       await recovery.getByRole("button", { name: "Show terminal", exact: true }).click();
       await peek(page).waitFor();
       await hint(page).getByText("Terminal", { exact: true }).waitFor();

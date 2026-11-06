@@ -1,4 +1,6 @@
 .pending-messages {
+  position: relative;
+  z-index: var(--z-banner);
   flex: 0 1 auto;
   min-height: 0;
   max-height: var(--pending-max-h);
@@ -49,15 +51,15 @@
   max-width: 100%;
 }
 
-.pending-message-recovery ~ .pending-message-meta {
-  position: sticky;
-  top: 0;
-  align-self: stretch;
-  flex-shrink: 0;
-  background: var(--bg);
+.pending-message-compact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
 }
 
 .pending-message-saved {
+  min-width: 0;
   max-width: 100%;
   color: var(--text-dim);
   font-size: var(--fs-xs);
@@ -67,6 +69,7 @@
   min-height: var(--control-h);
   align-content: center;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .pending-message-saved .pending-message-bubble {
@@ -74,18 +77,9 @@
   font-size: calc(var(--fs-md) * var(--chat-scale, 1));
 }
 
-.pending-message-recovery {
-  align-self: stretch;
-  margin-top: var(--space-1);
-}
-
 .pending-message-dismiss {
-  display: inline-flex;
-  gap: var(--space-1);
-  width: auto;
-  padding: 0 var(--space-2);
-  font: inherit;
-  font-size: var(--fs-xs);
+  position: sticky;
+  top: 0;
 }
 
 .pending-message-note {
@@ -124,20 +118,4 @@
   .pending-message-saved summary {
     min-height: var(--touch-target);
   }
-}
-
-.pending-messages:has(.pending-message-recovery) {
-  position: relative;
-  z-index: var(--z-banner);
-  max-height: calc(var(--pending-max-h) * 2);
-  margin: var(--space-2) auto;
-  padding: var(--space-3);
-  border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-card);
-}
-
-.pending-messages:has(.pending-message-recovery) .pending-message-meta {
-  background: var(--bg-elevated);
 }

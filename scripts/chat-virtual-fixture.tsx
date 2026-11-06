@@ -7,6 +7,7 @@ import { SettingsProvider } from "../src/lib/settings.ts";
 import { OpenFileContext } from "../src/lib/filePaths.ts";
 import { useWaitingSends } from "../src/components/SentWaiting.tsx";
 import { rememberWaitingSend, waitingBaseline, waitingKey } from "../src/lib/sentWaiting.ts";
+import { capturePendingAttempt } from "../src/lib/pendingTranscript.ts";
 import { PendingMessages } from "../src/components/PendingMessages.tsx";
 import { PendingMessageStore } from "../src/lib/pendingMessages.ts";
 import { paneStorageId } from "../shared/machines.ts";
@@ -45,6 +46,7 @@ function Fixture() {
   const [status, setStatus] = useState<"working" | "idle">("working");
   const owner = paneStorageId(machine, "same-pane");
   const pending = useSyncExternalStore(pendingStore.subscribe, () => pendingStore.read(owner));
+  const [recorded, setRecorded] = useState<readonly string[]>([]);
   const pageScroll = useRef<((direction: -1 | 1) => void) | null>(null);
   window.chatQa = {
     refresh: () => setRefresh((value) => value + 1),
@@ -58,6 +60,7 @@ function Fixture() {
     },
     status: setStatus,
     recovery: (text, id = "review-copy", restored = false) => {
+      if (!restored) capturePendingAttempt(waitingKey(machine, "same-pane"), id, text);
       pendingStore.accept(owner, { id, request_id: 1, text, state: "uncertain", created_at: new Date().toISOString(), error: { code: "submit_changed", message: "unknown" } }, restored ? null : "fixture-scope");
     },
     receipt: (id) => pendingStore.publish(owner, [], [{ id, outcome: "sent", resumed: true }], "fixture-scope"),
@@ -69,11 +72,12 @@ function Fixture() {
           {/* the metadata of each answer the chat shows: a script can tell an applied answer from one only fetched */}
           <ChatView key={machine} paneId="same-pane" refreshKey={refresh} connected ended={false} agent={null} agentStatus={status} pageScroll={pageScroll}
             pendingRows={pending}
+            onPendingMatches={(ids) => setRecorded((current) => current.length === ids.length && current.every((id, index) => id === ids[index]) ? current : ids)}
             onMetadata={(_pane, metadata) => window.dispatchEvent(new CustomEvent("chat-qa-answer", { detail: metadata }))} />
         </OpenFileContext.Provider>
       </Profiler>
     </MachineContext.Provider>
-    {pending.length > 0 && <PendingMessages messages={pending} connected blocked={false} unsaved={false} isBusy={() => false}
+    {pending.length > 0 && <PendingMessages messages={pending} recorded={recorded} connected blocked={false} unsaved={false} isBusy={() => false}
       onSendNow={async () => { throw new Error("An uncertain presentation must never resend"); }} onEdit={async () => { throw new Error("An uncertain presentation must never edit"); }}
       onDiscard={async (id) => pendingStore.publish(owner, [], [{ id, outcome: "discarded", resumed: true }], "fixture-scope")} />}
     {sibling !== null && <SiblingConnection connected={sibling} />}

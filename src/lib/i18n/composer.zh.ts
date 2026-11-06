@@ -72,6 +72,8 @@ export const COMPOSER_ZH: Record<string, string> = {
   "Waits for Send now": "按“立即发送”后发送",
   "Discard saved copy": "丢弃已保存的副本",
   "Message status": "消息状态",
+  "Matching message in chat · delivery unconfirmed": "聊天中有匹配消息 · 送达未确认",
+  "Matching message in chat · interruption unconfirmed": "聊天中有匹配消息 · 中断未确认",
   "Sent to terminal · immediate interruption not confirmed": "已发送到终端 · 尚未确认立即中断",
   "Saved copy · delivery unknown": "已保存的副本 · 送达情况未知",
   "Saved message": "已保存的消息",

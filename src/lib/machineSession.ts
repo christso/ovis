@@ -3,6 +3,7 @@ import { paneStorageId } from "../../shared/machines.ts";
 import { afterSend, afterSettled, greetingMemory, rememberGreeting } from "./greeting.ts";
 import { paneLifetimes } from "./paneLifetime.ts";
 import { pendingMessages, type PendingMessageStore } from "./pendingMessages.ts";
+import { capturePendingAttempt, completePendingAttempt, forgetPendingAttempt, forgetMachinePendingTranscript } from "./pendingTranscript.ts";
 import { rememberWaitingSend, waitingBaseline, waitingKey, type WaitingBaseline } from "./sentWaiting.ts";
 import { watchPageInUse } from "./presence.ts";
 import { currentSurface } from "./telemetrySurface.ts";
@@ -82,13 +83,20 @@ export class MachineSession {
         // taken before the row's Enter, as a composer send's are before it is submitted. A row back in
         // the queue or held was not typed: its next try takes its own
         for (const item of message.messages) {
-          if (item.state === "sending" && !this.going.has(item.id)) this.going.set(item.id, { at: Date.now(), after: waitingBaseline(key) });
-          else if (item.state === "queued" || item.state === "held") this.going.delete(item.id);
+          if (item.state === "sending" && !this.going.has(item.id)) {
+            const at = Date.now();
+            this.going.set(item.id, { at, after: waitingBaseline(key) });
+            capturePendingAttempt(key, item.id, item.text, at);
+          } else if (item.state === "queued" || item.state === "held") {
+            this.going.delete(item.id);
+            forgetPendingAttempt(key, item.id);
+          }
         }
         const typed = message.removed?.filter((item) => item.outcome === "sent" && this.store.isOwned(owner, item.id, scope)) ?? [];
         sent = typed.length > 0;
         // the rows' words, read before the publish lets them go
         const rows = this.store.read(owner);
+        for (const item of message.removed ?? []) completePendingAttempt(key, item.id);
         this.store.publish(owner, message.messages, message.removed ?? [], scope);
         if (sent) {
           const memory = greetingMemory(owner);
@@ -126,6 +134,7 @@ export class MachineSession {
     this.announcedLifetime = undefined;
     this.resumedReceipts = [];
     this.going.clear();
+    forgetMachinePendingTranscript(this.machineId);
     this.currentConnection = null;
     this.currentEpoch++;
     this.role = null;

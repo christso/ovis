@@ -72,6 +72,8 @@ export const COMPOSER_KO: Record<string, string> = {
   "Waits for Send now": "지금 보내기를 누르면 보냅니다",
   "Discard saved copy": "저장된 사본 버리기",
   "Message status": "메시지 상태",
+  "Matching message in chat · delivery unconfirmed": "채팅에 일치하는 메시지 있음 · 전송 확인 안 됨",
+  "Matching message in chat · interruption unconfirmed": "채팅에 일치하는 메시지 있음 · 중단 확인 안 됨",
   "Sent to terminal · immediate interruption not confirmed": "터미널로 전송됨 · 즉시 중단 여부는 확인되지 않음",
   "Saved copy · delivery unknown": "저장된 사본 · 전달 여부 알 수 없음",
   "Saved message": "저장된 메시지",

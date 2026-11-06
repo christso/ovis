@@ -72,6 +72,8 @@ export const COMPOSER_JA: Record<string, string> = {
   "Waits for Send now": "「今すぐ送信」で送信します",
   "Discard saved copy": "保存したコピーを破棄",
   "Message status": "メッセージの状態",
+  "Matching message in chat · delivery unconfirmed": "チャットに一致するメッセージあり · 配信は未確認",
+  "Matching message in chat · interruption unconfirmed": "チャットに一致するメッセージあり · 割り込みは未確認",
   "Sent to terminal · immediate interruption not confirmed": "ターミナルに送信済み · 即時の割り込みは未確認",
   "Saved copy · delivery unknown": "保存したコピー · 到達は不明",
   "Saved message": "保存したメッセージ",
