@@ -1312,7 +1312,6 @@ export function PaneTerminal({
         onSendNow={(id) => actOnPending(id, "steer")}
         onEdit={(id) => actOnPending(id, "edit")}
         onDiscard={(id) => actOnPending(id, "discard")}
-        onShowTerminal={onOpenTerminal ? () => peekOutcome("") : undefined}
       />}
       {/* The prompt card's place: under the held messages (which fold to their caption while it is
           open), directly over the input card, on the same column. ChatView renders the card into

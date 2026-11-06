@@ -62,7 +62,7 @@ function withStorage(run: () => void): void {
 }
 
 describe("PC connection ownership", () => {
-  it.each(["sent", "discarded"] as const)("settles a reloaded copy after the snapshot proves an early resumed %s receipt's lifetime", (outcome) => {
+  it.each(["sent", "discarded", "consumed"] as const)("settles a reloaded copy after the snapshot proves an early resumed %s receipt's lifetime", (outcome) => {
     const { session, socket, store } = setup(`reload-receipt-${outcome}`);
     const owner = paneStorageId(session.machineId, "w1:p1");
     store.accept(owner, message("saved"), null);
@@ -460,4 +460,18 @@ describe("PC connection ownership", () => {
       else Reflect.deleteProperty(globalThis, "window");
     }
   });
+});
+
+it("native confirmation removes recovery without creating another waiting bubble", () => {
+  const { session, socket, store } = setup("native-codex-receipt");
+  const pane = "w1:p1", owner = paneStorageId(session.machineId, pane), key = waitingKey(session.machineId, pane);
+  try {
+    start(session, socket);
+    socket.receive({ type: "pending-messages", pane_id: pane, messages: [message("native-recorded", "sending")] });
+    socket.receive({ type: "pending-messages", pane_id: pane, messages: [message("native-recorded", "uncertain")] });
+    expect(store.read(owner)).toHaveLength(1);
+    socket.receive({ type: "pending-messages", pane_id: pane, messages: [], removed: [{ id: "native-recorded", outcome: "consumed" }] });
+    expect(store.read(owner)).toEqual([]);
+    expect(currentWaitingSends(key)).toEqual([]);
+  } finally { session.close(); forgetWaitingSends(key); }
 });

@@ -1,6 +1,6 @@
 import type { PendingRemoval } from "../shared/protocol.ts";
 
-type Disposition = { id: string; outcome: "sent" | "discarded" };
+type Disposition = { id: string; outcome: "sent" | "discarded" | "consumed" };
 
 /** Bounded presentation history. A receipt restores no input lease and contains no message text. */
 export class PendingReceipts {

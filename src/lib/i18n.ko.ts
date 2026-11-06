@@ -115,7 +115,6 @@ const BASE: Record<string, string> = {
   "Live terminal: coming to Windows PCs once herdr can attach there": "실시간 터미널: herdr가 Windows에서 attach를 지원하면 열립니다",
   "soon": "준비 중",
   "Terminal": "터미널",
-  "Show terminal": "터미널 보기",
   "herdr {version} · protocol {protocol}": "herdr {version} · 프로토콜 {protocol}",
   "live": "연결됨",
   "disconnected": "끊김",
@@ -356,6 +355,7 @@ const BASE: Record<string, string> = {
   "Weekly": "주간",
   "Open terminal": "터미널 열기",
   "Sign in to {agent}": "{agent}에 로그인",
+  "Queued messages": "대기 메시지",
 };
 
 /** The parts KO is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */

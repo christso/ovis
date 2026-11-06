@@ -17,7 +17,6 @@ export const TERMINAL_JA: Record<string, string> = {
   "Drop on the right": "右側にドロップ",
   "Live terminal is coming to Windows PCs: herdr cannot attach a terminal there yet. The chat lens works now.": "Windows PC のライブターミナルは準備中です。herdr はまだ Windows でターミナルをアタッチできません。チャットは今すぐ使えます。",
   "Terminal for {title}": "{title} のターミナル",
-  "Queued messages": "キュー内のメッセージ",
   "Pane name": "ペイン名",
   "A tab needs a name.": "タブには名前が必要です。",
   "Terminal keys": "ターミナルキー",
@@ -121,4 +120,5 @@ export const TERMINAL_JA: Record<string, string> = {
   "Show keyboard": "キーボードを表示",
   "Hide keyboard": "キーボードを非表示",
   "Recover unsent text": "未送信のテキストを復元",
+  "Show terminal": "ターミナルを表示",
 };

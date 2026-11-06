@@ -17,7 +17,6 @@ export const TERMINAL_KO: Record<string, string> = {
   "Drop on the right": "오른쪽에 놓기",
   "Live terminal is coming to Windows PCs: herdr cannot attach a terminal there yet. The chat lens works now.": "Windows PC의 실시간 터미널은 준비 중입니다. herdr가 아직 Windows에서 터미널 attach를 지원하지 않습니다. 채팅은 지금 바로 쓸 수 있습니다.",
   "Terminal for {title}": "{title} 터미널",
-  "Queued messages": "대기 메시지",
   "Pane name": "패널 이름",
   "A tab needs a name.": "탭 이름을 입력하세요.",
   "Terminal keys": "터미널 키",
@@ -121,4 +120,5 @@ export const TERMINAL_KO: Record<string, string> = {
   "Show keyboard": "키보드 보이기",
   "Hide keyboard": "키보드 숨기기",
   "Recover unsent text": "보내지 않은 글 복구",
+  "Show terminal": "터미널 보기",
 };

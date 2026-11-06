@@ -119,7 +119,6 @@ const BASE: Record<string, string> = {
   "Live terminal: coming to Windows PCs once herdr can attach there": "实时终端：待 herdr 支持在 Windows 上附加终端后开放",
   "soon": "即将",
   "Terminal": "终端",
-  "Show terminal": "显示终端",
   "herdr {version} · protocol {protocol}": "herdr {version} · 协议 {protocol}",
   "live": "已连接",
   "disconnected": "已断开",
@@ -360,6 +359,7 @@ const BASE: Record<string, string> = {
   "Weekly": "每周",
   "Open terminal": "打开终端",
   "Sign in to {agent}": "登录 {agent}",
+  "Queued messages": "排队的消息",
 };
 
 /** The parts ZH is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */
