@@ -66,6 +66,8 @@ describe("MachineRelay receipt isolation", () => {
     expect(new RelayReceiptIds().scope("pc-a", "device-a", browser)).not.toBe(owner);
     expect(ids.scope("pc-a", "device-a", "not-a-uuid")).toBeUndefined();
     expect(ids.scope("pc-a", "device-a", "x".repeat(4096))).toBeUndefined();
+    expect(ids.scope("pc-a", "device-a", browser.toUpperCase())).toBeUndefined();
+    expect(ids.scope("pc-a", "device-a", "12345678-1234-1234-8234-123456789abc")).toBeUndefined();
   });
 
   for (const readOnly of [false, true]) for (const scoped of [false, true]) {
@@ -81,7 +83,7 @@ describe("MachineRelay receipt isolation", () => {
             const message = JSON.parse(String(raw));
             if (message.type !== "attach") return;
             received.push(message);
-            if (received.length === 2) resolve();
+            if (received.length === 6) resolve();
           },
         },
       });
@@ -98,9 +100,12 @@ describe("MachineRelay receipt isolation", () => {
         const withResume = { ...attach, receipt_resume_id: "12345678-1234-4234-8234-123456789abc" };
         relay.message(JSON.stringify(withResume));
         relay.message(Buffer.from(JSON.stringify(withResume)));
+        for (const invalid of ["not-a-uuid", "x".repeat(4096), 123, null]) {
+          relay.message(JSON.stringify({ ...attach, receipt_resume_id: invalid }));
+        }
         await delivered;
         const expected = scoped && !readOnly ? { ...attach, receipt_resume_id: ids.scope("pc", "device", withResume.receipt_resume_id) } : attach;
-        expect(received).toEqual([expected, expected]);
+        expect(received).toEqual([expected, expected, attach, attach, attach, attach]);
         expect(received.every((message) => message.receipt_resume_id !== withResume.receipt_resume_id)).toBe(true);
       } finally {
         relay.close();
