@@ -114,7 +114,7 @@ try {
   assert.equal(await pendingRows.count(), 0);
   await select("QA remote");
   assert.equal(await page.locator(".pending-message-bubble").innerText(), "PENDING_A_MUST_NOT_REPLAY");
-  await page.getByRole("button", { name: "Dismiss saved copy", exact: true }).click();
+  await page.getByRole("button", { name: "Discard saved copy", exact: true }).click();
   await pendingRows.waitFor({ state: "hidden" });
   // Older versions' held messages remain editable, manual and scoped to their PC.
   await page.evaluate(({ owner }) => localStorage.setItem(`ovis:queue:${owner}`, JSON.stringify({ version: 1, messages: [{ id: "legacy-machine-browser", text: "HELD_A_MUST_NOT_SEND" }] })), { owner: paneStorageId(a, paneId) });
