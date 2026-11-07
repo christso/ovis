@@ -67,6 +67,8 @@ export function SessionMoveDialog({ row, rows, name, machines, state, statusErro
   const t = useT();
   const id = useId();
   const close = useRef<HTMLButtonElement>(null);
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const surface = useFocusTrap<HTMLDivElement>(true, { initialFocus: close });
   useSheetSwipe(surface, onClose);
   usePhoneSheetBack(onClose);
@@ -119,7 +121,7 @@ export function SessionMoveDialog({ row, rows, name, machines, state, statusErro
         onState(await previewSessionMove({ session_id: sessionId, source_execution_id: executionId, destination_machine_id: destination, destination_checkout: checkout, untracked_files: untracked }, record?.id));
       } else if (record) {
         onState(action === "run" ? await runSessionMove(record.id, record.plan.fingerprint) : await cancelSessionMove(record.id));
-        if (action === "cancel") onClose();
+        if (action === "cancel" && mounted.current) onClose();
       }
     } catch (error) {
       setLocalError(error instanceof ApiError ? moveRefusal(error.code, t, record?.phase) : moveRefusal(null, t, record?.phase));

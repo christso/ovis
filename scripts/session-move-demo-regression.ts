@@ -40,6 +40,7 @@ let moves: SessionMoveState[] = [];
 let sourceExited = false;
 let failHistory = true;
 let guards: string[] = [];
+let cancelGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
 let launches = 0;
 let runRequests = 0;
 let generation = 0;
@@ -118,7 +119,7 @@ try {
       }
       const move = moves.find((state) => state.record.id === body.id);
       if (!move) return respond({ error: { code: "move_not_found", message: "Fixture move missing" } }, 404);
-      if (body.action === "cancel") { move.record.phase = "cancelled"; return respond(move); }
+      if (body.action === "cancel") { if (cancelGate) await cancelGate.promise; move.record.phase = "cancelled"; return respond(move); }
       assert.equal(body.action, "run"); runRequests++;
       assert.equal(body.fingerprint, move.record.plan.fingerprint, "only a reviewed preview can run");
       if (!sourceExited) { move.record.phase = "quiescing"; move.record.error = "source_not_quiescent"; return respond(move, 202); }
@@ -183,6 +184,26 @@ try {
       const selectionBefore = new URL(page.url()).searchParams.get("pane");
       await moveAction.click();
       let dialog = page.getByRole("dialog", { name: "Move session", exact: true });
+      await dialog.getByRole("combobox", { name: "Destination PC" }).selectOption(target.id);
+      await dialog.getByLabel("Destination checkout", { exact: true }).fill("/work/cancelled-fixture");
+      await dialog.getByRole("button", { name: "Preview transfer", exact: true }).click();
+      await dialog.getByText("Files to transfer (2)", { exact: true }).waitFor();
+      cancelGate = Promise.withResolvers<void>();
+      const cancelStarted = page.waitForRequest((request) => request.url().endsWith("/api/session-moves") && request.method() === "POST" && request.postDataJSON().action === "cancel");
+      await dialog.getByRole("button", { name: "Cancel move", exact: true }).click(); await cancelStarted;
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await row.getByRole("button", { name: "View move", exact: true }).click();
+      dialog = page.getByRole("dialog", { name: "Move session", exact: true });
+      await dialog.getByLabel("Destination checkout", { exact: true }).fill("/work/new-dialog-draft");
+      const cancelled = page.waitForResponse((response) => response.url().endsWith("/api/session-moves") && response.request().method() === "POST" && response.request().postDataJSON().action === "cancel");
+      cancelGate.resolve(); await cancelled; cancelGate = null;
+      await dialog.getByText("Move cancelled", { exact: true }).waitFor();
+      assert.equal(await dialog.getByLabel("Destination checkout", { exact: true }).inputValue(), "/work/new-dialog-draft", "a late cancel from a closed dialog cannot close its replacement or erase its draft");
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      moves = []; // Independent main workflow starts after the cancellation-lifetime scenario.
+
+      await row.getByRole("button", { name: "Move session", exact: true }).click();
+      dialog = page.getByRole("dialog", { name: "Move session", exact: true });
       await dialog.getByText("First preview the transfer while Codex is still open. Then finish the turn and exit its native client before moving. Ovis will not stop the client for you.").waitFor();
       assert.equal(await dialog.getByRole("combobox", { name: "Destination PC" }).locator("option").count(), 2, "only connected non-source configured destinations are selectable");
       await dialog.getByRole("combobox", { name: "Destination PC" }).selectOption(target.id);

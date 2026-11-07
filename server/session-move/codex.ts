@@ -48,6 +48,7 @@ function rollout(home: string, path: string, remaining: number): Rollout {
   const meta = object(records[0]?.payload);
   if (records[0]?.type !== "session_meta" || meta.id !== name[1] || meta.cli_version !== "0.166.0"
     || typeof meta.cwd !== "string" || !isAbsolute(meta.cwd) || !["legacy", "paginated", undefined].includes(meta.history_mode as string | undefined)) throw new MoveRefused("unsupported_rollout", "Codex rollout metadata or history format is unsupported");
+  if (meta.model_provider !== "openai") throw new MoveRefused("unsupported_runtime", "Session moves currently support the built-in OpenAI provider only; custom provider configuration is not transferred");
   if (meta.parent_thread_id || meta.agent_role || meta.attached_thread || meta.multi_agent_version === "v2"
     || (meta.source !== "cli" && meta.source !== "vscode") || Object.keys(object(meta.source)).length
     || (Array.isArray(meta.dynamic_tools) && meta.dynamic_tools.length) || (Array.isArray(meta.selected_capability_roots) && meta.selected_capability_roots.length)) throw new MoveRefused("unsupported_runtime", "Subagents, attached forks and custom runtime capabilities cannot be moved");
