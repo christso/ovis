@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import type { SessionMoveRecord } from "../../shared/session-move.ts";
 import { withOwnerGuard } from "../owner-guard.ts";
@@ -14,7 +14,7 @@ export class MoveJournal {
   private readonly path: string;
   constructor(stateDir: string) {
     mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-    this.path = inside(stateDir, "session-moves.json", true);
+    this.path = inside(realpathSync(stateDir), "session-moves.json", true);
   }
   list(): SessionMoveRecord[] {
     if (!existsSync(this.path)) return [];
