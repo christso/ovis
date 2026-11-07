@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Ellipsis, FolderOpen, Link, Menu, MessageSquare, PanelLeft, Search, SquareTerminal, X } from "lucide-react";
 
 import type { HerdrPane } from "../shared/protocol.ts";
@@ -110,6 +110,8 @@ import { useSplitLayout, useSplitRecheck, useSplitState } from "./lib/useSplitVi
 import { linkSelects, useLinkLanding, useMachineGone, useNotificationTargets, useSelectedLayout, useSelectedMachine, useSelectedPane, useSelectionMark, useSelectionState, useSelectPane, useSelectTarget } from "./lib/useSelection.ts";
 import { useAddressBar } from "./lib/useAddressBar.ts";
 
+const GraphPanel = lazy(() => import("./features/graph/GraphPanel.tsx"));
+
 const APP_TITLE = "Ovis";
 /** how soon after a key press a focus counts as the user's own (lastKeyAtRef) */
 const KEY_FOCUS_MS = 1000;
@@ -194,7 +196,7 @@ export function App() {
   const { locked, setLocked, lockReason, pairCode, consumePairCode, pairingUnconfirmed, onPaired, auth, canSignOut, security, readBridgeHealth } = useAccessState();
   const { pairedNotices, setPairedNotices, dismissPairedNotice } = usePairedNotices();
   const updates = useUpdates(locked === false);
-  const { view: flockView, setView: setFlockView, rows: flockRows, ...flock } = useFlockView(locked === false && auth?.role !== "watch", machines);
+  const { view: flockView, setView: setFlockView, rows: flockRows, ...flock } = useFlockView(locked === false && auth !== null && auth.role !== "watch", machines);
   const { selectedPaneId, setSelectedPaneId, notificationViewTarget, setNotificationViewTarget, terminalPeek, setTerminalPeek, endPeek, pendingLink, linkLanded, setLinkLanded, rosterSeq, linkSince, selectionSince, rosterTick, setRosterTick, linkTick, setLinkTick } = useSelectionState({ initialLink });
   const { otherRecheck, otherRosterTick, setOtherRosterTick } = useSplitRecheck();
   const { rosterIn, pendingFile, selectionHint, setHeaderNote, note, autoSelected, setAutoSelected } = useLinkLanding({ initialLink, otherRecheck, setOtherRosterTick, pendingLink, rosterSeq, setRosterTick, linkLanded, t });
@@ -307,9 +309,9 @@ export function App() {
     if (reload) window.location.reload();
   }, [auth?.via, loadHealth, t]);
 
-  const { selectedMachineRef, selectTarget, selectTargetRef, picks } = useSelectTarget({ selectedMachineId, setConnected, setConnectedBefore, setSelectedMachineId, setSelectedPaneId, setAutoSelected, setDrawerOpen, setOutputStopped, setNotificationViewTarget, setTerminalPeek, pendingLink, pendingFile, setLinkLanded, selectionHint, selectionSince, rosterSeq, snapshot, selectedMachine, selectedPaneId, setHeaderNote, linkTick, movingPanes, onPick: () => { setFlockView("workspace"); setupGuide.stepAside(); } });
+  const { selectedMachineRef, selectTarget, selectTargetRef, picks } = useSelectTarget({ selectedMachineId, setConnected, setConnectedBefore, setSelectedMachineId, setSelectedPaneId, setAutoSelected, setDrawerOpen, setOutputStopped, setNotificationViewTarget, setTerminalPeek, pendingLink, pendingFile, setLinkLanded, selectionHint, selectionSince, rosterSeq, snapshot, selectedMachine, selectedPaneId, setHeaderNote, linkTick, movingPanes, onPick: () => { setFlockView("workspace", "replace"); setupGuide.stepAside(); } });
 
-  const { selectPane } = useSelectPane({ pendingLink, pendingFile, setLinkLanded, selectionHint, setSelectedPaneId, setNotificationViewTarget, setTerminalPeek, setAutoSelected, setDrawerOpen, onPick: () => { picks.current += 1; setFlockView("workspace"); setupGuide.stepAside(); } });
+  const { selectPane } = useSelectPane({ pendingLink, pendingFile, setLinkLanded, selectionHint, setSelectedPaneId, setNotificationViewTarget, setTerminalPeek, setAutoSelected, setDrawerOpen, onPick: () => { picks.current += 1; setFlockView("workspace", "replace"); setupGuide.stepAside(); } });
 
   const layoutRefused = useLayoutRefused(setLayoutNotice, t);
   const moveRefused = useMoveRefused(setLayoutNotice, t);
@@ -800,7 +802,8 @@ export function App() {
           onStarting={setupGuide.voidTickets}
           onPaired={() => void loadHealth()}
           onOpened={(paneId, agentStarted) => { if (agentStarted) actions.agentStarted("local", paneId); setupGuide.finish(() => selectTarget("local", paneId)); void load(); }} /></MachineContext.Provider>}
-        {flockView === "table" ? (auth?.role === "watch" ? <p className="flock-note">{t("This device can only watch")}</p> : <MovableFlockTable registry={flock.registry} rows={flockRows} machines={machines} selected={selectedPaneId ? { machine_id: selectedMachineId, pane_id: selectedPaneId } : null} error={flock.error} refresh={flock.refresh} change={flock.change} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />)
+        {flockView === "graph" ? (auth === null ? <p role="status">{t("Opening…")}</p> : auth.role === "watch" ? <p className="flock-note">{t("This device can only watch")}</p> : <Suspense fallback={<p role="status">{t("Opening…")}</p>}><GraphPanel registry={flock.registry} rows={flockRows} machines={machines} error={flock.error} refresh={flock.refresh} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} /></Suspense>)
+        : flockView === "table" ? (auth?.role === "watch" ? <p className="flock-note">{t("This device can only watch")}</p> : <MovableFlockTable registry={flock.registry} rows={flockRows} machines={machines} selected={selectedPaneId ? { machine_id: selectedMachineId, pane_id: selectedPaneId } : null} error={flock.error} refresh={flock.refresh} change={flock.change} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />)
         : flockView === "agents" ? <div className="flock-agents"><SidebarActivityProvider value={activity}><AgentSidebar machines={sidebarMachines} selectedMachineId={selectedMachineId} selectedPaneId={selectedPaneId} stateWord={(machine) => machine.state} watching={auth?.role === "watch"} onSelect={selectTarget} /></SidebarActivityProvider></div>
         : guideShown ? null :
         <div ref={paneAreaRef} className={`pane-split${splitOn ? " is-split" : ""}`} onDragEnterCapture={paneDragOver} onDragOverCapture={paneDragOver} onDragLeave={paneDragLeave} onDropCapture={paneDrop}>

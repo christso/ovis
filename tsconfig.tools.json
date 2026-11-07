@@ -40,6 +40,7 @@
     "scripts/chat-outcome-note-fixture.tsx",
     "scripts/graph-fixture.tsx",
     "scripts/graph-browser-regression.ts",
+    "scripts/graph-app-demo-regression.ts",
     "scripts/chat-virtual-fixture.tsx",
     "scripts/chat-virtual-browser-qa.ts",
     "scripts/chat-gjc-streaming-browser-qa.ts",

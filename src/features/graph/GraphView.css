@@ -1,3 +1,5 @@
+.graph-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+.graph-source-note { display: flex; align-items: center; gap: 12px; padding: 4px 12px; font-size: 12px; color: var(--text-dim); }
 .graph-view { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--bg); color: var(--text); }
 .graph-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 12px; border-bottom: 1px solid var(--border); }
 .graph-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); min-width: 0; }

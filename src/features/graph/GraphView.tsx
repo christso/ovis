@@ -57,10 +57,10 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
         <option value="">{t("All machines")}</option>{state.filters.machine && !machines.includes(state.filters.machine) && <option value={state.filters.machine}>{state.filters.machine}</option>}{machines.map((id) => <option key={id} value={id}>{machineNames?.get(id) ?? id}</option>)}
       </select></label>
       <label>{t("Focus graph")}<select aria-label={t("Focus graph")} value={state.filters.focus} onChange={(event) => filter({ focus: event.target.value })}>
-        <option value="">{t("Whole graph")}</option>{state.filters.focus && !focusNodes.some((node) => node.id === state.filters.focus) && <option value={state.filters.focus}>{t("This graph focus is unavailable.")}</option>}{focusNodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}
+        <option value="">{t("Whole graph")}</option>{state.filters.focus && !focusNodes.some((node) => node.id === state.filters.focus) && <option value={state.filters.focus}>{t("This graph focus is unavailable.")}</option>}{focusNodes.map((node) => <option key={node.id} value={node.id}>{node.label}{node.machineId ? ` · ${machineNames?.get(node.machineId) ?? node.machineId}` : ""}</option>)}
       </select></label>
       <label>{t("Inspect node")}<select aria-label={t("Inspect node")} value={view.nodes.some((node) => node.id === state.selected) ? state.selected : ""} onChange={(event) => setState((previous) => ({ ...previous, selected: event.target.value }))}>
-        <option value="">{t("Select a node")}</option>{view.nodes.map((node) => <option key={node.id} value={node.id}>{node.label} · {graphKindLabel(t, node.kind)}</option>)}
+        <option value="">{t("Select a node")}</option>{view.nodes.map((node) => <option key={node.id} value={node.id}>{node.label} · {graphKindLabel(t, node.kind)}{node.machineId ? ` · ${machineNames?.get(node.machineId) ?? node.machineId}` : ""}</option>)}
       </select></label>
       <label className="graph-check"><input type="checkbox" checked={state.filters.showCompleted} onChange={(event) => filter({ showCompleted: event.target.checked })} />{t("Show completed")}</label>
       <label className="graph-check"><input type="checkbox" checked={state.groupMachine} onChange={(event) => {

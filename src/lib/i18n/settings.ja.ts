@@ -5,7 +5,6 @@
  * Register and fixed terms follow ../i18n.ja.ts; a key another feature also uses goes there.
  */
 export const SETTINGS_JA: Record<string, string> = {
-  "Unavailable": "確認できません",
   "Direct typing": "直接入力",
   "Terminal input mode": "端末入力モード",
   "Reset shortcuts": "ショートカットをリセット",
