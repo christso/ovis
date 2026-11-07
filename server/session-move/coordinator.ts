@@ -41,9 +41,9 @@ export class MoveCoordinator {
     return {
       preview: async (request, id) => {
         const source = this.source(request);
+        const bundle = await this.call(source.machine_id, id, "source", { pane_id: source.pane_id, thread_id: source.native_session_id, lifetime: source.herdr_lifetime, untracked_files: request.untracked_files }) as TransferBundle;
         const capabilities = await Promise.all([this.call(source.machine_id, id, "capabilities"), this.call(request.destination_machine_id, id, "capabilities")]);
         codexCompatibility(capabilities[0] as CodexMoveRuntime, capabilities[1] as CodexMoveRuntime);
-        const bundle = await this.call(source.machine_id, id, "source", { pane_id: source.pane_id, thread_id: source.native_session_id, lifetime: source.herdr_lifetime, untracked_files: request.untracked_files }) as TransferBundle;
         const checkout = this.flock.read().checkouts.find((item) => item.id === source.checkout_id)!;
         if (checkout.path !== bundle.codex.cwd) throw new MoveRefused("source_changed", "The native session checkout differs from its recorded execution");
         await this.call(request.destination_machine_id, id, "destination", { checkout: request.destination_checkout, bundle });

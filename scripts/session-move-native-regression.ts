@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { chromium } from "playwright-core";
 import roster from "../site/demo/fixtures/machines.json";
 import { moveFlowFixture } from "../server/session-move/flow.fixture.ts";
-import { nativeFlowDriver } from "../server/session-move/native-flow.fixture.ts";
+import { nativeFlowDriver } from "./session-move-native-fixture.ts";
 import { jsonResponse } from "../server/http.ts";
 import type { Machine } from "../shared/machines.ts";
 import { buildDemoApp } from "./demo-build.ts";

@@ -21,7 +21,7 @@ export interface FlowDriver {
   close(): Promise<void>;
 }
 /** Two actual loopback node endpoints and real filesystem transfer; Herdr identity/launch is explicitly a fixture. */
-export async function moveFlowFixture(driver?: FlowDriver, options: { segmented?: boolean } = {}) {
+export async function moveFlowFixture(driver?: FlowDriver, options: { segmented?: boolean; requireSourceHome?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), "ovis-move-flow-"));
   const source = join(root, "source"), target = join(root, "destination"), home = join(root, "source-home"), targetHome = join(root, "destination-home"), state = join(root, "manager");
   for (const path of [source, home, targetHome, state, join(root, "source-state"), join(root, "target-state")]) mkdirSync(path);
@@ -57,7 +57,7 @@ export async function moveFlowFixture(driver?: FlowDriver, options: { segmented?
   }, async close() {} });
   const lock = driver ? null : holdQuiescentCodex(home, FIXTURE_THREAD);
   const runtime = (destination: boolean): MoveNodeRuntime => ({
-    async capabilities() { return { version: "0.166.0", platform: "linux", native_resume: true, authenticated: true, home: destination ? targetHome : home }; },
+    async capabilities(observedHome) { return { version: "0.166.0", platform: "linux", native_resume: destination || !options.requireSourceHome || observedHome === home, authenticated: true, home: destination ? targetHome : home }; },
     async observe(pane_id, thread_id, lifetime) { if (destination || sourceExited || thread_id !== FIXTURE_THREAD || lifetime !== sourceLifetime) throw new Error("unproven owned source"); return { home, rollout, cwd: source, pane_id, thread_id, lifetime }; },
     async native(named) { if (destination && options.segmented && !existsSync(join(targetHome, "thread_history_1.sqlite"))) fixtureHistoryIndex(targetHome, "", 0, 0); return driver ? driver.native(named, destination) : native(destination); },
     async create() { creates++; return { pane_id: "owned:p0", lifetime: destinationLifetime }; },

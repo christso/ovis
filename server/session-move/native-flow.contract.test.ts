@@ -1,6 +1,6 @@
 import { expect, it } from "bun:test";
 import { moveFlowFixture } from "./flow.fixture.ts";
-import { nativeFlowDriver } from "./native-flow.fixture.ts";
+import { nativeFlowDriver } from "../../scripts/session-move-native-fixture.ts";
 
 it.skipIf(process.env["OVIS_CODEX_MOVE_NATIVE_TEST"] !== "1")("moves actual Codex native history and scoped dirty work between two owned loopback runtime endpoints, then reconciles a lost launch response", async () => {
   const driver = nativeFlowDriver(), fixture = await moveFlowFixture(driver);

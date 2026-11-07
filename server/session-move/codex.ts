@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import { digest, inside, MAX_MOVE_BYTES, MoveRefused, readMoveFile, writeMoveFile, type MoveFile } from "./files.ts";
-import { restoreHistoryIndex, snapshotHistoryIndex, type CodexHistoryIndex } from "./history-index.ts";
+import { restoreHistoryIndex, snapshotHistoryIndex, type CodexHistoryIndex, type CodexHistoryScope } from "./history-index.ts";
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const ID = new RegExp(`^${UUID}$`, "i");
@@ -24,6 +24,7 @@ export interface CodexSnapshot {
   checkout_artifacts: string[];
   history_sha256: string;
   history_index: MoveFile | null;
+  history_scope: CodexHistoryScope | null;
 }
 
 /** Exact versions until owned-fixture native resume has qualified another format/runtime pair. */
@@ -139,9 +140,11 @@ export function snapshotCodex(home: string, root: string, threadId: string, stag
     inside(checkout, name);
     return name;
   }).sort();
-  let historyIndex: MoveFile | null = null;
+  let historyIndex: MoveFile | null = null, historyScope: CodexHistoryScope | null = null;
   if (indexRanges.length) {
-    const data = Buffer.from(JSON.stringify(snapshotHistoryIndex(home, indexRanges)));
+    const index = snapshotHistoryIndex(home, indexRanges);
+    historyScope = { schema: index.schema, rollout_ids: index.rollout_ids };
+    const data = Buffer.from(JSON.stringify(index));
     if (total + data.length > MAX_MOVE_BYTES) throw new MoveRefused("snapshot_too_large", "Codex snapshot and history index exceed the transfer limit");
     historyIndex = { path: "history-index.json", bytes: data.length, sha256: digest(data), executable: false };
     writeMoveFile(staging, historyIndex, data);
@@ -152,7 +155,7 @@ export function snapshotCodex(home: string, root: string, threadId: string, stag
     return file;
   });
   return { version: 1, cli_version: "0.166.0", thread_id: threadId, session_id: typeof selected.meta.session_id === "string" ? selected.meta.session_id : threadId,
-    root: root.replace(/^archived_sessions\//, "sessions/"), cwd: checkout, files, checkout_artifacts: checkoutArtifacts, history_index: historyIndex,
+    root: root.replace(/^archived_sessions\//, "sessions/"), cwd: checkout, files, checkout_artifacts: checkoutArtifacts, history_index: historyIndex, history_scope: historyScope,
     history_sha256: historyFingerprint(files) };
 }
 
@@ -177,5 +180,7 @@ export function restoreCodexHistory(snapshot: CodexSnapshot, staging: string, de
   }
   const item = readMoveFile(staging, snapshot.history_index.path);
   if (item.file.sha256 !== snapshot.history_index.sha256 || item.file.bytes !== snapshot.history_index.bytes) throw new MoveRefused("corrupt_transfer", "Codex history index failed its checksum");
-  restoreHistoryIndex(destinationHome, JSON.parse(item.data.toString("utf8")) as CodexHistoryIndex, acceptIdentical);
+  const index = JSON.parse(item.data.toString("utf8")) as CodexHistoryIndex;
+  if (JSON.stringify(snapshot.history_scope) !== JSON.stringify({ schema: index.schema, rollout_ids: index.rollout_ids })) throw new MoveRefused("invalid_history_index", "Native history scope differs from its confirmed snapshot");
+  restoreHistoryIndex(destinationHome, index, acceptIdentical);
 }

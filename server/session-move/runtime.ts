@@ -14,10 +14,10 @@ export function moveRuntime(snapshot: () => Promise<SessionSnapshot>, configured
     return NativeMoveClient.open(home, "stdio");
   };
   return {
-    async capabilities() {
+    async capabilities(observedHome) {
       const probe = Bun.spawnSync(["codex", "--version"], { stdout: "pipe", stderr: "ignore" });
       const version = /^codex-cli (\S+)/.exec(probe.stdout.toString())?.[1] ?? "unknown";
-      const named = configuredHome ?? defaultCodexHome();
+      const named = observedHome ?? configuredHome ?? defaultCodexHome();
       if (!existsSync(named)) return { version, platform: process.platform, native_resume: false, authenticated: false, home: named };
       const home = realpathSync(named);
       if (version !== "0.166.0") return { version, platform: process.platform, native_resume: false, authenticated: false, home };

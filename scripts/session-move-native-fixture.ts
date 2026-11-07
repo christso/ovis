@@ -1,8 +1,8 @@
 /** Actual installed Codex process driver; fixture identity/transport is separate and explicitly labeled. */
 import { join } from "node:path";
-import type { FlowDriver } from "./flow.fixture.ts";
-import { FIXTURE_THREAD } from "./flow.fixture.ts";
-import { MoveRefused } from "./files.ts";
+import type { FlowDriver } from "../server/session-move/flow.fixture.ts";
+import { FIXTURE_THREAD } from "../server/session-move/flow.fixture.ts";
+import { MoveRefused } from "../server/session-move/files.ts";
 
 export async function ownedCodex(home: string, fixtureRoot: string) {
   const child = Bun.spawn(["codex", "app-server", "--stdio"], {
