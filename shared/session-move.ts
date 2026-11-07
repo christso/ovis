@@ -14,6 +14,7 @@ export interface SessionMovePlan {
   source_checkout: string;
   files: { path: string; bytes: number; kind: "tracked" | "untracked" | "codex" }[];
   exclusions: string[];
+  untracked_candidates?: string[];
   fingerprint: string;
 }
 export interface SessionMoveSnapshot { id: string; sha256: string }
@@ -34,3 +35,5 @@ export interface SessionMoveRecord {
   /** A stable public code. Never raw transport errors, credentials or conversation text. */
   error: string | null;
 }
+
+export interface SessionMoveState { record: SessionMoveRecord; running: boolean }

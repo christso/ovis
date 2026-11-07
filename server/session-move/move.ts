@@ -6,7 +6,7 @@ import type { QuiescentSource } from "./quiescence.ts";
 
 /** Machine adapters use configured transports and operation-owned durable receipts, never browser-supplied shell commands. */
 export interface MovePorts {
-  preview(request: SessionMoveRequest): Promise<SessionMovePlan>;
+  preview(request: SessionMoveRequest, operationId: string): Promise<SessionMovePlan>;
   /** Revalidate source execution AND destination availability/conflicts before touching source. */
   preflight(plan: SessionMovePlan): Promise<void>;
   quiesce(plan: SessionMovePlan): Promise<QuiescentSource>;
@@ -25,12 +25,19 @@ export interface MovePorts {
 export class SessionMoves {
   private running = new Set<string>();
   constructor(private readonly journal: MoveJournal, private readonly ports: MovePorts) {}
-  async preview(request: SessionMoveRequest): Promise<SessionMoveRecord> {
-    const plan = await this.ports.preview(request);
-    const record: SessionMoveRecord = { id: randomUUID(), phase: "preview", plan, snapshot: null, destination: null, error: null };
+  async preview(request: SessionMoveRequest, existingId?: string): Promise<SessionMoveRecord> {
+    const id = existingId ?? randomUUID();
+    if (existingId) {
+      const prior = this.journal.get(id);
+      if (this.running.has(id) || prior.snapshot || !["preview", "quiescing", "snapshotting"].includes(prior.phase) || prior.plan.request.session_id !== request.session_id || prior.plan.request.source_execution_id !== request.source_execution_id) throw new MoveRefused("move_busy", "This move can no longer change its preview");
+    }
+    const plan = await this.ports.preview(request, id);
+    const record: SessionMoveRecord = { id, phase: "preview", plan, snapshot: null, destination: null, error: null };
     this.journal.save(record);
     return record;
   }
+  list(): SessionMoveRecord[] { return this.journal.list(); }
+  isRunning(id: string): boolean { return this.running.has(id); }
   cancel(id: string): SessionMoveRecord {
     if (this.running.has(id)) throw new MoveRefused("move_busy", "Wait for this move step to finish before cancelling");
     const record = this.journal.get(id);
