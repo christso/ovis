@@ -18,7 +18,6 @@ export const MACHINES_ZH: Record<string, string> = {
   "Starting without Windows sign-in can break Codex sandbox commands, and desktop-control tools may be unavailable. This choice applies to one start.": "不登录 Windows 直接启动可能导致 Codex 沙箱命令失败，桌面控制工具也可能无法使用。此选择仅适用于本次启动。",
   "Expand {name}": "展开 {name}",
   "Collapse {name}": "折叠 {name}",
-  "Disconnected": "已断开连接",
   "Connection error": "连接错误",
   "New workspace on {name}": "在 {name} 上新建工作区",
   "PCs and workspaces": "PC 和工作区",

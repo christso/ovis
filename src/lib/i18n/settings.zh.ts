@@ -310,7 +310,6 @@ export const SETTINGS_ZH: Record<string, string> = {
   "Pairing gate": "配对门槛",
   "Not yet closed": "尚未关闭",
   "Closed": "已关闭",
-  "Unavailable": "无法确认",
   "No device has been paired yet, so no pairing code is asked for.": "尚未配对任何设备，因此不会要求配对码。",
   "A new browser needs a pairing code or the token.": "新的浏览器需要配对码或令牌。",
   "The device list cannot be read, so no new device can pair. This PC, the token and Tailscale sign-in still work.": "无法读取设备列表，因此新设备无法配对。此电脑、令牌和 Tailscale 登录仍然可用。",

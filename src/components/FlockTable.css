@@ -1,0 +1,25 @@
+.flock-views { display: flex; flex-wrap: wrap; flex: 0 0 auto; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-bottom: var(--hairline) solid var(--border); }
+.flock-views [aria-current="page"] { background: var(--bg-hover); color: var(--text); }
+.flock-table, .flock-agents { min-height: 0; overflow: auto; padding: var(--space-4); color: var(--text); }
+.flock-table { display: flex; flex-direction: column; gap: var(--space-3); }
+.flock-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-3); }
+.flock-toolbar label, .flock-editor label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-sm); }
+.flock-toolbar .flock-check { flex-direction: row; align-items: center; min-height: var(--row-h); }
+.flock-scroll { overflow: auto; flex: 0 1 auto; min-height: 0; border: var(--hairline) solid var(--border); border-radius: var(--radius-md); }
+.flock-table table { border-collapse: collapse; width: 100%; min-width: 960px; font-size: var(--fs-sm); }
+.flock-table th, .flock-table td { text-align: start; padding: var(--space-3); border-bottom: var(--hairline) solid var(--border); max-width: 280px; overflow-wrap: anywhere; vertical-align: top; }
+.flock-table thead th { position: sticky; top: 0; background: var(--bg); z-index: 1; white-space: nowrap; }
+.flock-table th button, .flock-open { font: inherit; color: inherit; background: transparent; border: 0; text-align: start; padding: 0; cursor: pointer; }
+.flock-open { color: var(--accent); }
+.flock-open:disabled { color: var(--text-dim); cursor: default; }
+.flock-table tr[data-selected="true"] { background: var(--bg-hover); }
+.flock-table details { margin-top: var(--space-2); color: var(--text-dim); font-size: var(--fs-xs); min-width: 140px; }
+.flock-table summary { cursor: pointer; }
+.flock-table dl { margin: var(--space-2) 0; }
+.flock-table dd { margin: 0 0 var(--space-2); font-family: var(--font-mono); }
+.flock-note { margin: 0; color: var(--text-dim); font-size: var(--fs-sm); }
+.flock-editor { display: flex; flex-direction: column; gap: var(--space-2); border: var(--hairline) solid var(--border); border-radius: var(--radius-md); padding: var(--space-3); max-width: 640px; }
+.flock-editor p { margin: 0; }
+.flock-editor-actions { display: flex; gap: var(--space-2); }
+.flock-group { background: var(--bg-hover); }
+@media (max-width: 640px) { .flock-table, .flock-agents { padding: var(--space-2); } .flock-toolbar label { min-width: 0; max-width: 100%; } .flock-toolbar .input { max-width: 100%; } }

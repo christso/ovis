@@ -3942,3 +3942,19 @@ Other hosts keep opening in a new tab, and unsafe schemes stay blocked; the app'
 limited to its own host. This follows T3 Code's in-thread visual replies and full-screen page view,
 while keeping external page links in the browser as its [HTML renders guide](https://github.com/pingdotgg/t3code/blob/main/docs/user/html-renders.md)
 does. No code or visual assets are copied.
+
+### Table and logical sessions
+
+The fork's Workspace, Agents and Table selector changes presentation while preserving the selected
+machine and pane. Table is flat across the configured machines, with sortable columns, a text filter,
+a machine filter and optional machine grouping. At phone width the table scrolls inside its own
+region. Existing Workspace and Agents lists keep their controls and terminal targeting.
+
+The design follows [Codex's threads and worktrees](https://openai.com/index/introducing-the-codex-app/):
+a named task survives its execution context, while a physical checkout stays separate. This fork adds
+a flat table because execution location must be a column rather than a compulsory parent. No pixels
+or code were copied. A row represents an execution, so two executions of one logical session remain
+visible. Association is explicit, and selectors include IDs to disambiguate equal names. Native
+sessions without proven IDs stay visible as unassociated; stale or disconnected bindings cannot open
+terminals from Table. Rename changes a label, never an identity. Work and session names live in the
+manager's registry; naming a session does not rename its native agent or move its files.
