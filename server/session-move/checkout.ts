@@ -84,6 +84,17 @@ export function restoreCheckout(snapshot: CheckoutSnapshot, staging: string, des
   if (staged.length) git(destination, ["apply", "--index", "--binary", "-"], staged);
   if (unstaged.length) git(destination, ["apply", "--binary", "-"], unstaged);
   for (const item of untracked) writeMoveFile(destination, item.file, item.data);
+  verifyCheckout(snapshot, staging, destination);
+}
+
+/** Receipt-independent verification of all committed, staged, working and selected untracked bytes. */
+export function verifyCheckout(snapshot: CheckoutSnapshot, staging: string, destination: string): void {
+  const staged = readMoveFile(staging, snapshot.staged.path).data, unstaged = readMoveFile(staging, snapshot.unstaged.path).data;
   const restored = changes(destination);
   if (restored.head !== snapshot.head || !restored.staged.equals(staged) || !restored.unstaged.equals(unstaged)) throw new MoveRefused("restore_mismatch", "Restored checkout differs from the snapshot");
+  if (JSON.stringify(restored.untracked) !== JSON.stringify(snapshot.untracked.map((file) => file.path).sort())) throw new MoveRefused("restore_mismatch", "Restored untracked scope differs from the snapshot");
+  for (const file of snapshot.untracked) {
+    const restored = readMoveFile(destination, file.path).file;
+    if (restored.sha256 !== file.sha256 || restored.bytes !== file.bytes || restored.executable !== file.executable) throw new MoveRefused("restore_mismatch", "Restored untracked file differs from the snapshot");
+  }
 }

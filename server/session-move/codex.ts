@@ -170,12 +170,12 @@ export function restoreCodex(snapshot: CodexSnapshot, staging: string, destinati
 }
 
 /** Run after the installed destination CLI has initialized its own history schema, before resume. */
-export function restoreCodexHistory(snapshot: CodexSnapshot, staging: string, destinationHome: string): void {
+export function restoreCodexHistory(snapshot: CodexSnapshot, staging: string, destinationHome: string, acceptIdentical = false): void {
   if (!snapshot.history_index) {
     if (snapshot.files.length > 1) throw new MoveRefused("incomplete_history_index", "Segmented history requires its native index");
     return;
   }
   const item = readMoveFile(staging, snapshot.history_index.path);
   if (item.file.sha256 !== snapshot.history_index.sha256 || item.file.bytes !== snapshot.history_index.bytes) throw new MoveRefused("corrupt_transfer", "Codex history index failed its checksum");
-  restoreHistoryIndex(destinationHome, JSON.parse(item.data.toString("utf8")) as CodexHistoryIndex);
+  restoreHistoryIndex(destinationHome, JSON.parse(item.data.toString("utf8")) as CodexHistoryIndex, acceptIdentical);
 }

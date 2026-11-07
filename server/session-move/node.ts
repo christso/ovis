@@ -4,9 +4,9 @@ import { randomUUID } from "node:crypto";
 import { Database } from "bun:sqlite";
 import type { SessionMoveDestination } from "../../shared/session-move.ts";
 import { writePrivateState } from "../private-state.ts";
-import { restoreCheckout, snapshotCheckout, type CheckoutSnapshot } from "./checkout.ts";
+import { restoreCheckout, verifyCheckout, snapshotCheckout, type CheckoutSnapshot } from "./checkout.ts";
 import { restoreCodexHistory, snapshotCodex, type CodexSnapshot, type CodexMoveRuntime } from "./codex.ts";
-import { digest, inside, MoveRefused, readMoveFile, writeMoveFile, type MoveFile } from "./files.ts";
+import { digest, inside, MoveRefused, readMoveChunk, readMoveFile, writeMoveFile, type MoveFile } from "./files.ts";
 import { MoveSpool, operationId } from "./spool.ts";
 import { holdQuiescentCodex, type QuiescentSource } from "./quiescence.ts";
 import { MOVE_CHUNK_BYTES, type MoveNodeRequest } from "./transport.ts";
@@ -21,7 +21,7 @@ export interface MoveNodeRuntime {
   create(cwd: string, home: string, label: string): Promise<{ pane_id: string; lifetime: string }>;
   find(label: string, cwd: string): Promise<{ pane_id: string; lifetime: string } | null>;
   start(paneId: string, threadId: string): Promise<void>;
-  paneSession(paneId: string, threadId: string, lifetime: string): Promise<boolean>;
+  paneSession(paneId: string, threadId: string, lifetime: string, home: string): Promise<boolean>;
 }
 export interface TransferBundle {
   version: 1; checkout: CheckoutSnapshot; codex: CodexSnapshot; history: string; fingerprint: string;
@@ -36,11 +36,13 @@ const text = (value: unknown): string => { if (typeof value !== "string" || !val
 
 /** Per-machine operation receipts contain observations/transfer data, never logical names or a second session registry. */
 export class MoveNode {
+  private stopped = false;
   private held = new Map<string, QuiescentSource>();
   private pending = new Map<string, Promise<unknown>>();
   constructor(private readonly stateDir: string, private readonly runtime: MoveNodeRuntime) { mkdirSync(stateDir, { recursive: true, mode: 0o700 }); }
-  close(): void { for (const lease of this.held.values()) lease.release(); this.held.clear(); }
+  close(): void { this.stopped = true; for (const lease of this.held.values()) lease.release(); this.held.clear(); }
   async call(request: MoveNodeRequest): Promise<unknown> {
+    if (this.stopped) throw new MoveRefused("move_node_stopped", "Transfer node stopped; reconcile after reconnecting");
     const id = operationId(request.operation_id), previous = this.pending.get(id) ?? Promise.resolve();
     const work = previous.catch(() => {}).then(() => this.step(id, request.action, record(request.payload)));
     this.pending.set(id, work);
@@ -71,12 +73,16 @@ export class MoveNode {
     }
     const native = await this.runtime.native(source.home, true);
     let history: string;
-    try { history = await nativeHistoryProof(native, source.thread_id); } finally { await native.close(); }
+    try {
+      const view = record(record(await native.call("thread/read", { threadId: source.thread_id, includeTurns: false })).thread);
+      if (!["idle", "notLoaded"].includes(record(view.status).type as string)) throw new MoveRefused("source_busy", "Let the active Codex turn finish before previewing its transfer");
+      history = await nativeHistoryProof(native, source.thread_id);
+    } finally { await native.close(); }
     const latest = readMoveFile(source.home, source.rollout).file;
     const captured = codex.files.find((file) => file.path === source.rollout.replace(/^archived_sessions\//, "sessions/"));
     if (!captured || captured.sha256 !== latest.sha256) throw new MoveRefused("source_changed", "Source history changed while preparing the preview");
     const files = [checkout.bundle, checkout.staged, checkout.unstaged, ...checkout.untracked.map((file) => ({ ...file, path: `untracked/${file.path}` })), ...codex.files.map((file) => ({ ...file, path: `codex/${file.path}` })), ...(codex.history_index ? [codex.history_index] : [])];
-    const fingerprint = digest(Buffer.from(JSON.stringify({ head: checkout.head, staged: checkout.staged.sha256, unstaged: checkout.unstaged.sha256, untracked: checkout.untracked, history, root: codex.root, artifacts: codex.checkout_artifacts })));
+    const fingerprint = digest(Buffer.from(JSON.stringify({ files, head: checkout.head, staged: checkout.staged.sha256, unstaged: checkout.unstaged.sha256, untracked: checkout.untracked, history, root: codex.root, artifacts: codex.checkout_artifacts })));
     return { dir, bundle: { version: 1, checkout, codex, history, fingerprint, files, untracked_candidates: [...checkout.excluded_untracked, ...selected].sort() } };
   }
   private async step(id: string, action: string, payload: Record<string, unknown>): Promise<unknown> {
@@ -88,6 +94,8 @@ export class MoveNode {
       if (!Array.isArray(selected) || !selected.every((item) => typeof item === "string")) throw new MoveRefused("invalid_move_request", "Choose individual untracked files");
       if (!receipt.source) { receipt.source = await this.runtime.observe(pane, thread, lifetime); this.save(id, receipt); }
       if (receipt.source.pane_id !== pane || receipt.source.thread_id !== thread || receipt.source.lifetime !== lifetime) throw new MoveRefused("source_changed", "The source observation belongs to another execution");
+      if (payload.current === true && receipt.bundle) return receipt.bundle;
+      if (this.held.has(id)) throw new MoveRefused("move_busy", "Source is already held for transfer");
       const captured = await this.capture(id, receipt.source, selected);
       receipt.bundle = captured.bundle; receipt.source_dir = captured.dir; this.save(id, receipt);
       return captured.bundle;
@@ -107,21 +115,24 @@ export class MoveNode {
     }
     if (action === "hold") {
       if (!receipt.source || !receipt.bundle) throw new MoveRefused("source_unobserved", "Preview the source before exiting its native client");
+      if (payload.capture === true && payload.expected !== receipt.bundle.fingerprint) throw new MoveRefused("source_changed", "The source bundle is no longer the confirmed preview");
       let lease = this.held.get(id);
       if (!lease) { lease = holdQuiescentCodex(receipt.source.home, receipt.source.thread_id); this.held.set(id, lease); }
+      try {
       lease.assertHeld();
       if (payload.capture === true) {
         const selected = receipt.bundle.checkout.untracked.map((file) => file.path);
         const captured = await this.capture(id, receipt.source, selected);
-        if (captured.bundle.fingerprint !== receipt.bundle.fingerprint) throw new MoveRefused("source_changed", "Source work or conversation changed; refresh the preview");
+        if (captured.bundle.fingerprint !== payload.expected) throw new MoveRefused("source_changed", "Source work or conversation changed; refresh the preview");
         receipt.bundle = captured.bundle; receipt.source_dir = captured.dir; this.save(id, receipt);
       }
       return { held: true };
+      } catch (error) { lease.release(); this.held.delete(id); throw error; }
     }
     if (action === "release") { this.held.get(id)?.release(); this.held.delete(id); return { released: true }; }
     if (action === "snapshot") {
       this.held.get(id)?.assertHeld();
-      if (!this.held.has(id) || !receipt.bundle) throw new MoveRefused("source_lease_lost", "Source ownership must be re-established");
+      if (!this.held.has(id) || !receipt.bundle || receipt.bundle.fingerprint !== payload.expected) throw new MoveRefused("source_lease_lost", "Source ownership must be re-established");
       return receipt.bundle;
     }
     if (action === "read-chunk") {
@@ -129,12 +140,11 @@ export class MoveNode {
       const index = payload.index as number, offset = payload.offset as number;
       if (!Number.isSafeInteger(index) || !Number.isSafeInteger(offset) || offset < 0) throw new MoveRefused("invalid_chunk", "Invalid transfer chunk");
       const file = receipt.bundle.files[index]; if (!file || offset > file.bytes) throw new MoveRefused("invalid_chunk", "Invalid transfer file offset");
-      const data = readMoveFile(receipt.source_dir, file.path).data;
-      if (digest(data) !== file.sha256) throw new MoveRefused("corrupt_transfer", "Source snapshot changed");
-      return { data: data.subarray(offset, offset + MOVE_CHUNK_BYTES).toString("base64") };
+      return { data: readMoveChunk(receipt.source_dir, file, offset, MOVE_CHUNK_BYTES).toString("base64") };
     }
     if (action === "prepare") {
       const bundle = payload.bundle as TransferBundle; bundleValue(bundle);
+      if (!receipt.destination) await this.step(id, "destination", payload);
       const checkout = destinationPath(text(payload.checkout)), capabilities = await this.runtime.capabilities();
       if (receipt.destination && (receipt.destination.checkout !== checkout || receipt.destination.bundle.fingerprint !== bundle.fingerprint)) throw new MoveRefused("destination_conflict", "This operation already owns another destination");
       if (!receipt.destination) { receipt.destination = { checkout, home: capabilities.home, bundle, phase: "prepared" }; this.save(id, receipt); }
@@ -152,7 +162,11 @@ export class MoveNode {
       if (destination.phase !== "prepared") return { restored: true };
       const staging = inside(this.root(id), "received", true); new MoveSpool(this.stateDir, id).materialize(staging);
       const temporaryCheckout = inside(this.root(id), "checkout", true);
+      const verifiedReceipt = join(this.root(id), "checkout-verified.json");
+      if (existsSync(temporaryCheckout) && !existsSync(verifiedReceipt)) rmSync(temporaryCheckout, { recursive: true });
       if (!existsSync(temporaryCheckout)) restoreCheckout(destination.bundle.checkout, staging, temporaryCheckout);
+      verifyCheckout(destination.bundle.checkout, staging, temporaryCheckout);
+      writePrivateState(verifiedReceipt, { version: 1, fingerprint: destination.bundle.fingerprint });
       // Every published path was preflighted; an interrupted publication is reconciled by byte equality.
       for (const file of destination.bundle.codex.files) {
         const target = inside(destination.home, file.path, true);
@@ -164,13 +178,25 @@ export class MoveNode {
       try {
         // Initialize destination schema. Current-root cache rebuild is native, inherited rows are scoped imports.
         await native.call("thread/turns/list", { threadId: destination.bundle.codex.thread_id, limit: 1 });
-        if (!existsSync(join(this.root(id), "index-imported.json"))) { restoreCodexHistory(destination.bundle.codex, staging, destination.home); writePrivateState(join(this.root(id), "index-imported.json"), { version: 1 }); }
+        if (!existsSync(join(this.root(id), "index-imported.json"))) {
+          const intent = join(this.root(id), "index-intent.json"), checksum = destination.bundle.codex.history_index?.sha256 ?? "none";
+          let resume = false;
+          if (existsSync(intent)) {
+            const saved = JSON.parse(readMoveFile(this.root(id), "index-intent.json").data.toString());
+            if (saved?.version !== 1 || saved.sha256 !== checksum) throw new MoveRefused("destination_conflict", "History import intent differs from this operation");
+            resume = true;
+          } else writePrivateState(intent, { version: 1, sha256: checksum });
+          restoreCodexHistory(destination.bundle.codex, staging, destination.home, resume);
+          writePrivateState(join(this.root(id), "index-imported.json"), { version: 1, sha256: checksum });
+        }
       } finally { await native.close(); }
       publishCheckout(temporaryCheckout, destination.checkout, id);
+      verifyCheckout(destination.bundle.checkout, staging, destination.checkout);
       destination.phase = "restored"; this.save(id, receipt); return { restored: true };
     }
     const label = `ovis-move-${id}`;
     if (action === "launch") {
+      verifyCheckout(destination.bundle.checkout, inside(this.root(id), "received"), destination.checkout);
       if (["starting", "started"].includes(destination.phase)) return { launched: true };
       if (destination.phase !== "restored" && destination.phase !== "creating") throw new MoveRefused("destination_unrestored", "Restore this destination before launching");
       const recovering = destination.phase === "creating";
@@ -184,7 +210,8 @@ export class MoveNode {
     }
     if (action === "verify") {
       if (!destination.pane_id || !destination.lifetime) return { state: "unknown" };
-      if (!await this.runtime.paneSession(destination.pane_id, destination.bundle.codex.thread_id, destination.lifetime)) return { state: "pending" };
+      verifyCheckout(destination.bundle.checkout, inside(this.root(id), "received"), destination.checkout);
+      if (!await this.runtime.paneSession(destination.pane_id, destination.bundle.codex.thread_id, destination.lifetime, destination.home)) return { state: "pending" };
       const native = await this.runtime.native(destination.home, true);
       try { await verifyNativeResume(native, { thread_id: destination.bundle.codex.thread_id, session_id: destination.bundle.codex.session_id, cwd: destination.checkout, rollout: join(destination.home, destination.bundle.codex.root), history: destination.bundle.history }); }
       finally { await native.close(); }
@@ -197,6 +224,9 @@ export class MoveNode {
 
 function bundleValue(bundle: TransferBundle): void {
   if (bundle?.version !== 1 || bundle.checkout?.version !== 1 || bundle.codex?.version !== 1 || !/^[a-f0-9]{64}$/.test(bundle.history) || !Array.isArray(bundle.files)) throw new MoveRefused("invalid_manifest", "Invalid native transfer bundle");
+  if (!/^[a-f0-9-]{36}$/.test(bundle.codex.thread_id) || !bundle.codex.files.some((file) => file.path === bundle.codex.root)
+    || bundle.codex.files.some((file) => !/^sessions\/\d{4}\/\d{2}\/\d{2}\/rollout-[a-f0-9T_-]+\.jsonl$/.test(file.path))
+    || bundle.codex.history_index && bundle.codex.history_index.path !== "history-index.json") throw new MoveRefused("invalid_manifest", "Native publication may only contain canonical rollout files and their scoped index");
   const expected = [bundle.checkout.bundle, bundle.checkout.staged, bundle.checkout.unstaged, ...bundle.checkout.untracked.map((file) => ({ ...file, path: `untracked/${file.path}` })), ...bundle.codex.files.map((file) => ({ ...file, path: `codex/${file.path}` })), ...(bundle.codex.history_index ? [bundle.codex.history_index] : [])];
   if (JSON.stringify(expected) !== JSON.stringify(bundle.files) || bundle.checkout.bundle.path !== "commits.bundle" || bundle.checkout.staged.path !== "staged.patch" || bundle.checkout.unstaged.path !== "unstaged.patch") throw new MoveRefused("invalid_manifest", "Transfer files do not match the native snapshot");
 }
@@ -206,19 +236,18 @@ function destinationPath(path: string): string {
 }
 function publishCheckout(staging: string, destination: string, id: string): void {
   if (existsSync(destination)) {
-    const marker = join(destination, ".ovis-move-owner");
-    if (!existsSync(marker) || readMoveFile(destination, ".ovis-move-owner").data.toString() !== id) throw new MoveRefused("destination_conflict", "Destination checkout already exists");
+    const metadata = join(destination, ".git");
+    let saved;
+    try { saved = JSON.parse(readMoveFile(metadata, "ovis-session-move.json").data.toString()); } catch { /* an unrelated or partial directory stays untouched */ }
+    if (saved?.version !== 1 || saved.operation !== id) throw new MoveRefused("destination_conflict", "Destination checkout already exists");
     return;
   }
-  // The private marker travels with the checkout; retries never adopt an unrelated existing directory.
-  writePrivateState(join(staging, ".ovis-move-receipt.json"), { version: 1, operation: id });
-  const marker = { path: ".ovis-move-owner", bytes: Buffer.byteLength(id), sha256: digest(Buffer.from(id)), executable: false };
-  writeMoveFile(staging, marker, Buffer.from(id));
-  // An empty, exclusive reservation prevents overwriting an existing checkout.
+  writePrivateState(join(staging, ".git", "ovis-session-move.json"), { version: 1, operation: id });
   mkdirSync(destination, { mode: 0o700 });
   try { renameSync(staging, destination); }
   catch (error) { if (readdirSync(destination).length === 0) rmSync(destination); throw error; }
 }
+
 function nativeThreadConflict(home: string, id: string): void {
   const path = inside(home, "state_5.sqlite", true);
   if (!existsSync(path)) return;

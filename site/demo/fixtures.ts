@@ -256,3 +256,6 @@ export const PROMPT: InteractivePrompt = {
 
 /** The demo has no manager-owned associations; writes are explicitly refused. */
 export const DEMO_FLOCK: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
+
+/** The public demo has no pending machine transfers. */
+export const DEMO_SESSION_MOVES = { moves: [] };

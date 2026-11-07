@@ -61,24 +61,24 @@ export class SessionMoves {
       if (record.phase === "preview") save("quiescing");
       lease = await this.ports.quiesce(record.plan);
       if (lease.thread_id !== record.plan.native_thread_id) throw new MoveRefused("thread_mismatch", "Source ownership belongs to a different thread");
-      lease.assertHeld();
+      await lease.assertHeld();
       if (!record.snapshot) {
         save("snapshotting");
         record.snapshot = await this.ports.snapshot(id, record.plan, lease);
-        lease.assertHeld(); save("snapshotted");
+        await lease.assertHeld(); save("snapshotted");
       }
       if (["quiescing", "snapshotting", "snapshotted", "restoring"].includes(record.phase)) {
         save("restoring");
         await this.ports.restore(id, record.plan, record.snapshot);
-        lease.assertHeld(); save("restored");
+        await lease.assertHeld(); save("restored");
       }
       if (record.phase === "restored") {
         save("launching");
-        lease.assertHeld();
+        await lease.assertHeld();
         await this.ports.launch(id, record.plan, record.snapshot);
         save("verifying");
       }
-      lease.assertHeld();
+      await lease.assertHeld();
       const seen = await this.ports.inspect(id, record.plan, record.snapshot);
       if (seen.state !== "resumed") {
         // Even an absent result is not an automatic relaunch: absence must be a durable
@@ -89,7 +89,7 @@ export class SessionMoves {
       if (destination.native_session_id !== record.plan.native_thread_id || destination.machine_id !== record.plan.request.destination_machine_id
         || destination.checkout !== record.plan.request.destination_checkout || destination.history_sha256 !== record.snapshot.sha256
         || !destination.herdr_lifetime || !destination.pane_id) throw new MoveRefused("resume_mismatch", "Destination did not verify the requested native session and history");
-      lease.assertHeld(); record.destination = destination; save("binding");
+      await lease.assertHeld(); record.destination = destination; save("binding");
       await this.ports.bind(id, record.plan, destination);
       save("complete");
       return record;
@@ -99,6 +99,6 @@ export class SessionMoves {
         this.journal.save(record);
       }
       throw error;
-    } finally { lease?.release(); this.running.delete(id); }
+    } finally { await lease?.release(); this.running.delete(id); }
   }
 }

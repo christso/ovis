@@ -29,8 +29,19 @@ export class MoveTransport {
       response = await this.fetcher(endpoint.url + MOVE_NODE_PATH, { method: "POST", headers: { authorization: `Bearer ${endpoint.token}`, "content-type": "application/json" }, body,
         redirect: "error", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000) });
       if (!response.ok) {
-        await response.body?.cancel().catch(() => {});
-        throw new MoveRefused(response.status === 404 ? "move_unsupported" : "move_remote_refused", "The configured PC did not accept this transfer step");
+        const known: Record<string, string> = {
+          source_not_quiescent: "Finish the active turn and exit this session in its native Codex client before moving it",
+          source_busy: "Let the active Codex turn finish before previewing its transfer",
+          source_changed: "Source work or conversation changed; refresh the preview",
+          destination_conflict: "The destination contains conflicting checkout or native session data",
+          reconciliation_required: "Destination execution is uncertain; reconcile the existing receipt before retrying",
+          untracked_scope: "Select all required native image files in the reviewed untracked scope",
+          unsupported_artifact: "This session has unsupported queued work, goals, tools or attachments",
+          codex_incompatible: "Session moves require matching supported Codex versions",
+        };
+        let code: string | undefined;
+        try { const error = JSON.parse(Buffer.from(await readCapped(response, 8 * 1024)).toString()); if (typeof error?.error?.code === "string" && Object.hasOwn(known, error.error.code)) code = error.error.code; } catch { /* remote diagnostics stay private */ }
+        throw new MoveRefused(code ?? (response.status === 404 ? "move_unsupported" : "move_remote_refused"), code ? known[code]! : "The configured PC did not accept this transfer step");
       }
       return JSON.parse(Buffer.from(await readCapped(response, 1024 * 1024)).toString("utf8")) as unknown;
     } catch (error) {
