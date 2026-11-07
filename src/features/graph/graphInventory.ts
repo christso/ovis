@@ -2,7 +2,7 @@ import type { FlockRegistry } from "../../../shared/flock.ts";
 import { flockTarget, type FlockRow } from "../../../shared/flock-inventory.ts";
 import type { PaneTarget } from "../../../shared/machines.ts";
 import { knownStatus } from "../../lib/status.ts";
-import { flockRelationshipEndpoint, flockRelationships, type FlockRelationshipEndpoint } from "../../../shared/flock-relationships.ts";
+import { flockRelationships, type FlockRelationshipEndpoint } from "../../../shared/flock-relationships.ts";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
 const executionId = (row: FlockRow) => {
