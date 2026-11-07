@@ -17,6 +17,16 @@ for (const machine of machines) if (machine.snapshot) {
   machine.snapshot.herdr_lifetime = `flock-fixture-${machine.id}`;
   for (const pane of machine.snapshot.panes) if (pane.agent) pane.agent_session = { agent: pane.agent, kind: "id", source: "fixture", value: `native-${machine.id}-${pane.pane_id}` };
 }
+const longRepository = "/srv/fixture/projects/commerce-platform-with-a-very-long-repository-name";
+const longCheckout = `${longRepository}/worktrees/mobile-table-layout-with-a-long-checkout-name`;
+const longBranch = "feat/readable-mobile-executions-with-long-branch-context";
+const fixturePane = machines[0]!.snapshot!.panes.find((pane) => pane.agent)!;
+fixturePane.agent = "codex";
+fixturePane.agent_session = { agent: "codex", kind: "id", source: "fixture", value: `native-local-${fixturePane.pane_id}` };
+for (const fixtureWorkspace of machines[0]!.snapshot!.workspaces) {
+fixtureWorkspace.worktree = { checkout_path: longCheckout, repo_root: longRepository, repo_key: "fixture-repo", repo_name: "Fixture commerce", is_linked_worktree: true };
+fixtureWorkspace.tokens = { ...fixtureWorkspace.tokens, branch: longBranch };
+}
 const remote = structuredClone(machines[0]!); remote.id = "fixture-remote"; remote.name = "Fixture remote"; remote.kind = "ssh";
 const offline = structuredClone(remote); offline.id = "fixture-offline"; offline.name = "Fixture offline"; offline.state = "disconnected";
 for (const machine of [remote, offline]) {
@@ -30,6 +40,8 @@ machines[0]!.snapshot!.panes.push(unproven);
 // Explicit fictional ownership proofs stand in for the real native reader in this UI fixture.
 for (const machine of machines) if (machine.snapshot) machine.snapshot.flock_bindings = machine.snapshot.panes.flatMap((pane) => pane.agent && pane.agent_session?.kind === "id"
   ? [{ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: pane.agent, native_session_id: pane.agent_session.value }] : []);
+const rawMachines = structuredClone(machines);
+for (const machine of rawMachines) if (machine.snapshot) delete machine.snapshot.flock_bindings;
 const chosen = machines[0]!.snapshot!.panes.find((pane) => pane.agent)!;
 const evidence = process.env["UI_EVIDENCE_DIR"];
 let stateDir = join(root, "state");
@@ -38,7 +50,7 @@ let futureFormat = false;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let browser: Browser | undefined;
 const harness = `<script>(() => {
-  const fixture = ${JSON.stringify(machines)};
+  const fixture = ${JSON.stringify(rawMachines)};
   const demo = window.fetch;
   const network = window.flockNetwork;
   window.fetch = async (input, init) => {
@@ -64,7 +76,7 @@ try {
     const path = new URL(request.url).pathname;
     if (path === "/api/flock") {
       if (futureFormat && request.method === "GET") return Response.json({ version: 2, revision: 100 });
-      return handleFlockRequest(request, store, machines);
+      return handleFlockRequest(request, store, rawMachines, async (id) => machines.filter((machine) => machine.id === id));
     }
     if (!path.startsWith("/herdr-web-ui/demo/app/")) return new Response("not found", { status: 404 });
     const file = decodeURIComponent(path.slice("/herdr-web-ui/demo/app/".length)) || "index.html";
@@ -73,10 +85,10 @@ try {
     return await body.exists() ? new Response(body) : new Response("not found", { status: 404 });
   } });
   browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
-  for (const width of [1280, 390]) {
-    stateDir = join(root, `state-${width}`); store = new FlockStore(stateDir); futureFormat = false;
-    const context = await browser.newContext({ viewport: { width, height: 844 }, locale: "en-US", ...(width === 390 ? { isMobile: true, hasTouch: true } : {}) });
-    await context.addInitScript(() => { localStorage.setItem("ovis:settings", JSON.stringify({ language: "en" })); });
+  for (const { width, height, theme } of [1280, 390, 320].flatMap((width) => (["dark", "light"] as const).map((theme) => ({ width, height: width === 320 ? 568 : 844, theme })))) {
+    stateDir = join(root, `state-${width}-${theme}`); store = new FlockStore(stateDir); futureFormat = false;
+    const context = await browser.newContext({ viewport: { width, height }, locale: "en-US", ...(width < 640 ? { isMobile: true, hasTouch: true } : {}) });
+    await context.addInitScript((theme) => { localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme })); }, theme);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -84,7 +96,7 @@ try {
       await page.goto(`http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/?pane=${encodeURIComponent(chosen.pane_id)}`);
       const nav = page.getByRole("navigation", { name: "Views" });
       const openTable = async () => {
-        if (width === 390 && await page.getByRole("button", { name: "Open workspace list", exact: true }).isVisible()) {
+        if (width < 640 && await page.getByRole("button", { name: "Open workspace list", exact: true }).isVisible()) {
           const sidebar = page.locator("#workspace-drawer");
           if (!(await sidebar.getAttribute("class"))?.includes("is-open")) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
         }
@@ -93,12 +105,21 @@ try {
       await openTable();
       const table = page.getByRole("region", { name: "Table", exact: true });
       await table.locator(".flock-open:enabled").first().waitFor();
+      const filters = table.getByRole("button", { name: /^Filters and sort/ });
+      if (width < 640) {
+        assert.equal(await filters.getAttribute("aria-expanded"), "false");
+        const first = await table.locator("tr[data-row-id]").first().boundingBox();
+        assert.ok(first && first.y >= 0 && first.y + first.height <= height, "first useful card is fully visible without scrolling");
+        await filters.tap();
+        assert.equal(await filters.getAttribute("aria-expanded"), "true");
+      }
       await table.getByText(/Inventory is incomplete for:.*Fixture awaiting inventory/).waitFor();
       const before = new URL(page.url()).searchParams.get("pane");
       await nav.getByRole("button", { name: "Agents", exact: true }).click();
       await nav.getByRole("button", { name: "Workspace", exact: true }).click();
       assert.equal(new URL(page.url()).searchParams.get("pane"), before, "view switches preserve terminal selection");
       await openTable();
+      if (width < 640) await filters.tap();
       await table.getByRole("button", { name: "New work", exact: true }).click();
       let form = table.getByRole("form", { name: "Session association" });
       await form.getByLabel("Name", { exact: true }).fill("Release work");
@@ -157,8 +178,21 @@ try {
       await table.getByLabel("Group by machine").check();
       assert.ok(await table.locator(".flock-group").count() > 0);
       await table.getByLabel("Group by machine").uncheck();
-      await table.getByRole("columnheader", { name: /^Name/ }).getByRole("button").click();
-      assert.equal(await table.getByRole("columnheader", { name: /^Name/ }).getAttribute("aria-sort"), "descending");
+      if (width < 640) {
+        const sort = table.getByRole("combobox", { name: "Sort by", exact: true });
+        for (const value of ["work", "repository", "branch", "status", "machine", "name"]) await sort.selectOption(value);
+        await table.getByRole("button", { name: "Ascending", exact: false }).tap();
+        assert.equal(await table.getByRole("button", { name: "Descending", exact: false }).getAttribute("aria-pressed"), "true");
+        await filters.tap();
+        assert.equal(await filters.textContent(), "Filters and sort (1)");
+        assert.equal(await table.getByRole("combobox", { name: "Machine", exact: true }).isVisible(), false);
+        await filters.tap();
+        assert.equal(await sort.inputValue(), "name", "disclosure retains sorting state");
+        await filters.tap();
+      } else {
+        await table.getByRole("columnheader", { name: /^Name/ }).getByRole("button").click();
+        assert.equal(await table.getByRole("columnheader", { name: /^Name/ }).getAttribute("aria-sort"), "descending");
+      }
       const unavailable = table.locator("tbody tr").filter({ hasText: "Disconnected" });
       assert.ok(await unavailable.count() > 0);
       assert.equal(await unavailable.first().locator(".flock-open").isEnabled(), false);
@@ -167,7 +201,7 @@ try {
       assert.equal(await unsupported.getByRole("button", { name: "Associate session" }).isEnabled(), false);
       if (evidence) {
         mkdirSync(join(evidence, "flock-table"), { recursive: true });
-        await page.screenshot({ path: join(evidence, "flock-table", `table-${width}.png`) });
+        await page.screenshot({ path: join(evidence, "flock-table", `table-${width}-${theme}.png`) });
       }
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "table scroll stays inside its own region");
       await registered.locator(".flock-open").click();
@@ -191,13 +225,59 @@ try {
       await table.getByRole("button", { name: "Refresh", exact: true }).click();
       await table.getByRole("alert").filter({ hasText: "format cannot be read" }).waitFor();
       assert.equal(await table.getByRole("button", { name: "Save association" }).isEnabled(), false);
+      if (width < 640) await filters.tap();
       assert.equal(await table.getByRole("button", { name: "New work", exact: true }).isEnabled(), false);
+      if (width < 640) await filters.tap();
       assert.equal(store.read().sessions[0]!.id, session.id);
       futureFormat = false;
       await table.getByRole("button", { name: "Refresh", exact: true }).click();
       await page.locator(`tr[data-row-id="${execution.id}"]`).getByRole("button", { name: "Renamed fixture", exact: true }).waitFor();
+      await form.getByRole("button", { name: "Cancel", exact: true }).click();
+      const longName = "Investigate checkout reconciliation across machines with a deliberately long fixture session name";
+      store.change(store.read().revision, { type: "rename-session", id: session.id, name: longName, work_id: work.id }, machines);
+      store.change(store.read().revision, { type: "rename-work", id: work.id, name: "Release work with a deliberately long customer-facing delivery name" }, machines);
+      await table.getByRole("button", { name: "Refresh", exact: true }).click();
+      await registered.getByRole("button", { name: longName, exact: true }).waitFor();
+      await table.getByLabel("Filter sessions").fill("reconciliation");
+      if (width < 640) {
+        for (const phoneHeight of [568, 844]) {
+          await page.setViewportSize({ width, height: phoneHeight });
+          await table.evaluate((element) => { element.scrollTop = 0; });
+          const row = table.locator("tr[data-row-id]").first();
+          const geometry = await row.boundingBox();
+          assert.ok(geometry && geometry.y + geometry.height <= phoneHeight, "long-name card and actions fit in initial viewport");
+          assert.equal(await row.locator(".flock-work").isVisible(), true);
+          assert.equal(await row.locator(".flock-machine").isVisible(), true);
+          assert.equal(await row.locator(".flock-checkout-name").textContent(), longCheckout.split("/").at(-1)!);
+          assert.equal(await row.locator(".flock-status").isVisible(), true);
+          assert.ok(await table.evaluate((element) => element.scrollWidth <= element.clientWidth), "no Table horizontal scroll");
+          assert.ok(await table.locator(".flock-scroll").evaluate((element) => element.scrollWidth <= element.clientWidth), "no card horizontal scroll");
+          const controls = row.locator("button, summary");
+          for (const control of await controls.all()) {
+            const box = await control.boundingBox();
+            assert.ok(box && box.height >= 44 && box.width >= 44 && box.x >= 0 && box.x + box.width <= width, "row control is reachable and touch-sized");
+          }
+          const summary = row.locator("summary");
+          await summary.tap();
+          assert.equal(await row.locator("details").getAttribute("open"), "");
+          for (const value of [longName, longRepository, longCheckout, longBranch, session.id]) assert.ok((await row.locator("dl").textContent())!.includes(value), `full metadata disclosed: ${value}`);
+          // fixed wait: the native touch highlight fades before retained visual evidence.
+          if (evidence) await page.waitForTimeout(400);
+          if (evidence) await page.screenshot({ path: join(evidence, "flock-table", `details-${width}-${phoneHeight}-${theme}.png`) });
+          await summary.tap();
+          assert.equal(await row.locator("details").getAttribute("open"), null);
+          await table.evaluate((element) => { element.scrollTop = 0; });
+          // fixed wait: the native touch highlight fades before retained visual evidence.
+          if (evidence) await page.waitForTimeout(400);
+          if (evidence) await page.screenshot({ path: join(evidence, "flock-table", `cards-${width}-${phoneHeight}-${theme}.png`) });
+        }
+      } else {
+        assert.equal(await table.locator("thead").isVisible(), true);
+        if (evidence) await page.screenshot({ path: join(evidence, "flock-table", `long-desktop-${theme}.png`) });
+      }
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "no page horizontal overflow with long fixture metadata");
       assert.deepEqual(errors, []);
-      console.log(`PASS Table ${width}: explicit adoption, rename, persistence, filter, grouping, sort and terminal selection`);
+      console.log(`PASS Table ${width} ${theme}: explicit adoption, rename, persistence, filter, grouping, sort and terminal selection`);
     } finally { await context.close(); }
   }
 } finally {
