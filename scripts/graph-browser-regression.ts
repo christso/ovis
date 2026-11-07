@@ -71,7 +71,7 @@ try {
         await options(false);
       }
       const graphSurface = page.getByRole("group", { name: "Interactive graph", exact: true });
-      const layoutBeforeSelection = await graphSurface.evaluate((svg) => ({ viewport: svg.firstElementChild?.getAttribute("transform"), nodes: [...svg.querySelectorAll("[data-graph-node]")].map((item) => [item.getAttribute("data-graph-node"), item.getAttribute("transform")]) }));
+      const layoutBeforeSelection = await graphSurface.evaluate((svg) => ({ viewport: svg.querySelector(":scope > g")?.getAttribute("transform"), nodes: [...svg.querySelectorAll("[data-graph-node]")].map((item) => [item.getAttribute("data-graph-node"), item.getAttribute("transform")]) }));
       await node.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
       await page.waitForFunction(() => document.querySelector('[data-graph-node="session"]')?.getAttribute("aria-pressed") === "true");
       stage = "selection neighbourhood";
@@ -82,12 +82,15 @@ try {
       assert.ok(await opacity("offline") < 0.5, "selection dims unrelated nodes");
       assert.equal(await page.locator('.graph-edge').filter({ hasText: "Recorded session: prune" }).evaluate((element) => Number(getComputedStyle(element).opacity)), 1, "selected node's incident link remains visible");
       assert.ok(await page.locator('.graph-edge').filter({ hasText: "Recorded repository: orchard" }).evaluate((element) => Number(getComputedStyle(element).opacity)) < 0.5, "unrelated links are dimmed");
-      assert.deepEqual(await graphSurface.evaluate((svg) => ({ viewport: svg.firstElementChild?.getAttribute("transform"), nodes: [...svg.querySelectorAll("[data-graph-node]")].map((item) => [item.getAttribute("data-graph-node"), item.getAttribute("transform")]) })), layoutBeforeSelection, "highlighting keeps nodes and viewport in place");
+      assert.deepEqual(await graphSurface.evaluate((svg) => ({ viewport: svg.querySelector(":scope > g")?.getAttribute("transform"), nodes: [...svg.querySelectorAll("[data-graph-node]")].map((item) => [item.getAttribute("data-graph-node"), item.getAttribute("transform")]) })), layoutBeforeSelection, "highlighting keeps nodes and viewport in place");
       if (!mobile) {
         await page.locator('[data-graph-node="checkout"]').hover();
         assert.equal(await opacity("repo"), 1, "mouse hover previews direct neighbours");
         assert.ok(await opacity("session") < 0.5, "hover does not expand through indirect relationships");
         assert.equal(await node.getAttribute("aria-pressed"), "true", "hover does not replace persistent selection");
+        await node.focus(); await page.keyboard.press("Enter");
+        assert.equal(await opacity("execution"), 1, "keyboard activation takes precedence over a stationary mouse preview");
+        assert.ok(await opacity("checkout") < 0.5);
         await page.getByLabel("Search graph", { exact: true }).hover();
         assert.equal(await opacity("execution"), 1, "leaving the hovered node restores selection highlighting");
         assert.ok(await opacity("repo") < 0.5);

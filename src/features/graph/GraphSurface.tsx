@@ -119,8 +119,8 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
         return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-status-${node.status ?? "unknown"}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}${highlighted ? neighbours.has(node.id) ? " graph-related" : " graph-muted" : ""}`}
           transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={nodeLabel(node)} aria-pressed={selected === node.id}
           onPointerEnter={(event) => { if (event.pointerType === "mouse" && event.buttons === 0) setHovered(node.id); }} onPointerLeave={() => setHovered(null)}
-          onClick={(event) => { if (event.detail === 0) onSelect(node.id); }}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(node.id); } }}>
+          onClick={(event) => { if (event.detail === 0) { setHovered(null); onSelect(node.id); } }}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setHovered(null); onSelect(node.id); } }}>
           <title>{nodeLabel(node)}</title>
           <rect x={-112} y={-30} width={224} height={60} rx={10} />
           <Icon x={-98} y={-17} width={18} height={18} aria-hidden="true" className="graph-status-icon" />
