@@ -9,7 +9,7 @@ export interface GraphNode {
   label: string;
   status?: GraphStatus;
   machineId?: string;
-  freshness?: "live" | "stale" | "disconnected";
+  freshness?: "live" | "stale" | "disconnected" | "unavailable" | "unsupported";
   detail?: string;
 }
 export interface GraphEdge {

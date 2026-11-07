@@ -3999,6 +3999,15 @@ focus or input operation.
 Graph presentation state has its own `ovis:graph:v1` browser key, owned by
 `src/features/graph/useGraphState.ts`: version, selection, filters, optional machine grouping,
 positions and viewport. No existing settings record changes and no HTTP/WS contract carries it.
-Older Ovis releases do not read or write this new key. Unknown versions or malformed stored data
-are left intact; this reader keeps in-memory defaults and refuses to overwrite those bytes.
+Older Ovis releases do not read or write this new key. Unknown versions and unparseable JSON records
+are left intact; supported fields are sanitized before use. This reader refuses to overwrite
+records whose version or JSON it cannot read.
 Graph-owned query fields share selection/filter/focus without altering Ovis's pane/view location.
+
+
+Graph loads lazily after the device role is known; watch-only devices load neither its private
+registry nor its rendering chunk. The `page=graph` location composes with Ovis's existing
+`view=chat|terminal` pane lens and its machine/pane location. Graph and Table share App's one
+inventory hook. Logical-session Open resolves only `current_execution_id` through `flockTarget`;
+a previous live execution is not a substitute. Repository nodes represent recorded machine-local
+metadata and are scoped by machine plus recorded root, never unified by similar paths.

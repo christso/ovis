@@ -16,6 +16,8 @@ export function graphKindLabel(t: Translate, kind: GraphKind): string {
 export function graphFreshnessLabel(t: Translate, freshness: GraphNode["freshness"]): string {
   switch (freshness) {
     case "live": return t("Live");
+    case "unavailable": return t("Unavailable");
+    case "unsupported": return t("Identity unavailable");
     case "stale": return t("Stale source");
     case "disconnected": return t("Disconnected");
     default: return t("Unknown");

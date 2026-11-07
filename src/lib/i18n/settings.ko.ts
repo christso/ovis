@@ -5,7 +5,6 @@
  * Register and fixed terms follow ../i18n.ko.ts; a key another feature also uses goes there.
  */
 export const SETTINGS_KO: Record<string, string> = {
-  "Unavailable": "확인 불가",
   "Direct typing": "직접 입력",
   "Terminal input mode": "터미널 입력 방식",
   "Reset shortcuts": "단축키 초기화",

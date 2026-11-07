@@ -5,7 +5,6 @@
  * Register and fixed terms follow ../i18n.zh.ts; a key another feature also uses goes there.
  */
 export const SETTINGS_ZH: Record<string, string> = {
-  "Unavailable": "无法确认",
   "Direct typing": "直接输入",
   "Terminal input mode": "终端输入模式",
   "Reset shortcuts": "重置快捷键",
