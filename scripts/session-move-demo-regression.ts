@@ -150,8 +150,10 @@ async function auditMobile(): Promise<void> {
         await page.addStyleTag({ content: readFileSync(process.env["MOVE_MOBILE_BASELINE_CSS"]!, "utf8") });
       }
       const row = page.locator(`[data-row-id="${store.read().executions[0]!.id}"]`);
-      // Scope this audit to the dialog; the parent Table owner is replacing its compact row action seam.
-      await row.getByRole("button", { name: "Move session", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+      const opener = row.getByRole("button", { name: "Move session", exact: true });
+      if (baselineAudit) await opener.evaluate((button: HTMLButtonElement) => button.click());
+      else if (phone) await opener.tap();
+      else await opener.click();
       const dialog = page.getByRole("dialog", { name: "Move session", exact: true });
       const path = "/work/" + "long-unbroken-checkout".repeat(10);
       await dialog.getByLabel("Destination PC", { exact: true }).selectOption(target.id);
@@ -221,6 +223,23 @@ async function auditMobile(): Promise<void> {
         await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); document.documentElement.style.removeProperty("--app-height"); document.documentElement.style.setProperty("--ui-scale", "1.25"); });
         await measure("larger-text"); await capture("larger-text");
         await confirmation.scrollIntoViewIfNeeded(); assert.equal(await confirmation.isChecked(), true);
+      }
+      if (!baselineAudit) {
+        const operationId = moves[0]!.record.id;
+        const close = dialog.getByRole("button", { name: "Close", exact: true });
+        if (phone) await close.tap(); else await close.click();
+        await dialog.waitFor({ state: "hidden" });
+        const pending = page.getByRole("complementary", { name: "Pending session moves", exact: true }).getByRole("button", { name: /^View move/ });
+        if (phone) await pending.tap(); else await pending.click();
+        await dialog.waitFor({ state: "visible" });
+        await dialog.getByRole("status").filter({ hasText: "Transfer preview" }).waitFor();
+        assert.equal(await dialog.getByLabel("Destination PC", { exact: true }).inputValue(), target.id);
+        assert.equal(await dialog.getByLabel("Destination checkout", { exact: true }).inputValue(), path);
+        assert.equal(await dialog.getByLabel("required.png", { exact: true }).isChecked(), true);
+        const refresh = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/session-moves" && request.postDataJSON().action === "preview");
+        await dialog.getByRole("button", { name: "Refresh preview", exact: true }).click();
+        assert.equal((await refresh).postDataJSON().id, operationId, "the reopened preview addresses the existing operation");
+        await capture("reopened-pending");
       }
       assert.deepEqual(errors, []);
       console.log(`PASS Move phone audit ${key}${baselineAudit ? " (baseline measurements only)" : ""}`);
