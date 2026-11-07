@@ -34,6 +34,8 @@ try {
       await page.goto(`http://127.0.0.1:${server.port}`);
       const node = page.locator('[data-graph-node="session"]');
       await node.waitFor();
+      await node.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
+      await page.waitForFunction(() => document.querySelector('[data-graph-node="session"]')?.getAttribute("aria-pressed") === "true");
       assert.equal(await page.locator('[data-graph-node="done"]').count(), 0);
       await node.focus(); await page.keyboard.press("Enter");
       await page.getByRole("heading", { name: "Prune branches", exact: true }).waitFor();
@@ -88,6 +90,22 @@ try {
         await page.mouse.wheel(0, -120);
         await page.waitForFunction((before) => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== before, transformBeforeWheel);
       }
+      if (width === 390) {
+        const cdp = await context.newCDPSession(page);
+        const x = box.x + box.width / 2, y = box.y + box.height / 2;
+        const scaleBefore = Number((await surface.locator(":scope > g").getAttribute("transform"))!.match(/scale\(([^)]+)\)/)![1]);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 1, x: x - 30, y }, { id: 2, x: x + 30, y }] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ id: 1, x: x - 60, y }, { id: 2, x: x + 60, y }] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+        const scaleAfter = Number((await surface.locator(":scope > g").getAttribute("transform"))!.match(/scale\(([^)]+)\)/)![1]);
+        assert.ok(Math.abs(scaleAfter / scaleBefore - 2) < 0.05, `pinch follows finger distance (${scaleAfter / scaleBefore})`);
+        const afterPinch = await surface.locator(":scope > g").getAttribute("transform");
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 3, x: box.x + 20, y: box.y + 20 }] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ id: 3, x: box.x + 55, y: box.y + 45 }] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), afterPinch, "a fresh drag works after pinch cancellation");
+        await cdp.detach();
+      }
       const ungrouped = await page.locator('[data-graph-node="offline"]').getAttribute("transform");
       await page.getByLabel("Group by machine", { exact: true }).check();
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
@@ -108,6 +126,10 @@ try {
       await page.reload();
       await page.getByLabel("Search graph", { exact: true }).fill("future reader");
       assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v1")), '{"version":99,"future":"keep"}', "future storage is never overwritten");
+      await page.evaluate(() => localStorage.setItem("ovis:graph:v1", '{"version":'));
+      await page.reload();
+      await page.getByLabel("Search graph", { exact: true }).fill("malformed reader");
+      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v1")), '{"version":', "unparseable storage bytes are preserved while controls remain usable");
       assert.deepEqual(errors, []);
       console.log(`PASS Graph ${width}px ${theme}: selection, filters, stale target, update, view switch, deep link, keyboard viewport`);
     } finally { await context.close(); }

@@ -4011,3 +4011,10 @@ registry nor its rendering chunk. The `page=graph` location composes with Ovis's
 inventory hook. Logical-session Open resolves only `current_execution_id` through `flockTarget`;
 a previous live execution is not a substitute. Repository nodes represent recorded machine-local
 metadata and are scoped by machine plus recorded root, never unified by similar paths.
+
+
+Observed execution nodes include the exact shared binding identity, so reusing a pane for a
+new native session cannot redirect an old Graph selection or link. The address bar owns page
+and terminal history together: Open pushes one Workspace target, and Back/Forward restores the
+Graph page with its filters and selection. Native ownership comes from Table's ephemeral verified
+sources, never from raw Herdr session hints or Graph-side discovery.

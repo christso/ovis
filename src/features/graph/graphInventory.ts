@@ -4,7 +4,11 @@ import type { PaneTarget } from "../../../shared/machines.ts";
 import { knownStatus } from "../../lib/status.ts";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
-const executionId = (row: FlockRow) => row.execution ? `execution:${row.execution.id}` : `observed:${row.id}`;
+const executionId = (row: FlockRow) => {
+  if (row.execution) return `execution:${row.execution.id}`;
+  const binding = row.binding;
+  return `observed:${JSON.stringify(binding ? [row.id, binding.machine_id, binding.herdr_lifetime, binding.pane_id, binding.agent, binding.native_session_id] : [row.id, null])}`;
+};
 const freshness = (row: FlockRow): GraphNode["freshness"] => row.availability;
 
 /** A rendering adapter over the ONE shared inventory. Paths label physical metadata only. */

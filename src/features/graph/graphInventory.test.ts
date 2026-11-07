@@ -8,8 +8,10 @@ import { graphInventory, graphTarget } from "./graphInventory.ts";
 
 function source() {
   const local = structuredClone(fixture.machines[0]) as Machine;
-  const pane = local.snapshot!.panes.find((pane) => pane.agent)!;
+  const pane = local.snapshot!.panes.find((pane) => pane.agent === "codex")!;
   local.snapshot!.panes = [pane]; local.snapshot!.herdr_lifetime = "garden-lifetime";
+  pane.terminal_id = "garden-terminal";
+  local.snapshot!.flock_bindings = [{ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: pane.agent!, native_session_id: "native-garden" }];
   pane.agent_session = { agent: pane.agent!, kind: "id", source: "fixture", value: "native-garden" };
   const remote = structuredClone(local); remote.id = "garden-remote"; remote.name = "Remote garden";
   const checkout = { id: "checkout-local", machine_id: local.id, path: "/fictional/checkout", repository: "/fictional/orchard", branch: "leaves" };
@@ -40,12 +42,23 @@ describe("shared inventory to Graph", () => {
     expect(graphTarget(registry, flockInventory(registry, machines), "session:session")).toBeNull();
     // A previous execution stays live; it must not silently become this session's target.
     expect(graphTarget(registry, flockInventory(registry, machines), "execution:old")).not.toBeNull();
-    machines[1]!.state = "connected"; machines[1]!.snapshot!.panes[0]!.agent_session!.value = "reused-native";
+    machines[1]!.state = "connected"; machines[1]!.snapshot!.flock_bindings![0]!.native_session_id = "reused-native";
     expect(graphTarget(registry, flockInventory(registry, machines), "session:session")).toBeNull();
+  });
+  it("does not redirect an old unadopted execution selection to a replacement native session", () => {
+    const { machines } = source();
+    const empty: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
+    const before = graphInventory(empty, flockInventory(empty, machines));
+    const selected = before.nodes.find((node) => node.kind === "execution" && node.machineId === machines[0]!.id)!;
+    expect(graphTarget(empty, flockInventory(empty, machines), selected.id)).not.toBeNull();
+    machines[0]!.snapshot!.flock_bindings![0]!.native_session_id = "replacement-native";
+    const next = flockInventory(empty, machines);
+    expect(graphInventory(empty, next).nodes.some((node) => node.id === selected.id)).toBe(false);
+    expect(graphTarget(empty, next, selected.id)).toBeNull();
   });
   it("shows unsupported/unknown sources honestly and never supplies a stale terminal", () => {
     const { registry, machines } = source();
-    machines[1]!.snapshot = null; machines[0]!.snapshot!.panes[0]!.agent_session = null;
+    machines[1]!.snapshot = null; machines[0]!.snapshot!.flock_bindings = [];
     const rows = flockInventory(registry, machines), data = graphInventory(registry, rows);
     expect(data.nodes.find((node) => node.id === "session:session")?.freshness).toBe("unavailable");
     expect(data.nodes.find((node) => node.freshness === "unsupported")).toBeDefined();
