@@ -6,10 +6,12 @@ import { useT } from "../../lib/i18n.ts";
 import { graphInventory, graphTarget } from "./graphInventory.ts";
 import GraphView from "./GraphView.tsx";
 
-export default function GraphPanel({ registry, rows, machines, error, refresh, onOpenTarget }: {
+export interface GraphPanelProps {
   registry: FlockRegistry | null; rows: readonly FlockRow[]; machines: readonly Machine[];
   error: string | null; refresh(): Promise<void>; onOpenTarget(target: PaneTarget): void;
-}) {
+}
+
+export default function GraphPanel({ registry, rows, machines, error, refresh, onOpenTarget }: GraphPanelProps) {
   const t = useT();
   const data = useMemo(() => graphInventory(registry, rows), [registry, rows]);
   const incomplete = machines.filter((machine) => machine.state !== "connected" || machine.snapshot === null);

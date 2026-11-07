@@ -19,7 +19,6 @@ export function graphInventory(registry: FlockRegistry | null, rows: readonly Fl
       status: current?.availability === "live" ? knownStatus(current.status) : "unknown", freshness: current ? freshness(current) : "unavailable" });
     if (session.work_id) addEdge(`session:${session.id}`, `work:${session.work_id}`, "work-session", `session.work_id: ${session.work_id}`);
   }
-  // Recorded checkouts can outlive an execution; live branch overlays come from shared rows.
   const checkouts = new Map((registry?.checkouts ?? []).map((checkout) => [checkout.id, checkout]));
   for (const row of rows) if (row.checkout) checkouts.set(row.checkout.id, row.checkout);
   for (const checkout of checkouts.values()) {

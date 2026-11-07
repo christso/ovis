@@ -1,4 +1,4 @@
-import { lazy, Suspense, type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Ellipsis, FolderOpen, Link, Menu, MessageSquare, PanelLeft, Search, SquareTerminal, X } from "lucide-react";
 
 import type { HerdrPane } from "../shared/protocol.ts";
@@ -13,6 +13,7 @@ import { paneCovered, paneContentKey, paneContentPresented } from "./lib/panePre
 import { PANE_TABPANEL_ID, paneTabPanelLabel } from "./lib/paneRegion.ts";
 import { worktreeRepoName } from "./lib/composerStrip.ts";
 import { AccessGate } from "./components/AccessGate.tsx";
+import { GraphEntry } from "./features/graph/GraphEntry.tsx";
 import { FlockViews } from "./components/FlockViews.tsx";
 import { FlockTable } from "./components/FlockTable.tsx";
 import { AgentSidebar } from "./components/AgentSidebar.tsx";
@@ -109,8 +110,6 @@ import { lensOwner, storedView, usePaneLens, usePaneLensState, usePaneViewPicks 
 import { useSplitLayout, useSplitRecheck, useSplitState } from "./lib/useSplitView.ts";
 import { linkSelects, useLinkLanding, useMachineGone, useNotificationTargets, useSelectedLayout, useSelectedMachine, useSelectedPane, useSelectionMark, useSelectionState, useSelectPane, useSelectTarget } from "./lib/useSelection.ts";
 import { useAddressBar } from "./lib/useAddressBar.ts";
-
-const GraphPanel = lazy(() => import("./features/graph/GraphPanel.tsx"));
 
 const APP_TITLE = "Ovis";
 /** how soon after a key press a focus counts as the user's own (lastKeyAtRef) */
@@ -802,7 +801,7 @@ export function App() {
           onStarting={setupGuide.voidTickets}
           onPaired={() => void loadHealth()}
           onOpened={(paneId, agentStarted) => { if (agentStarted) actions.agentStarted("local", paneId); setupGuide.finish(() => selectTarget("local", paneId)); void load(); }} /></MachineContext.Provider>}
-        {flockView === "graph" ? (auth === null ? <p role="status">{t("Opening…")}</p> : auth.role === "watch" ? <p className="flock-note">{t("This device can only watch")}</p> : <Suspense fallback={<p role="status">{t("Opening…")}</p>}><GraphPanel registry={flock.registry} rows={flockRows} machines={machines} error={flock.error} refresh={flock.refresh} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} /></Suspense>)
+        {flockView === "graph" ? <GraphEntry auth={auth} registry={flock.registry} rows={flockRows} machines={machines} error={flock.error} refresh={flock.refresh} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />
         : flockView === "table" ? (auth?.role === "watch" ? <p className="flock-note">{t("This device can only watch")}</p> : <FlockTable registry={flock.registry} rows={flockRows} machines={machines} selected={selectedPaneId ? { machine_id: selectedMachineId, pane_id: selectedPaneId } : null} error={flock.error} refresh={flock.refresh} change={flock.change} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />)
         : flockView === "agents" ? <div className="flock-agents"><SidebarActivityProvider value={activity}><AgentSidebar machines={sidebarMachines} selectedMachineId={selectedMachineId} selectedPaneId={selectedPaneId} stateWord={(machine) => machine.state} watching={auth?.role === "watch"} onSelect={selectTarget} /></SidebarActivityProvider></div>
         : guideShown ? null :
