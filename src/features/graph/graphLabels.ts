@@ -28,6 +28,7 @@ export function graphRelationLabel(t: Translate, kind: GraphRelation): string {
     case "execution-in-checkout": return t("Executes in checkout");
     case "checkout-in-repository": return t("Checkout of repository");
     case "delegation": return t("Recorded delegation");
+    case "communication": return t("Communication");
     case "session-execution": return t("Execution of session");
     case "work-session": return t("Session of work");
   }

@@ -2,7 +2,7 @@ import type { KnownStatus } from "../../lib/status.ts";
 
 export type GraphKind = "repository" | "checkout" | "work" | "session" | "execution";
 export type GraphStatus = KnownStatus;
-export type GraphRelation = "execution-in-checkout" | "checkout-in-repository" | "delegation" | "session-execution" | "work-session";
+export type GraphRelation = "execution-in-checkout" | "checkout-in-repository" | "delegation" | "communication" | "session-execution" | "work-session";
 
 export interface GraphNode {
   id: string;
@@ -20,19 +20,22 @@ export interface GraphEdge {
   kind: GraphRelation;
   /** Human-readable source evidence from the inventory, never a guessed relationship. */
   evidence: string;
+  eventCount?: number;
+  lastObservedAt?: string;
 }
 export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[] }
-export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean }
+export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean; communication?: "recent" | "all" | "none" }
 
-const RELATIONS = new Set<GraphRelation>(["execution-in-checkout", "checkout-in-repository", "delegation", "session-execution", "work-session"]);
+const RELATIONS = new Set<GraphRelation>(["execution-in-checkout", "checkout-in-repository", "delegation", "communication", "session-execution", "work-session"]);
 
 /** Filters match work first; established outgoing containment links retain its context. */
-export function projectGraph(data: GraphData, filters: GraphFilters) {
+export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.now()) {
   const byId = new Map(data.nodes.map((node) => [node.id, node]));
-  const edges = data.edges.filter((edge) => RELATIONS.has(edge.kind) && edge.evidence.trim() && byId.has(edge.source) && byId.has(edge.target));
+  const edges = data.edges.filter((edge) => RELATIONS.has(edge.kind) && edge.evidence.trim() && byId.has(edge.source) && byId.has(edge.target)
+    && (edge.kind !== "communication" || (filters.communication !== "none" && (filters.communication === "all" || Date.parse(edge.lastObservedAt ?? "") >= now - 86400_000))));
   const parents = new Map<string, string[]>(), children = new Map<string, string[]>();
   for (const edge of edges) {
-    if (edge.kind === "delegation") continue;
+    if (edge.kind === "delegation" || edge.kind === "communication") continue;
     const ancestors = parents.get(edge.source) ?? [];
     ancestors.push(edge.target); parents.set(edge.source, ancestors);
     const descendants = children.get(edge.target) ?? [];
@@ -50,8 +53,8 @@ export function projectGraph(data: GraphData, filters: GraphFilters) {
       }
     }
     for (const edge of edges) {
-      if (edge.kind === "delegation" && edge.source === filters.focus) focused.add(edge.target);
-      if (edge.kind === "delegation" && edge.target === filters.focus) focused.add(edge.source);
+      if ((edge.kind === "delegation" || edge.kind === "communication") && edge.source === filters.focus) focused.add(edge.target);
+      if ((edge.kind === "delegation" || edge.kind === "communication") && edge.target === filters.focus) focused.add(edge.source);
     }
   }
   const words = filters.search.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);

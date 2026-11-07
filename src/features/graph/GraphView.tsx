@@ -27,7 +27,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const filtersId = useId(), detailsId = useId();
-  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine].filter(Boolean).length;
+  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent"].filter(Boolean).length;
   const host = useRef<HTMLDivElement>(null);
   const fitted = useRef(saved);
   const readableStart = useRef(!saved);
@@ -77,6 +77,9 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
       <label>{t("Focus graph")}<select aria-label={t("Focus graph")} value={state.filters.focus} onChange={(event) => filter({ focus: event.target.value })}>
         <option value="">{t("Whole graph")}</option>{state.filters.focus && !focusNodes.some((node) => node.id === state.filters.focus) && <option value={state.filters.focus}>{t("This graph focus is unavailable.")}</option>}{focusNodes.map((node) => <option key={node.id} value={node.id}>{node.label}{node.machineId ? ` · ${machineNames?.get(node.machineId) ?? node.machineId}` : ""}</option>)}
       </select></label>
+      <label>{t("Communication links")}<select aria-label={t("Communication links")} value={state.filters.communication ?? "recent"} onChange={(event) => filter({ communication: event.target.value as GraphFilters["communication"] })}>
+        <option value="recent">{t("Last 24 hours")}</option><option value="all">{t("All recorded activity")}</option><option value="none">{t("Hidden")}</option>
+      </select></label>
       <label>{t("Inspect node")}<select aria-label={t("Inspect node")} value={view.nodes.some((node) => node.id === state.selected) ? state.selected : ""} onChange={(event) => setState((previous) => ({ ...previous, selected: event.target.value }))}>
         <option value="">{t("Select a node")}</option>{view.nodes.map((node) => <option key={node.id} value={node.id}>{node.label} · {graphKindLabel(t, node.kind)}{node.machineId ? ` · ${machineNames?.get(node.machineId) ?? node.machineId}` : ""}</option>)}
       </select></label>
@@ -119,14 +122,15 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           {selected.machineId && <p>{machineNames?.get(selected.machineId) ?? selected.machineId}</p>}
           {selected.detail && <p className="graph-detail-path">{selected.detail}</p>}
           <button type="button" className="btn" onClick={() => filter({ focus: selected.id })}>{t("Focus this node")}</button>
-          <ul className="graph-relations">{data.edges.filter((edge) => edge.evidence.trim() && (edge.source === selected.id || edge.target === selected.id)).map((edge) => {
+          <ul className="graph-relations">{view.edges.filter((edge) => edge.evidence.trim() && (edge.source === selected.id || edge.target === selected.id)).map((edge) => {
             const neighbour = data.nodes.find((node) => node.id === (edge.source === selected.id ? edge.target : edge.source));
             if (!neighbour) return null;
-            return <li key={edge.id}>{graphRelationLabel(t, edge.kind)} {edge.source === selected.id ? "→" : "←"}<button type="button" className="btn btn-ghost" onClick={() => setState((previous) => ({ ...previous, selected: neighbour.id }))}>{neighbour.label}</button><small>{edge.evidence}</small></li>;
+            return <li key={edge.id}>{graphRelationLabel(t, edge.kind)} {edge.source === selected.id ? "→" : "←"}<button type="button" className="btn btn-ghost" onClick={() => setState((previous) => ({ ...previous, selected: neighbour.id }))}>{neighbour.label}</button><small>{edge.eventCount ? <>{t("{count} recorded events", { count: edge.eventCount })} · {t("Last activity")}: <time dateTime={edge.lastObservedAt}>{new Date(edge.lastObservedAt!).toLocaleString()}</time> · Codex</> : edge.evidence}</small></li>;
           })}</ul>
         </>}
         <p className="graph-help">{t("Drag to pan or move nodes. Pinch or scroll to zoom. Use arrow keys to pan, +/− to zoom and 0 to fit.")}</p>
         <p className="graph-help">{t("Links show recorded relationships only. Delegation and dependencies are absent when the source does not report them.")}</p>
+        <p className="graph-help">{t("Automatic links use supported Codex success receipts. Plain Herdr commands are not observed.")}</p>
         <p className="graph-help" aria-live="polite">{t("{nodes} nodes · {edges} links", { nodes: view.nodes.length, edges: view.edges.length })}</p>
         </div>
       </aside>

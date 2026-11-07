@@ -23,6 +23,22 @@ function source() {
 }
 
 describe("shared inventory to Graph", () => {
+  it("projects observed coordination onto logical sessions and keeps unbound native children unavailable", () => {
+    const { registry, machines } = source();
+    const own = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222";
+    for (const execution of registry.executions) execution.native_session_id = own;
+    for (const machine of machines) machine.snapshot!.flock_bindings![0]!.native_session_id = own;
+    Object.assign(registry, { observations: ["delegation", "communication", "communication"].map((kind, index) => ({ id: `call-${index}`, kind, source_native_session_id: own, target_native_session_id: child, occurred_at: "2026-11-08T00:00:00Z", source: "codex", machine_id: machines[0]!.id })) });
+    const rows = flockInventory(registry, machines), data = graphInventory(registry, rows);
+    const edges = data.edges.filter((edge) => edge.kind === "delegation" || edge.kind === "communication");
+    expect(edges).toHaveLength(2);
+    expect(edges.every((edge) => edge.source === "session:session")).toBe(true);
+    expect(edges.find((edge) => edge.kind === "communication")?.eventCount).toBe(2);
+    const childNode = data.nodes.find((node) => node.detail === child)!;
+    expect(childNode.freshness).toBe("unavailable");
+    expect(graphTarget(registry, rows, childNode.id)).toBeNull();
+    expect(graphTarget(registry, rows, "session:session")?.machine_id).toBe("garden-remote");
+  });
   it("uses recorded associations, scopes repository metadata to machine and preserves logical identity", () => {
     const { registry, machines } = source();
     const data = graphInventory(registry, flockInventory(registry, machines));

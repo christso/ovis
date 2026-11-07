@@ -25,8 +25,10 @@ const chosen = original.snapshot!.panes.find((pane) => pane.agent === "codex")!;
 original.snapshot!.panes = [chosen]; original.snapshot!.herdr_lifetime = "graph-owned-local";
 // Explicit fictional proof stands in for Table's native reader; the ordinary roster below omits it.
 chosen.terminal_id = "graph-terminal-local";
-original.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: chosen.terminal_id, agent: chosen.agent!, native_session_id: "graph-native-local" }];
-chosen.agent_session = { agent: chosen.agent!, kind: "id", source: "fixture", value: "graph-native-local" }; chosen.agent_status = "working";
+const nativeSourceId = "11111111-1111-4111-8111-111111111111", nativeChildId = "22222222-2222-4222-8222-222222222222";
+original.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: chosen.terminal_id, agent: chosen.agent!, native_session_id: nativeSourceId }];
+chosen.agent_session = { agent: chosen.agent!, kind: "id", source: "fixture", value: nativeSourceId }; chosen.agent_status = "working";
+original.snapshot!.flock_observations = ["delegation", "communication", "communication"].map((kind, index) => ({ id: `graph-receipt-${index}`, kind: kind as "delegation" | "communication", source_native_session_id: nativeSourceId, target_native_session_id: nativeChildId, occurred_at: new Date(Date.now() - 60_000 * (3 - index)).toISOString(), source: "codex" }));
 const remote = structuredClone(original); remote.id = "graph-remote"; remote.name = "Graph remote"; remote.kind = "ssh";
 remote.snapshot!.herdr_lifetime = "graph-owned-remote";
 remote.snapshot!.panes[0]!.terminal_id = "graph-terminal-remote";
@@ -38,7 +40,7 @@ const pristine: Machine[] = [original, remote, offline, { ...offline, id: "graph
 let machines = structuredClone(pristine), store = new FlockStore(join(root, "initial")), future = false, flockReads = 0;
 let browser: Browser | undefined, server: ReturnType<typeof Bun.serve> | undefined;
 const harness = (machines: Machine[]) => `<script>(() => {
-  const raw = (values) => values.map(machine => ({...machine, snapshot:machine.snapshot ? {...machine.snapshot, flock_bindings:undefined} : null}));
+  const raw = (values) => values.map(machine => ({...machine, snapshot:machine.snapshot ? {...machine.snapshot, flock_bindings:undefined, flock_observations:undefined} : null}));
   let fixture = raw(${JSON.stringify(machines)});
   const demo = window.fetch, network = window.graphNetwork, sources = new Set();
   const controls = [];
@@ -114,6 +116,17 @@ try {
       assert.equal(new URL(page.url()).searchParams.get("pane"), beforePane);
       await page.getByText(/Inventory is incomplete for:.*Graph awaiting inventory/).waitFor();
       await inspect(sessionId); const position = await node().getAttribute("transform");
+      await page.locator(".graph-edge-delegation").waitFor({ state: "attached" });
+      assert.equal(await page.locator(".graph-edge-communication").count(), 1, "repeated native sends update one connection");
+      assert.ok(await page.locator(".graph-edge-delegation line").getAttribute("marker-end"), "observed delegation shows direction");
+      await options(true);
+      const communication = page.getByRole("combobox", { name: "Communication links", exact: true });
+      await communication.selectOption("none"); assert.equal(await page.locator(".graph-edge-communication").count(), 0);
+      await communication.selectOption("all"); assert.equal(await page.locator(".graph-edge-communication").count(), 1);
+      await communication.selectOption("recent"); await options(false);
+      await inspect(`native:${JSON.stringify([original.id, "codex", nativeChildId])}`);
+      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true, "an observed child without a proven pane cannot open a terminal");
+      await inspect(sessionId);
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isEnabled(), true, "shared proof-backed source authorizes the live target");
       const proofs = machines[0]!.snapshot!.flock_bindings!;
       machines[0]!.snapshot!.flock_bindings = [];

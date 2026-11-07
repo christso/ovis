@@ -2,6 +2,7 @@ import type { FlockRegistry } from "../../../shared/flock.ts";
 import { flockTarget, type FlockRow } from "../../../shared/flock-inventory.ts";
 import type { PaneTarget } from "../../../shared/machines.ts";
 import { knownStatus } from "../../lib/status.ts";
+import { flockRelationshipEndpoint, flockRelationships, type FlockRelationshipEndpoint } from "../../../shared/flock-relationships.ts";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
 const executionId = (row: FlockRow) => {
@@ -10,6 +11,7 @@ const executionId = (row: FlockRow) => {
   return `observed:${JSON.stringify(binding ? [row.id, binding.machine_id, binding.herdr_lifetime, binding.pane_id, binding.agent, binding.native_session_id] : [row.id, null])}`;
 };
 const freshness = (row: FlockRow): GraphNode["freshness"] => row.availability;
+const endpointRows = (rows: readonly FlockRow[], endpoint: FlockRelationshipEndpoint) => rows.filter((row) => row.machine_id === endpoint.machine_id && row.binding?.agent === "codex" && row.binding.native_session_id.toLowerCase() === endpoint.native_session_id.toLowerCase());
 
 /** A rendering adapter over the ONE shared inventory. Paths label physical metadata only. */
 export function graphInventory(registry: FlockRegistry | null, rows: readonly FlockRow[]): GraphData {
@@ -42,12 +44,28 @@ export function graphInventory(registry: FlockRegistry | null, rows: readonly Fl
     if (row.session) addEdge(id, `session:${row.session.id}`, "session-execution", `execution.session_id: ${row.session.id}`);
     if (row.checkout) addEdge(id, `checkout:${row.checkout.id}`, "execution-in-checkout", row.execution ? `execution.checkout_id: ${row.execution.checkout_id}` : `inventory.checkout: ${row.checkout.path}`);
   }
+  for (const relation of registry ? flockRelationships(registry) : []) {
+    for (const endpoint of [relation.source, relation.target]) {
+      if (nodes.has(endpoint.id)) continue;
+      const matches = endpointRows(rows, endpoint), current = matches.length === 1 ? matches[0] : undefined;
+      nodes.set(endpoint.id, { id: endpoint.id, kind: "session", label: endpoint.label, machineId: endpoint.machine_id, detail: endpoint.native_session_id,
+        status: current?.availability === "live" ? knownStatus(current.status) : "unknown", freshness: current?.availability ?? "unavailable" });
+      if (current && !current.session) addEdge(executionId(current), endpoint.id, "session-execution", `native_session_id: ${endpoint.native_session_id}`);
+    }
+    edges.push({ id: `observed:${relation.id}`, source: relation.source.id, target: relation.target.id, kind: relation.kind,
+      evidence: `codex.${relation.kind}`, eventCount: relation.count, lastObservedAt: relation.last_at });
+  }
   return { nodes: [...nodes.values()], edges: edges.filter((edge) => nodes.has(edge.source) && nodes.has(edge.target)) };
 }
 
 /** Resolve at action time. A live previous execution never substitutes for a missing current one. */
 export function graphTarget(registry: FlockRegistry | null, rows: readonly FlockRow[], id: string): PaneTarget | null {
   if (!registry) return null;
+  if (id.startsWith("native:")) {
+    const endpoint = flockRelationships(registry).flatMap((relation) => [relation.source, relation.target]).find((endpoint) => endpoint.id === id);
+    const matches = endpoint ? endpointRows(rows, endpoint) : [];
+    return matches.length === 1 ? flockTarget(matches[0]!) : null;
+  }
   const session = registry.sessions.find((session) => `session:${session.id}` === id);
   const row = session ? rows.find((row) => row.execution?.id === session.current_execution_id && row.session?.id === session.id)
     : rows.find((row) => (!row.session || row.execution) && executionId(row) === id);

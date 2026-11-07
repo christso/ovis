@@ -4069,3 +4069,18 @@ sources, never from raw Herdr session hints or Graph-side discovery.
 Phone Graph follows [Paseo's official mobile/session interface](https://github.com/getpaseo/paseo/blob/main/README.md), specifically its [compact workspace header](https://github.com/getpaseo/paseo/blob/main/packages/app/src/screens/workspace/compact-workspace-header/index.tsx) and [accessible filter trigger](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/hosts/host-filter.tsx): primary content and actions remain visible, secondary choices open on demand. Search stays beside a collapsed Graph filters trigger whose badge counts active advanced choices. Desktop controls remain expanded. The phone inspector keeps the selected name, status and Open action visible, with paths, relationship evidence and help behind Details. Expanded controls/details use the Graph's normal vertical scroll rather than a clipped controls scrollbox.
 
 A fresh phone view starts at readable node scale centered on the requested or first session; it changes no filters or layout positions. Existing supported saved positions or non-default viewport values always win, including a custom viewport before any positions exist. An empty record with only the default viewport is not a completed frame: if inventory arrives after a reload, it still receives initial framing. Fit graph and the 0 shortcut still show the full filtered overview, and the inspector selector reaches every filtered node. Disclosure state is transient and does not change the stored record or shareable location. No Paseo code or pixels were copied.
+
+Selection and mouse hover follow Folio's direct-neighbour highlighting: the selected/hovered node,
+its immediate neighbours and incident edges stay prominent while other nodes and links dim in
+place. Pointer leave restores the selected neighbourhood. Tap or keyboard selection persists;
+Escape or an empty-canvas tap clears it, while pan, node drag and pinch leave selection intact.
+Highlighting changes neither positions nor the viewport and adds no force animation.
+
+Graph also projects Table's automatically observed native coordination records. Delegation and
+communication use distinct directed edges; inspector counts/timestamps come from deduplicated
+successful receipts. Unbound native endpoints remain unavailable until current source proofs
+establish a terminal target. Historical execution bindings resolve to logical identities across
+machine moves. Communication defaults to the last24hours, with all/hidden options retained in
+Graph state and shared URLs. These edges never act as containment or imply reporting/dependency.
+No manual agent-link control exists. Current Codex receipt coverage and plain-Herdr limitations are
+shown in Details and documented in `docs/flock.md`. No Folio source code was copied.

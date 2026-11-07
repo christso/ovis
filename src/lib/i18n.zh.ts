@@ -28,6 +28,11 @@ import { RELAY_ZH } from "./i18n/relay.zh.ts";
  * Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Communication links": "通信连接",
+  "Last 24 hours": "过去 24 小时",
+  "All recorded activity": "所有已记录活动",
+  "Hidden": "隐藏",
+  "Automatic links use supported Codex success receipts. Plain Herdr commands are not observed.": "自动连接基于受支持的 Codex 成功记录。普通 Herdr 命令不会被观测。",
   "Observed relationships": "已观测的关系",
   "Delegation": "委派",
   "Communication": "通信",

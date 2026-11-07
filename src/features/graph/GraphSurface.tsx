@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Circle, CircleCheck, CircleHelp, CirclePause, LoaderCircle, OctagonAlert } from "lucide-react";
 import { useT } from "../../lib/i18n.ts";
 import { graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
@@ -20,6 +20,7 @@ export interface SurfaceProps extends GraphData {
 export function GraphSurface({ nodes, edges, positions, viewport, selected, onSelect, onViewport, onMove, onFit }: SurfaceProps) {
   const t = useT();
   const svgRef = useRef<SVGSVGElement>(null);
+  const arrowId = useId();
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<{ id: string | null; start: Point; viewport: Viewport; point: Point; moved: boolean } | null>(null);
   const pinch = useRef<{ distance: number; midpoint: Point; viewport: Viewport } | null>(null);
@@ -97,14 +98,18 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
   const nodeLabel = (node: GraphNode) => `${node.label} · ${graphStatusLabel(t, node.status ?? "unknown")} · ${node.freshness ? graphFreshnessLabel(t, node.freshness) : graphKindLabel(t, node.kind)}`;
   return <svg ref={svgRef} className="graph-surface" role="group" aria-label={t("Interactive graph")} tabIndex={0}
     onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onPointerLeave={() => setHovered(null)} onLostPointerCapture={() => { gesture.current = null; pointers.current.clear(); pinch.current = null; }} onKeyDown={keyDown}>
+    <defs><marker id={arrowId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" className="graph-arrowhead" /></marker></defs>
     <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
       {edges.map((edge) => {
         const a = positions[edge.source], b = positions[edge.target];
         if (!a || !b) return null;
         const related = edge.source === highlighted || edge.target === highlighted;
+        const directed = edge.kind === "delegation" || edge.kind === "communication";
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const inset = directed ? Math.min(1, 116 / Math.abs(dx), 34 / Math.abs(dy)) : 0;
         return <g key={edge.id} className={`graph-edge graph-edge-${edge.kind}${highlighted ? related ? " graph-related" : " graph-muted" : ""}`}>
           <title>{`${byId.get(edge.source)?.label} → ${byId.get(edge.target)?.label}: ${graphRelationLabel(t, edge.kind)} · ${edge.evidence}`}</title>
-          <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} vectorEffect="non-scaling-stroke" />
+          <line x1={a.x} y1={a.y} x2={b.x - dx * inset} y2={b.y - dy * inset} markerEnd={directed ? `url(#${arrowId})` : undefined} vectorEffect="non-scaling-stroke" />
         </g>;
       })}
       {nodes.map((node) => {

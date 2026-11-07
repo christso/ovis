@@ -26,6 +26,16 @@ const fixture: GraphData = {
 };
 
 describe("Graph projection", () => {
+  it("filters communication by recent activity without treating messages as containment", () => {
+    const now = Date.parse("2026-11-08T00:00:00Z");
+    const data = { ...fixture, edges: [...fixture.edges,
+      { id: "recent", kind: "communication" as const, source: "session", target: "unrelated", evidence: "codex receipt", lastObservedAt: "2026-11-07T23:00:00Z" },
+      { id: "old", kind: "communication" as const, source: "session", target: "sibling", evidence: "codex receipt", lastObservedAt: "2026-11-01T00:00:00Z" }] };
+    expect(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, communication: "recent" }, now).edges.some((edge) => edge.id === "old")).toBe(false);
+    expect(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, communication: "all" }, now).edges.some((edge) => edge.id === "old")).toBe(true);
+    expect(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, communication: "none" }, now).edges.some((edge) => edge.kind === "communication")).toBe(false);
+    expect(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, focus: "session", communication: "recent" }, now).nodes.map((node) => node.id)).toContain("unrelated");
+  });
   it("draws only evidenced typed links with known endpoints, never links equal labels", () => {
     const view = projectGraph(fixture, DEFAULT_GRAPH_STATE.filters);
     expect(view.edges.map((edge) => edge.id)).toEqual(["a", "b", "c", "d", "e"]);
@@ -60,7 +70,7 @@ describe("Graph projection", () => {
 
 describe("Graph location and viewport", () => {
   it("round trips selection, filters and optional grouping without changing unrelated URL state", () => {
-    const state = { ...DEFAULT_GRAPH_STATE, selected: "session:special /?&", filters: { ...DEFAULT_GRAPH_STATE.filters, search: "tree & leaf", focus: "repo", machine: "north", status: "blocked", showCompleted: true }, groupMachine: true };
+    const state = { ...DEFAULT_GRAPH_STATE, selected: "session:special /?&", filters: { ...DEFAULT_GRAPH_STATE.filters, search: "tree & leaf", focus: "repo", machine: "north", status: "blocked", showCompleted: true, communication: "all" as const }, groupMachine: true };
     const url = graphLocation(new URL("https://ovis.invalid/?view=graph&pane=w7%3Ap2"), state);
     expect(readGraphLocation(url, DEFAULT_GRAPH_STATE)).toEqual(state);
     expect(url.searchParams.get("pane")).toBe("w7:p2");

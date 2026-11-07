@@ -24,6 +24,11 @@ import { RELAY_KO } from "./i18n/relay.ko.ts";
  * braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Communication links": "통신 링크",
+  "Last 24 hours": "최근 24시간",
+  "All recorded activity": "기록된 모든 활동",
+  "Hidden": "숨김",
+  "Automatic links use supported Codex success receipts. Plain Herdr commands are not observed.": "자동 링크는 지원되는 Codex 성공 기록을 사용합니다. 일반 Herdr 명령은 관측되지 않습니다.",
   "Observed relationships": "관측된 관계",
   "Delegation": "위임",
   "Communication": "통신",
