@@ -65,6 +65,8 @@ export type SessionSnapshot = Omit<HerdrSnapshot, "panes"> & {
   herdr_lifetime?: string;
   /** On-demand bridge proofs for Flock; raw Herdr agent_session reports are only hints. */
   flock_bindings?: { pane_id: string; terminal_id: string; agent: string; native_session_id: string }[];
+  /** Successful native coordination receipts, collected only alongside verified ownership. */
+  flock_observations?: import("./flock.ts").FlockObservation[];
   /**
    * Workspace-order evidence of the server that read this snapshot (server/order-sequence.ts):
    * `order_epoch` is that server's `web_ui.boot_id`, and `read_seq` the number of workspace moves

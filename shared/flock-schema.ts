@@ -1,5 +1,6 @@
 import type { FlockBinding, FlockCommand, FlockRegistry } from "./flock.ts";
 import { sameFlockBinding } from "./flock-inventory.ts";
+import { flockObservationKey, flockObservationValue } from "./flock-relationships.ts";
 
 const isJsonObject = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 4096 && !value.includes("\u0000");
@@ -14,6 +15,16 @@ export function flockRegistryValue(raw: unknown): raw is FlockRegistry {
   if (!isJsonObject(raw) || raw["version"] !== 1 || !Number.isSafeInteger(raw["revision"]) || (raw["revision"] as number) < 0) return false;
   const { works, sessions, checkouts, executions } = raw;
   if (![works, sessions, checkouts, executions].every(Array.isArray)) return false;
+  if (raw.observations !== undefined) {
+    if (!Array.isArray(raw.observations)) return false;
+    const seen = new Set<string>();
+    for (const event of raw.observations) {
+      if (!flockObservationValue(event) || !text((event as Record<string, unknown>).machine_id)) return false;
+      const key = flockObservationKey(event as import("./flock.ts").FlockStoredObservation);
+      if (seen.has(key)) return false;
+      seen.add(key);
+    }
+  }
   const lists = [works, sessions, checkouts, executions] as Record<string, unknown>[][];
   const allIds = new Set<string>();
   for (const list of lists) for (const item of list) {

@@ -8,7 +8,10 @@ export interface FlockCheckout { id: string; machine_id: string; path: string; r
 /** Only native `id` sessions can be bound. A native transcript path is not an ID. */
 export interface FlockBinding { machine_id: string; herdr_lifetime: string; pane_id: string; agent: string; native_session_id: string }
 export interface FlockExecution extends FlockBinding { id: string; session_id: string; checkout_id: string | null; created_at: string }
-export interface FlockRegistry { version: 1; revision: number; works: FlockWork[]; sessions: FlockSession[]; checkouts: FlockCheckout[]; executions: FlockExecution[] }
+/** Metadata from successful native tool receipts; never a browser-supplied relationship. */
+export interface FlockObservation { id: string; kind: "delegation" | "communication"; source_native_session_id: string; target_native_session_id: string; occurred_at: string; source: "codex" }
+export interface FlockStoredObservation extends FlockObservation { machine_id: string }
+export interface FlockRegistry { version: 1; revision: number; works: FlockWork[]; sessions: FlockSession[]; checkouts: FlockCheckout[]; executions: FlockExecution[]; observations?: FlockStoredObservation[] }
 /** Optional verified inventory is response-only; never part of the persistent registry. */
 export interface FlockRead extends FlockRegistry { sources?: Machine[] }
 

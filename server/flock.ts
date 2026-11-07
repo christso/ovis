@@ -8,6 +8,7 @@ import { flockBinding, flockCheckout, sameFlockBinding } from "../shared/flock-i
 import { isJsonObject, jsonResponse } from "./http.ts";
 import { readStateDocument, writeStateDocument } from "./state-document.ts";
 import { sameOrigin } from "./machine-security.ts";
+import { flockObservationKey, flockObservationValue } from "../shared/flock-relationships.ts";
 
 export class FlockError extends Error {
   constructor(readonly code: "flock_conflict" | "flock_unreadable" | "invalid_flock", message: string) { super(message); }
@@ -20,6 +21,29 @@ export class FlockStore {
     if (saved.kind === "missing") return { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
     if (saved.kind !== "json" || !flockRegistryValue(saved.value)) throw new FlockError("flock_unreadable", "The work registry format cannot be read. Its saved data has been preserved.");
     return saved.value;
+  }
+  /** Import bridge-owned receipts only; polling an existing event never changes the revision. */
+  observe(sources: readonly Machine[]): FlockRegistry {
+    const next = this.read();
+    const seen = new Set((next.observations ?? []).map(flockObservationKey));
+    let changed = false;
+    for (const machine of sources) {
+      if (machine.state !== "connected" || !machine.snapshot?.herdr_lifetime) continue;
+      for (const event of machine.snapshot.flock_observations ?? []) {
+        if (!flockObservationValue(event) || !machine.snapshot.flock_bindings?.some((binding) => binding.agent === "codex" && binding.native_session_id === event.source_native_session_id)) continue;
+        const stored = { id: event.id, kind: event.kind, source_native_session_id: event.source_native_session_id,
+          target_native_session_id: event.target_native_session_id, occurred_at: event.occurred_at, source: event.source, machine_id: machine.id };
+        const key = flockObservationKey(stored);
+        if (seen.has(key)) continue;
+        (next.observations ??= []).push(stored); seen.add(key); changed = true;
+      }
+    }
+    if (changed) {
+      next.revision += 1;
+      if (!flockRegistryValue(next)) throw new FlockError("invalid_flock", "Observed coordination metadata cannot be saved");
+      writeStateDocument(this.path, `${JSON.stringify(next, null, 2)}\n`, false);
+    }
+    return next;
   }
   /** Reads on every change so another browser or a replaced on-disk format cannot be overwritten. */
   change(revision: number, command: FlockCommand, machines: readonly Machine[]): FlockRegistry {
@@ -82,7 +106,7 @@ export async function handleFlockRequest(request: Request, store: FlockStore, ma
         catch { /* unavailable proof cannot authorize an inventory row */ }
         return { ...machine, snapshot: machine.snapshot ? { ...machine.snapshot, flock_bindings: readSource ? [] : machine.snapshot.flock_bindings } : null };
       }));
-      return reply({ ...registry, sources: sources.map((source) => ({ ...source, snapshot: source.snapshot ? presentSnapshot(source.snapshot) : null })) });
+      return reply({ ...store.observe(sources), sources: sources.map((source) => ({ ...source, snapshot: source.snapshot ? presentSnapshot(source.snapshot) : null })) });
     }
     if (request.method !== "POST") return reply({ error: { code: "method_not_allowed", message: "Use GET or POST /api/flock" } }, 405);
     if (!sameOrigin(request) || request.headers.get("x-herdr-machine") !== "1") return reply({ error: { code: "invalid_origin", message: "Use controls from this app" } }, 403);
