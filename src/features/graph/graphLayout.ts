@@ -9,17 +9,19 @@ const COLUMN = { repository: 0, checkout: 1, work: 2, session: 3, execution: 4 }
 export function reconcilePositions(nodes: readonly GraphNode[], previous: Positions, groupMachine = false): Positions {
   const next: Positions = Object.assign(Object.create(null), previous);
   const occupied = new Set(Object.values(next).map((point) => `${point.x},${point.y}`));
-  const machines = [...new Set(nodes.map((node) => node.machineId ?? ""))].sort();
   const machineBands = new Map<string, number>();
-  let nextBand = 0;
-  for (const machine of machines) {
-    const columns = new Map<number, number>();
-    for (const node of nodes) {
-      if ((node.machineId ?? "") !== machine) continue;
-      const column = COLUMN[node.kind]; columns.set(column, (columns.get(column) ?? 0) + 1);
+  if (groupMachine) {
+    const machines = [...new Set(nodes.map((node) => node.machineId ?? ""))].sort();
+    let nextBand = 0;
+    for (const machine of machines) {
+      const columns = new Map<number, number>();
+      for (const node of nodes) {
+        if ((node.machineId ?? "") !== machine) continue;
+        const column = COLUMN[node.kind]; columns.set(column, (columns.get(column) ?? 0) + 1);
+      }
+      machineBands.set(machine, nextBand);
+      nextBand += (Math.max(1, ...columns.values()) + 1) * 100;
     }
-    machineBands.set(machine, nextBand);
-    nextBand += (Math.max(1, ...columns.values()) + 1) * 100;
   }
   for (const node of [...nodes].sort((a, b) => a.id.localeCompare(b.id))) {
     if (Object.hasOwn(next, node.id)) continue;

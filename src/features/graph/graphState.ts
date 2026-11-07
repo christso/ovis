@@ -1,3 +1,4 @@
+import { GRAPH_STATUSES } from "./graphLabels.ts";
 import type { GraphFilters } from "./graphModel.ts";
 import type { Positions, Viewport } from "./graphLayout.ts";
 
@@ -32,7 +33,7 @@ export function sanitizeGraphState(raw: unknown): GraphState | null {
   }
   return {
     version: 1, selected: str(value.selected), groupMachine: value.groupMachine === true, positions,
-    filters: { search: str(filters.search), machine: str(filters.machine), focus: str(filters.focus), status: ["working", "blocked", "waiting", "done", "idle", "unknown"].includes(str(filters.status)) ? str(filters.status) : "", showCompleted: filters.showCompleted === true },
+    filters: { search: str(filters.search), machine: str(filters.machine), focus: str(filters.focus), status: GRAPH_STATUSES.some((status) => status === str(filters.status)) ? str(filters.status) : "", showCompleted: filters.showCompleted === true },
     viewport: { x: finite(viewport.x, 160), y: finite(viewport.y, 100), k: Math.max(0.08, finite(viewport.k, 1, 4)) },
   };
 }
@@ -43,7 +44,6 @@ export function graphLocation(url: URL, state: GraphState): URL {
   for (const [key, value] of Object.entries({ gn: state.selected, gq: state.filters.search, gs: state.filters.status, gm: state.filters.machine, gf: state.filters.focus, gc: state.filters.showCompleted ? "1" : "", gg: state.groupMachine ? "1" : "" })) {
     if (value) next.searchParams.set(key, value); else next.searchParams.delete(key);
   }
-  // Marks an explicit graph location, including one with all filters cleared.
   next.searchParams.set("graph", "1");
   return next;
 }

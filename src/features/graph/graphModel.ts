@@ -1,6 +1,7 @@
-/** Pure rendering projection. Input comes from the shared inventory adapter, never discovery. */
+import type { KnownStatus } from "../../lib/status.ts";
+
 export type GraphKind = "repository" | "checkout" | "work" | "session" | "execution";
-export type GraphStatus = "working" | "blocked" | "waiting" | "done" | "idle" | "unknown";
+export type GraphStatus = KnownStatus;
 export type GraphRelation = "execution-in-checkout" | "checkout-in-repository" | "delegation" | "session-execution" | "work-session";
 
 export interface GraphNode {
@@ -29,13 +30,13 @@ const RELATIONS = new Set<GraphRelation>(["execution-in-checkout", "checkout-in-
 export function projectGraph(data: GraphData, filters: GraphFilters) {
   const byId = new Map(data.nodes.map((node) => [node.id, node]));
   const edges = data.edges.filter((edge) => RELATIONS.has(edge.kind) && edge.evidence.trim() && byId.has(edge.source) && byId.has(edge.target));
-  // Focus descendants first, then ancestors. A session focus never expands through its
-  // repository to sibling sessions; repository/work focus includes their recorded children.
   const parents = new Map<string, string[]>(), children = new Map<string, string[]>();
   for (const edge of edges) {
     if (edge.kind === "delegation") continue;
-    parents.set(edge.source, [...(parents.get(edge.source) ?? []), edge.target]);
-    children.set(edge.target, [...(children.get(edge.target) ?? []), edge.source]);
+    const ancestors = parents.get(edge.source) ?? [];
+    ancestors.push(edge.target); parents.set(edge.source, ancestors);
+    const descendants = children.get(edge.target) ?? [];
+    descendants.push(edge.source); children.set(edge.target, descendants);
   }
   let focused: Set<string> | null = null;
   if (filters.focus) {
@@ -59,8 +60,6 @@ export function projectGraph(data: GraphData, filters: GraphFilters) {
     && (!filters.status || (node.status ?? "unknown") === filters.status)
     && (!filters.machine || node.machineId === filters.machine)
     && words.every((word) => `${node.label}\n${node.detail ?? ""}`.toLocaleLowerCase().includes(word))).map((node) => node.id));
-  // Context is only repository/checkout/work/session along explicit containment edges.
-  // Delegation does not make a filtered-out task reappear.
   const queue = [...kept];
   for (let at = 0; at < queue.length; at++) {
     for (const id of parents.get(queue[at]!) ?? []) {

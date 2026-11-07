@@ -12,7 +12,6 @@ export function useGraphState() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(GRAPH_STORAGE_KEY);
-      // Malformed/future data is left intact, rather than replaced with this reader's defaults.
       if (stored !== null && sanitizeGraphState(JSON.parse(stored)) === null) return;
       localStorage.setItem(GRAPH_STORAGE_KEY, JSON.stringify(state));
     } catch { /* The view remains usable without persistence. */ }

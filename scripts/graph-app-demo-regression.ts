@@ -65,7 +65,7 @@ try {
     if (file === "index.html") return new Response(html.replace("</body>", `${videoDir ? `<div style="position:fixed;right:12px;bottom:8px;z-index:9999;pointer-events:none;padding:8px;background:var(--bg-panel);color:var(--text);border:1px solid var(--border);font-size:12px">Fictional fixture walkthrough · Graph · ${testedSha.slice(0, 10)}</div>` : ""}</body>`).replace(/<script type="module"/, () => `<script>window.graphNetwork = window.fetch.bind(window);</script><script src="./demo-transport.js"></script>${harness(machines)}<script type="module"`), { headers: { "content-type": "text/html" } });
     const body = Bun.file(join(app, file)); return await body.exists() ? new Response(body) : new Response("not found", { status: 404 });
   } });
-  browser = await chromium.launch({ executablePath: chromePath(), headless: true, slowMo: videoDir ? 650 : 0, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ executablePath: chromePath(), headless: true, slowMo: videoDir ? 1300 : 0, args: ["--no-sandbox"] });
   for (const [width, theme] of runs) {
     machines = structuredClone(pristine); future = false; store = new FlockStore(join(root, `${width}-${theme}`));
     store.change(0, { type: "create-work", name: "Orchard work" }, machines);
