@@ -92,6 +92,9 @@ const BASE: Record<string, string> = {
   "Retry move": "이동 다시 시도",
   "View move": "이동 보기",
   "Pending session moves": "진행 중인 세션 이동",
+  "Graph filters": "그래프 필터",
+  "{count} active": "{count}개 적용됨",
+  "Details and help": "상세 정보 및 도움말",
 
   "Inspect node": "노드 살펴보기",
   "Select a node": "노드 선택",

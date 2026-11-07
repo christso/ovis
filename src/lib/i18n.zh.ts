@@ -96,6 +96,9 @@ const BASE: Record<string, string> = {
   "Retry move": "重试移动",
   "View move": "查看移动",
   "Pending session moves": "待处理的会话移动",
+  "Graph filters": "图谱筛选",
+  "{count} active": "{count} 项生效",
+  "Details and help": "详情与帮助",
 
   "Inspect node": "检查节点",
   "Select a node": "选择节点",

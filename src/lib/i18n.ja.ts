@@ -94,6 +94,9 @@ const BASE: Record<string, string> = {
   "Retry move": "移動を再試行",
   "View move": "移動を表示",
   "Pending session moves": "未完了のセッション移動",
+  "Graph filters": "グラフの絞り込み",
+  "{count} active": "{count}件有効",
+  "Details and help": "詳細とヘルプ",
 
   "Inspect node": "ノードを確認",
   "Select a node": "ノードを選択",

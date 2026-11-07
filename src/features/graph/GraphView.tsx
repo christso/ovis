@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Focus, Link, Minus, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { ChevronDown, Focus, Link, Minus, Plus, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useT } from "../../lib/i18n.ts";
 import { copyText } from "../../lib/clipboard.ts";
+import { useMediaQuery } from "../../lib/useMediaQuery.ts";
 import { projectGraph, type GraphData, type GraphFilters } from "./graphModel.ts";
 import { fitGraph, reconcilePositions, zoomAt } from "./graphLayout.ts";
 import { GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
@@ -21,9 +22,15 @@ export interface GraphViewProps {
 
 export default function GraphView({ data, onOpenNode, canOpenNode, error, machineNames }: GraphViewProps) {
   const t = useT();
-  const [state, setState] = useGraphState();
+  const [state, setState, saved] = useGraphState();
+  const compact = useMediaQuery("(max-width: 700px)");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const filtersId = useId(), detailsId = useId();
+  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine].filter(Boolean).length;
   const host = useRef<HTMLDivElement>(null);
-  const fitted = useRef(Object.keys(state.positions).length > 0);
+  const fitted = useRef(saved);
+  const readableStart = useRef(!saved);
   const positions = useMemo(() => reconcilePositions(data.nodes, state.positions, state.groupMachine), [data.nodes, state.positions, state.groupMachine]);
   const view = useMemo(() => projectGraph(data, state.filters), [data, state.filters]);
   const selected = data.nodes.find((node) => node.id === state.selected);
@@ -40,7 +47,14 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   };
   useEffect(() => {
     if (fitted.current || !view.nodes.length) return;
-    fitted.current = true; fit();
+    fitted.current = true;
+    if (compact && readableStart.current) {
+      const node = view.nodes.find((node) => node.id === state.selected) ?? view.nodes.find((node) => node.kind === "session") ?? view.nodes[0]!;
+      const point = positions[node.id]!;
+      const box = host.current!.querySelector("svg.graph-surface")!.getBoundingClientRect();
+      setState((previous) => ({ ...previous, viewport: { x: box.width / 2 - point.x, y: box.height / 2 - point.y, k: 1 } }));
+    } else fit();
+    readableStart.current = false;
   });
   const filter = (patch: Partial<GraphFilters>) => setState((previous) => ({ ...previous, filters: { ...previous.filters, ...patch } }));
   const zoom = (factor: number) => {
@@ -49,7 +63,11 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   };
   return <section className="graph-view" aria-label={t("Graph")} ref={host}>
     <div className="graph-controls">
-      <label>{t("Search graph")}<input type="search" value={state.filters.search} onChange={(event) => filter({ search: event.target.value })} /></label>
+      <label className="graph-search">{t("Search graph")}<input type="search" value={state.filters.search} onChange={(event) => filter({ search: event.target.value })} /></label>
+      <button type="button" className="btn graph-filter-toggle" aria-expanded={!compact || filtersOpen} aria-controls={filtersId} onClick={() => setFiltersOpen((open) => !open)}>
+        <SlidersHorizontal size={16} aria-hidden="true" />{t("Graph filters")}{activeFilters > 0 && <span className="graph-filter-count" aria-label={t("{count} active", { count: activeFilters })}>{activeFilters}</span>}<ChevronDown size={16} aria-hidden="true" />
+      </button>
+      <div className="graph-options" id={filtersId} hidden={compact && !filtersOpen}>
       <label>{t("Status")}<select aria-label={t("Status")} value={state.filters.status} onChange={(event) => filter({ status: event.target.value })}>
         <option value="">{t("All statuses")}</option>{GRAPH_STATUSES.map((status) => <option key={status} value={status}>{graphStatusLabel(t, status)}</option>)}
       </select></label>
@@ -68,6 +86,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
         fitted.current = false;
         setState((previous) => ({ ...previous, groupMachine, positions: reconcilePositions(data.nodes, {}, groupMachine) }));
       }} />{t("Group by machine")}</label>
+      </div>
     </div>
     {error && <p className="graph-warning" role="status">{error}</p>}
     <div className="graph-body">
@@ -85,24 +104,31 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
         </div>
       </div>
       <aside className="graph-details" aria-label={t("Graph details")}>
-        <h2>{selected?.label ?? t("Graph details")}</h2>
+        {selected && <h2>{selected.label}</h2>}
         {selected ? <>
-          <p>{graphKindLabel(t, selected.kind)} · {graphStatusLabel(t, selected.status ?? "unknown")}</p>
+          <p className="graph-selected-meta"><span>{graphKindLabel(t, selected.kind)} · {graphStatusLabel(t, selected.status ?? "unknown")}</span>
+          {selected.freshness && <span className={selected.freshness === "live" ? undefined : "graph-warning"}>{graphFreshnessLabel(t, selected.freshness)}</span>}</p>
+        </> : <p className="graph-selection-hint">{state.selected ? t("The selected node is unavailable.") : t("Select a node to inspect its status and relationships.")}</p>}
+        <div className="graph-selection-actions">
+          {selected && <button type="button" className="btn btn-primary" disabled={!canOpenNode(selected.id)} onClick={() => onOpenNode(selected.id)}>{t("Open in Workspace")}</button>}
+          <button type="button" className="btn graph-details-toggle" aria-label={t("Details and help")} aria-expanded={!compact || detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen((open) => !open)}>{t("Details")}<ChevronDown size={16} aria-hidden="true" /></button>
+        </div>
+        {selected && !canOpenNode(selected.id) && <p className="graph-target-note">{t("No verified live terminal target.")}</p>}
+        <div className="graph-details-extra" id={detailsId} hidden={compact && !detailsOpen}>
+        {selected && <>
           {selected.machineId && <p>{machineNames?.get(selected.machineId) ?? selected.machineId}</p>}
-          {selected.freshness && <p className={selected.freshness === "live" ? undefined : "graph-warning"}>{graphFreshnessLabel(t, selected.freshness)}</p>}
           {selected.detail && <p className="graph-detail-path">{selected.detail}</p>}
-          <button type="button" className="btn btn-primary" disabled={!canOpenNode(selected.id)} onClick={() => onOpenNode(selected.id)}>{t("Open in Workspace")}</button>
-          {!canOpenNode(selected.id) && <p>{t("No verified live terminal target.")}</p>}
           <button type="button" className="btn" onClick={() => filter({ focus: selected.id })}>{t("Focus this node")}</button>
           <ul className="graph-relations">{data.edges.filter((edge) => edge.evidence.trim() && (edge.source === selected.id || edge.target === selected.id)).map((edge) => {
             const neighbour = data.nodes.find((node) => node.id === (edge.source === selected.id ? edge.target : edge.source));
             if (!neighbour) return null;
             return <li key={edge.id}>{graphRelationLabel(t, edge.kind)} {edge.source === selected.id ? "→" : "←"}<button type="button" className="btn btn-ghost" onClick={() => setState((previous) => ({ ...previous, selected: neighbour.id }))}>{neighbour.label}</button><small>{edge.evidence}</small></li>;
           })}</ul>
-        </> : <p>{state.selected ? t("The selected node is unavailable.") : t("Select a node to inspect its status and relationships.")}</p>}
+        </>}
         <p className="graph-help">{t("Drag to pan or move nodes. Pinch or scroll to zoom. Use arrow keys to pan, +/− to zoom and 0 to fit.")}</p>
         <p className="graph-help">{t("Links show recorded relationships only. Delegation and dependencies are absent when the source does not report them.")}</p>
         <p className="graph-help" aria-live="polite">{t("{nodes} nodes · {edges} links", { nodes: view.nodes.length, edges: view.edges.length })}</p>
+        </div>
       </aside>
     </div>
   </section>;

@@ -22,12 +22,14 @@ const fixture: GraphData = {
 };
 function Fixture() {
   const [shown, setShown] = useState(true);
-  const [data, setData] = useState(fixture);
+  const [data, setData] = useState(new URLSearchParams(location.search).has("empty") ? { nodes: [], edges: [] } as GraphData : fixture);
   const [opened, setOpened] = useState("");
   return <main style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
     <nav aria-label="Fixture actions">
       <button onClick={() => setShown((value) => !value)}>Switch view</button>
+      <button onClick={() => setData(fixture)}>Load inventory</button>
       <button onClick={() => setData((previous) => ({ ...previous, nodes: [...previous.nodes].reverse().map((node) => node.id === "session" ? { ...node, machineId: "south", status: "blocked" } : node) }))}>Live update</button>
+      <button onClick={() => setData((previous) => ({ ...previous, nodes: previous.nodes.map((node) => node.id === "session" ? { ...node, label: "Review the orchard irrigation schedule and accessibility of the seasonal harvest dashboard", detail: "/fictional/very-long-project-directory/seasonal-orchard-accessibility-review/working-checkout-with-an-unusually-long-name" } : node) }))}>Long labels</button>
       <output aria-label="Opened target">{opened}</output>
     </nav>
     {shown && <GraphView data={data} canOpenNode={(id) => ["session", "execution"].includes(id)} onOpenNode={setOpened} machineNames={new Map([["north", "North garden"], ["south", "South garden"]])} />}
