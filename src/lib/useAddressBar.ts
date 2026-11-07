@@ -97,8 +97,8 @@ export function useAddressBar({ page = "workspace", onPage, newSessionOpen, sele
     if (search === window.location.search) return;
     const url = `${window.location.pathname}${search}${window.location.hash}`;
     if (previous !== null && !popped && (!autoSelected || previous.page !== link.page) && !settingsOpen && !newSessionOpen && isNavigation(previous, link)) {
-      // a move that leaves the open file behind takes the file's entry: no entry is left between
-      if (fileLeft) window.history.replaceState({ [NAV_KEY]: true }, "", url);
+      // Within a page, leaving a file takes its entry; changing pages preserves the page to return to.
+      if (fileLeft && previous.page === link.page) window.history.replaceState({ [NAV_KEY]: true }, "", url);
       else window.history.pushState({ [NAV_KEY]: true }, "", url);
     } else window.history.replaceState(window.history.state, "", url);
   }, [page, locked, machines.length, snapshot, linkLanded, selectedMachineId, selectedPaneId, linkWorkspaceId, linkSlug, linkFile, fileLeft, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, newSessionOpen, newTab, newFields, wideScreen, sidebarCollapsed, autoSelected]);
