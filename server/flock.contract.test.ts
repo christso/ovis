@@ -80,7 +80,7 @@ it("enforces origin, custom-header, authentication, watch and manager-only bound
   expect((await fetch(`${base}/api/flock`, { method: "POST", headers: { origin: "https://other.invalid", "x-herdr-machine": "1" }, body })).status).toBe(403);
   expect((await fetch(`${base}/api/flock`, { method: "POST", headers: { origin: base }, body })).status).toBe(403);
   for (const method of ["GET", "POST"]) expect((await fetch(`${base}/api/flock`, { method, headers: { ...headers(), cookie: watchCookie }, ...(method === "POST" ? { body } : {}) })).status).toBe(403);
-  expect((await fetch(`${base}/api/session?flock=1`, { headers: { cookie: watchCookie } })).status).toBe(403);
+  for (const path of ["/api/session?flock=1", "/api/machines/local/session?flock=1", "/api/machines/fixture-remote/session?flock=1"]) expect((await fetch(`${base}${path}`, { headers: { cookie: watchCookie } })).status).toBe(403);
   expect((await fetch(`${base}/api/machines/local/flock`)).status).toBe(400);
   // The dedicated bridge credential cannot read the manager's registry.
   const privateDir = mkdtempSync(join(root, "private-"));

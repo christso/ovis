@@ -72,6 +72,9 @@ collects successful native coordination receipts alongside verified source inven
 only session IDs, event IDs, relationship kinds and occurrence times in the optional `observations`
 array of `flock.json`. Repeated polling does not add events or increase message counts. Historical
 execution bindings resolve endpoints to logical sessions, preserving links through a planned move.
+Native receipt identity is independent of its capture machine, so replay after copying a rollout
+does not count another message. The first capture's machine provenance is retained. Older stored
+duplicate captures remain readable and are counted once in both views.
 An endpoint without an unambiguous logical association remains an observed native session, with
 no assumed live terminal target or root-agent status.
 
@@ -81,6 +84,7 @@ the same verified rollout as native ownership, checks the source identity and re
 within a bounded budget. Unsupported/legacy formats and earlier transcript segments may have no
 coverage. Plain Herdr CLI start/prompt operations do not publish caller identity in this protocol
 and cannot be attributed. Other CLIs, prose mentions and unsuccessful requests create no links.
+Older bridges that do not publish coordination observations contribute no automatic agent links.
 The inspector does not expose message contents. Its counts describe recorded receipts, not delivery
 acknowledgements or a complete communication history.
 
@@ -88,3 +92,8 @@ There is no manual agent-link editor or browser relationship mutation command. E
 membership and execution/session association remain identity operations. Observations are passive:
 they do not alter prompts, send messages, assign work, grant control or block execution. Table and
 Graph consume the same recorded relationships.
+
+The native format is pinned to [Codex0.166's activity item](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/protocol/src/items.rs)
+and [successful message dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs).
+Watch-only devices cannot read the registry or coordination inventory through either direct or
+per-machine proxy routes.

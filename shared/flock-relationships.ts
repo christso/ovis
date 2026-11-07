@@ -23,6 +23,7 @@ export function flockRelationshipEndpoint(registry: FlockRegistry, machineId: st
 
 export function flockRelationships(registry: FlockRegistry): FlockRelationship[] {
   const relations = new Map<string, FlockRelationship>();
+  const receipts = new Set<string>();
   const endpoints = new Map<string, FlockRelationshipEndpoint>();
   const endpoint = (machine: string, native: string) => {
     const key = JSON.stringify([machine, native]);
@@ -31,6 +32,9 @@ export function flockRelationships(registry: FlockRegistry): FlockRelationship[]
     return value;
   };
   for (const event of registry.observations ?? []) {
+    const receipt = flockReceiptKey(event);
+    if (receipts.has(receipt)) continue;
+    receipts.add(receipt);
     const source = endpoint(event.machine_id, event.source_native_session_id);
     const target = endpoint(event.machine_id, event.target_native_session_id);
     if (source.id === target.id) continue;
@@ -47,4 +51,9 @@ export function flockRelationships(registry: FlockRegistry): FlockRelationship[]
 
 export function flockObservationKey(event: FlockStoredObservation): string {
   return JSON.stringify([event.machine_id, event.source, event.source_native_session_id.toLowerCase(), event.id, event.kind, event.target_native_session_id.toLowerCase()]);
+}
+
+/** A copied native rollout retains the same receipt; keep its first capture's machine provenance. */
+export function flockReceiptKey(event: FlockObservation): string {
+  return JSON.stringify([event.source, event.source_native_session_id.toLowerCase(), event.id, event.kind, event.target_native_session_id.toLowerCase()]);
 }

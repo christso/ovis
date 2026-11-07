@@ -36,6 +36,10 @@ it("resolves historical native endpoints to stable logical sessions after a mach
     { id: "new", session_id: "logical", checkout_id: null, machine_id: "remote", herdr_lifetime: "new", pane_id: "p", agent: "codex", native_session_id: sourceId, created_at: event.occurred_at }], observations: [{ ...event, machine_id: "local" }] };
   expect(flockRelationships(registry)[0]?.source).toMatchObject({ id: "session:logical", label: "Coordinator", session_id: "logical" });
   expect(flockRelationships(registry)[0]?.target.session_id).toBeNull();
+  registry.sessions.push({ id: "other", name: "Ambiguous", work_id: null, current_execution_id: "ambiguous" });
+  registry.executions.push({ ...registry.executions[0]!, id: "ambiguous", session_id: "other", herdr_lifetime: "another-lifetime" });
+  expect(flockRelationships(registry)[0]?.source.session_id).toBeNull();
+  expect(flockRelationships(registry)[0]?.source.id.startsWith("native:")).toBe(true);
 });
 
 it("does not accept browser-created links or copy message content from a source receipt", async () => {
@@ -53,5 +57,19 @@ it("does not accept browser-created links or copy message content from a source 
     writeFileSync(join(root, "flock.json"), JSON.stringify(corrupt));
     expect(() => store.observe([source])).toThrow("preserved");
     expect(JSON.parse(readFileSync(join(root, "flock.json"), "utf8"))).toEqual(corrupt);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("records a native receipt once when the same rollout is replayed on another machine", () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-observations-"));
+  try {
+    const store = new FlockStore(root), old = machine(), destination = machine(); destination.id = "destination";
+    store.observe([old]); const revision = store.read().revision;
+    store.observe([destination]);
+    expect(store.read().observations).toHaveLength(1);
+    expect(store.read().observations![0]!.machine_id).toBe(old.id);
+    expect(store.read().revision).toBe(revision);
+    const oldData = { ...store.read(), observations: [{ ...event, machine_id: "local" }, { ...event, machine_id: "destination" }] };
+    expect(flockRelationships(oldData).reduce((count, relation) => count + relation.count, 0)).toBe(1);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

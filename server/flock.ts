@@ -8,7 +8,7 @@ import { flockBinding, flockCheckout, sameFlockBinding } from "../shared/flock-i
 import { isJsonObject, jsonResponse } from "./http.ts";
 import { readStateDocument, writeStateDocument } from "./state-document.ts";
 import { sameOrigin } from "./machine-security.ts";
-import { flockObservationKey, flockObservationValue } from "../shared/flock-relationships.ts";
+import { flockObservationValue, flockReceiptKey } from "../shared/flock-relationships.ts";
 
 export class FlockError extends Error {
   constructor(readonly code: "flock_conflict" | "flock_unreadable" | "invalid_flock", message: string) { super(message); }
@@ -25,7 +25,7 @@ export class FlockStore {
   /** Import bridge-owned receipts only; polling an existing event never changes the revision. */
   observe(sources: readonly Machine[]): FlockRegistry {
     const next = this.read();
-    const seen = new Set((next.observations ?? []).map(flockObservationKey));
+    const seen = new Set((next.observations ?? []).map(flockReceiptKey));
     let changed = false;
     for (const machine of sources) {
       if (machine.state !== "connected" || !machine.snapshot?.herdr_lifetime) continue;
@@ -33,7 +33,7 @@ export class FlockStore {
         if (!flockObservationValue(event) || !machine.snapshot.flock_bindings?.some((binding) => binding.agent === "codex" && binding.native_session_id.toLowerCase() === event.source_native_session_id.toLowerCase())) continue;
         const stored = { id: event.id, kind: event.kind, source_native_session_id: event.source_native_session_id,
           target_native_session_id: event.target_native_session_id, occurred_at: event.occurred_at, source: event.source, machine_id: machine.id };
-        const key = flockObservationKey(stored);
+        const key = flockReceiptKey(stored);
         if (seen.has(key)) continue;
         (next.observations ??= []).push(stored); seen.add(key); changed = true;
       }
