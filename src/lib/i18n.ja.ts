@@ -26,6 +26,10 @@ import { RELAY_JA } from "./i18n/relay.ja.ts";
  * in English. Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Graph filters": "グラフの絞り込み",
+  "{count} active": "{count}件有効",
+  "Details and help": "詳細とヘルプ",
+
   "Inspect node": "ノードを確認",
   "Select a node": "ノードを選択",
   "Zoom out": "縮小",

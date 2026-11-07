@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_GRAPH_STATE, GRAPH_STORAGE_KEY, graphLocation, readGraphLocation, sanitizeGraphState, type GraphState } from "./graphState.ts";
 
-function loadState(): GraphState {
+function loadState(): { state: GraphState; saved: boolean } {
   let state = DEFAULT_GRAPH_STATE;
-  try { state = sanitizeGraphState(JSON.parse(localStorage.getItem(GRAPH_STORAGE_KEY) ?? "null")) ?? state; } catch { /* Storage can be disabled. */ }
-  return readGraphLocation(new URL(window.location.href), state);
+  let saved = false;
+  try {
+    const stored = sanitizeGraphState(JSON.parse(localStorage.getItem(GRAPH_STORAGE_KEY) ?? "null"));
+    if (stored) {
+      state = stored;
+      saved = Object.keys(stored.positions).length > 0 || stored.viewport.x !== DEFAULT_GRAPH_STATE.viewport.x || stored.viewport.y !== DEFAULT_GRAPH_STATE.viewport.y || stored.viewport.k !== DEFAULT_GRAPH_STATE.viewport.k;
+    }
+  } catch { /* Storage can be disabled. */ }
+  return { state: readGraphLocation(new URL(window.location.href), state), saved };
 }
 
 export function useGraphState() {
-  const [state, setState] = useState(loadState);
+  const [initial] = useState(loadState);
+  const [state, setState] = useState(initial.state);
   useEffect(() => {
     try {
       const stored = localStorage.getItem(GRAPH_STORAGE_KEY);
@@ -26,5 +34,5 @@ export function useGraphState() {
     window.addEventListener("popstate", popped);
     return () => window.removeEventListener("popstate", popped);
   }, []);
-  return [state, setState] as const;
+  return [state, setState, initial.saved] as const;
 }

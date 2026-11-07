@@ -28,6 +28,10 @@ import { RELAY_ZH } from "./i18n/relay.zh.ts";
  * Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Graph filters": "图谱筛选",
+  "{count} active": "{count} 项生效",
+  "Details and help": "详情与帮助",
+
   "Inspect node": "检查节点",
   "Select a node": "选择节点",
   "Zoom out": "缩小",

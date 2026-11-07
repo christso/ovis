@@ -1,5 +1,6 @@
 /** Real Ovis App + real FlockStore/handler, using fictional roster/proofs/transport only. Not native or live-user dogfooding. */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +15,10 @@ import { chromePath } from "./chrome-path.ts";
 
 const videoDir = process.env.GRAPH_VIDEO_DIR;
 const testedSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-const runs: readonly (readonly [number, "dark" | "light"])[] = videoDir ? [[1600, "dark"]] : [[1280, "dark"], [1280, "light"], [390, "dark"], [390, "light"]];
+const sourceDiff = execFileSync("git", ["diff", "--binary", "HEAD"], { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+const diffSha256 = createHash("sha256").update(sourceDiff).digest("hex");
+const sourceFingerprint = `${testedSha}+${diffSha256}`;
+const runs: readonly (readonly [number, number, "dark" | "light"])[] = videoDir ? [[Number(process.env.GRAPH_VIDEO_WIDTH ?? 1600), Number(process.env.GRAPH_VIDEO_HEIGHT ?? 1000), "dark"]] : [1280, 390, 320].flatMap((width) => (width === 1280 ? [844] : [844, 640]).flatMap((height) => (["dark", "light"] as const).map((theme) => [width, height, theme] as const)));
 const root = mkdtempSync(join(tmpdir(), "ovis-graph-app-")), app = join(root, "app");
 const original = structuredClone(fixture.machines[0]) as Machine;
 const chosen = original.snapshot!.panes.find((pane) => pane.agent === "codex")!;
@@ -70,16 +74,17 @@ try {
     if (!path.startsWith(prefix)) return new Response("not found", { status: 404 });
     const file = decodeURIComponent(path.slice(prefix.length)) || "index.html";
     if (file.split("/").includes("..") || file.includes("\\")) return new Response("bad path", { status: 400 });
-    if (file === "index.html") return new Response(html.replace("</body>", `${videoDir ? `<div style="position:fixed;right:12px;bottom:8px;z-index:9999;pointer-events:none;padding:8px;background:var(--bg-panel);color:var(--text);border:1px solid var(--border);font-size:12px">Fictional roster/proofs · Graph · ${testedSha.slice(0, 10)}</div>` : ""}</body>`).replace(/<script type="module"/, () => `<script>window.graphNetwork = window.fetch.bind(window);</script><script src="./demo-transport.js"></script>${harness(machines)}<script type="module"`), { headers: { "content-type": "text/html" } });
+    if (file === "index.html") return new Response(html.replace("</body>", `${videoDir ? `<div style="position:fixed;right:8px;bottom:4px;z-index:9999;pointer-events:none;padding:4px;background:var(--bg-panel);color:var(--text);border:1px solid var(--border);font-size:10px">Fixture · Graph · ${testedSha.slice(0, 8)}+${diffSha256.slice(0, 8)}</div>` : ""}</body>`).replace(/<script type="module"/, () => `<script>window.graphNetwork = window.fetch.bind(window);</script><script src="./demo-transport.js"></script>${harness(machines)}<script type="module"`), { headers: { "content-type": "text/html" } });
     const body = Bun.file(join(app, file)); return await body.exists() ? new Response(body) : new Response("not found", { status: 404 });
   } });
-  browser = await chromium.launch({ executablePath: chromePath(), headless: true, slowMo: videoDir ? 1300 : 0, args: ["--no-sandbox"] });
-  for (const [width, theme] of runs) {
-    machines = structuredClone(pristine); future = false; store = new FlockStore(join(root, `${width}-${theme}`));
+  browser = await chromium.launch({ executablePath: chromePath(), headless: true, slowMo: videoDir ? 350 : 0, args: ["--no-sandbox"] });
+  for (const [width, height, theme] of runs) {
+    const mobile = width <= 700;
+    machines = structuredClone(pristine); future = false; store = new FlockStore(join(root, `${width}-${height}-${theme}`));
     store.change(0, { type: "create-work", name: "Orchard work" }, machines);
     store.change(1, { type: "adopt", binding: flockBinding(machines[0]!, machines[0]!.snapshot!.panes[0]!)!, work_id: store.read().works[0]!.id, name: "Prune orchard" }, machines);
     const session = store.read().sessions[0]!, old = store.read().executions[0]!, sessionId = `session:${session.id}`;
-    const context = await browser.newContext({ viewport: { width, height: videoDir ? 1000 : 844 }, ...(videoDir ? { recordVideo: { dir: videoDir, size: { width, height: 1000 } } } : {}), locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(width === 390 ? { isMobile: true, hasTouch: true } : {}) });
+    const context = await browser.newContext({ viewport: { width, height }, ...(videoDir ? { recordVideo: { dir: videoDir, size: { width, height } } } : {}), locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
     await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme, fileOpen: "panel" })), theme);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const errors: string[] = [], assets: string[] = [];
@@ -87,17 +92,21 @@ try {
     const base = `http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/`;
     const nav = page.getByRole("navigation", { name: "Views" });
     const openGraph = async () => {
-      if (width === 390 && await page.getByRole("button", { name: "Open workspace list", exact: true }).isVisible()) {
+      if (mobile && await page.getByRole("button", { name: "Open workspace list", exact: true }).isVisible()) {
         if (!(await page.locator("#workspace-drawer").getAttribute("class"))?.includes("is-open")) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
       }
       await nav.getByRole("button", { name: "Graph", exact: true }).click();
     };
     const node = () => page.locator(`[data-graph-node="${sessionId}"]`);
-    const inspect = async (id: string) => { await page.getByRole("combobox", { name: "Inspect node", exact: true }).selectOption(id); };
+    const options = async (open: boolean) => {
+      const button = page.getByRole("button", { name: /^Graph filters/ });
+      if (mobile && await button.getAttribute("aria-expanded") !== String(open)) await button.click();
+    };
+    const inspect = async (id: string) => { await options(true); await page.getByRole("combobox", { name: "Inspect node", exact: true }).selectOption(id); await options(false); };
     let stage = "initial";
     try {
       await page.goto(`${base}?pane=${encodeURIComponent(chosen.pane_id)}&view=terminal`);
-      if (width === 390) await page.getByRole("button", { name: "Open workspace list", exact: true }).waitFor();
+      if (mobile) await page.getByRole("button", { name: "Open workspace list", exact: true }).waitFor();
       else await nav.getByRole("button", { name: "Graph", exact: true }).waitFor();
       assert.equal(assets.length, 0, "Graph dependencies do not load in Workspace");
       const beforePane = new URL(page.url()).searchParams.get("pane");
@@ -113,24 +122,32 @@ try {
       machines[0]!.snapshot!.flock_bindings = proofs;
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
       await page.waitForFunction(() => (document.querySelector('.graph-details button') as HTMLButtonElement)?.disabled === false);
+      if (process.env.UI_EVIDENCE_DIR) {
+        const path = join(process.env.UI_EVIDENCE_DIR, "graph-app-mobile"); mkdirSync(path, { recursive: true });
+        await page.screenshot({ path: join(path, `${width}-${height}-${theme}-initial.png`) });
+      }
 
       await page.getByLabel("Search graph", { exact: true }).fill("Prune orchard");
+      await options(true);
       await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("working");
       await page.getByRole("combobox", { name: "Focus graph", exact: true }).selectOption(sessionId);
+      await options(false);
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
       await page.getByRole("button", { name: "Zoom in", exact: true }).click();
       await page.getByRole("button", { name: "Zoom out", exact: true }).click();
       const surface = page.getByRole("group", { name: "Interactive graph", exact: true });
       const beforePan = await surface.locator(":scope > g").getAttribute("transform");
-      if (width !== 390) {
+      if (!mobile) {
         const box = await surface.boundingBox(); assert.ok(box);
         await page.mouse.move(box.x + 20, box.y + 20); await page.mouse.down();
         await page.mouse.move(box.x + 120, box.y + 80, { steps: 6 }); await page.mouse.up();
       } else { await surface.focus(); await page.keyboard.press("ArrowRight"); }
       assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), beforePan, "integrated graph pans");
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
+      await options(true);
       await page.getByRole("combobox", { name: "Focus graph", exact: true }).selectOption("");
       await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("");
+      await options(false);
       await nav.getByRole("button", { name: "Table", exact: true }).click();
       await nav.getByRole("button", { name: "Graph", exact: true }).click();
       await node().waitFor(); assert.equal(await node().getAttribute("aria-pressed"), "true");
@@ -153,7 +170,7 @@ try {
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
       if (videoDir) {
-        await page.getByRole("group", { name: "Pane view", exact: true }).getByRole("button", { name: "Terminal", exact: true }).click();
+        await page.getByRole("group", { name: "Pane view", exact: true }).getByTitle(/^Live terminal/).click();
         await page.waitForURL((url) => url.searchParams.get("view") === "terminal" && url.searchParams.get("machine") === remote.id);
       }
       stage = "back-cross"; await page.goBack(); await node().waitFor();
@@ -185,6 +202,7 @@ try {
       machines[1]!.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: "graph-reused-terminal", agent: chosen.agent!, native_session_id: "reused-native" }];
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true, "reused native identity cannot navigate");
+      await options(true);
       const unproven = await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").evaluateAll((options) => options.find((option) => option.textContent?.includes("Unproven garden"))?.getAttribute("value"));
       assert.ok(unproven); await inspect(unproven);
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true);
@@ -201,7 +219,7 @@ try {
       assert.equal(await page.getByLabel("Search graph", { exact: true }).inputValue(), "Prune orchard");
       assert.deepEqual(await page.evaluate(() => (window as unknown as { graphFixture: { controls: string[] } }).graphFixture.controls), [], "Graph/navigation never focuses or inputs to Herdr");
       assert.deepEqual(errors, []);
-      if (process.env.UI_EVIDENCE_DIR) { const path = join(process.env.UI_EVIDENCE_DIR, "graph-app"); mkdirSync(path, { recursive: true }); await page.screenshot({ path: join(path, `${width}-${theme}.png`) }); }
+      if (process.env.UI_EVIDENCE_DIR) { const path = join(process.env.UI_EVIDENCE_DIR, "graph-app-mobile"); mkdirSync(path, { recursive: true }); await page.screenshot({ path: join(path, `${width}-${height}-${theme}.png`) }); }
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Graph stays within viewport");
       console.log(`PASS real App Graph ${width} ${theme}: shared inventory, lazy load, current execution, state/history/deep link, disconnect/reuse, incomplete/future sources`);
       machines = machines.map((machine) => ({ ...machine, state: "disconnected", snapshot: null }));
@@ -224,12 +242,30 @@ try {
       await watch.getByText("This device can only watch", { exact: true }).waitFor();
       assert.equal(await watch.locator(".graph-view").count(), 0); assert.equal(flockReads, reads); assert.deepEqual(watchAssets, []);
       await watch.close();
+      stage = "empty inventory reload";
+      store = new FlockStore(join(root, `empty-${width}-${height}-${theme}`));
+      await page.evaluate(() => localStorage.removeItem("ovis:graph:v1"));
+      await page.goto(`${base}?page=graph`);
+      await page.getByText("No graph nodes match these filters.", { exact: true }).waitFor();
+      await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem("ovis:graph:v1") ?? "null")?.positions ?? {}).length === 0);
+      await page.reload(); await page.locator(".graph-surface").waitFor();
+      machines = structuredClone(pristine);
+      await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.waitForFunction(() => {
+        const stage = document.querySelector(".graph-surface")!.getBoundingClientRect();
+        return [...document.querySelectorAll("[data-graph-node]")].some((node) => { const box = node.getBoundingClientRect(); return box.x >= stage.x && box.right <= stage.right && box.y >= stage.y && box.bottom <= stage.bottom; });
+      });
+      console.log(`PASS empty inventory reload ${width}x${height} ${theme}: later inventory gets an initial frame`);
     } catch (error) {
       console.error("Graph fixture failed", stage, page.url(), errors, await page.locator("body").innerText());
       throw error;
     } finally {
       const video = page.video(); await context.close();
-      if (videoDir && video) writeFileSync(join(videoDir, "graph-recording.json"), JSON.stringify({ testedSha, source: "real Ovis App + fictional roster/native ownership proofs + real isolated FlockStore/handler", video: await video.path(), width, theme }, null, 2));
+      if (videoDir && video) {
+        writeFileSync(join(videoDir, "source.diff"), sourceDiff);
+        writeFileSync(join(videoDir, "graph-recording.json"), JSON.stringify({ testedSha, diffSha256, sourceFingerprint, source: "real Ovis App + fictional roster/native ownership proofs + real isolated FlockStore/handler; uncommitted mobile polish", video: await video.path(), width, height, theme }, null, 2));
+      }
     }
   }
 } finally { await browser?.close(); server?.stop(true); rmSync(root, { recursive: true, force: true }); }

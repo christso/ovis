@@ -2,6 +2,9 @@
 .graph-source-note { display: flex; align-items: center; gap: 12px; padding: 4px 12px; font-size: 12px; color: var(--text-dim); }
 .graph-view { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--bg); color: var(--text); }
 .graph-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 12px; border-bottom: 1px solid var(--border); }
+.graph-options { display: contents; }
+.graph-options[hidden], .graph-details-extra[hidden] { display: none; }
+.graph-filter-toggle, .graph-details button.graph-details-toggle { display: none; }
 .graph-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); min-width: 0; }
 .graph-controls input[type="search"], .graph-controls select { height: 34px; max-width: 200px; background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
 .graph-controls label.graph-check { flex-direction: row; align-items: center; min-height: 34px; }
@@ -29,6 +32,10 @@
 .graph-details { width: 260px; flex-shrink: 0; overflow: auto; padding: 16px; border-left: 1px solid var(--border); background: var(--bg-panel); font-size: 13px; }
 .graph-details h2 { font-size: 16px; margin: 0 0 12px; overflow-wrap: anywhere; }
 .graph-details button { min-height: 38px; margin: 4px 8px 4px 0; }
+.graph-selected-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.graph-selected-meta .graph-warning { padding: 0; }
+.graph-selection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.graph-selection-actions button { margin: 0; }
 .graph-detail-path, .graph-relations { overflow-wrap: anywhere; }
 .graph-relations { padding-left: 18px; }
 .graph-relations small { display: block; color: var(--text-dim); margin: 5px 0 12px; }
@@ -36,10 +43,28 @@
 .graph-warning { color: var(--status-blocked); padding: 0 12px; }
 .graph-empty { position: absolute; inset: 30% 16px auto; text-align: center; pointer-events: none; color: var(--text-dim); }
 @media (max-width: 700px) {
-  .graph-controls { gap: 8px; padding: 8px; max-height: 180px; overflow-y: auto; }
-  .graph-controls input[type="search"], .graph-controls select { max-width: 160px; }
-  .graph-body { flex-direction: column; }
-  .graph-stage { min-height: 240px; flex-basis: 60%; }
-  .graph-details { width: auto; max-height: 32vh; border-left: 0; border-top: 1px solid var(--border); padding: 12px; }
+  .graph-view { overflow-y: auto; }
+  .graph-source-note { gap: 4px; font-size: 11px; padding: 0 8px; }
+  .graph-source-note p { margin: 4px 0; overflow-wrap: anywhere; }
+  .graph-source-note button { min-height: 44px; flex-shrink: 0; }
+  .graph-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 8px; flex-shrink: 0; }
+  .graph-controls input[type="search"], .graph-controls select { width: 100%; max-width: none; min-width: 0; height: 44px; font-size: 16px; }
+  .graph-filter-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px; font-size: 12px; }
+  .graph-filter-toggle svg { flex-shrink: 0; }
+  .graph-filter-toggle[aria-expanded="true"] > svg:last-child, .graph-details-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .graph-filter-count { min-width: 18px; padding: 0 3px; border-radius: 4px; color: var(--accent); background: var(--bg); }
+  .graph-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-column: 1 / -1; gap: 8px; }
+  .graph-controls label.graph-check { min-height: 44px; gap: 8px; }
+  .graph-body { flex-direction: column; flex: 1 0 auto; min-height: 400px; }
+  .graph-stage { min-height: 280px; }
+  .graph-details { width: auto; overflow: visible; border-left: 0; border-top: 1px solid var(--border); padding: 10px 12px; }
+  .graph-details h2 { margin-bottom: 4px; font-size: 15px; line-height: 1.4; }
+  .graph-selected-meta, .graph-selection-hint, .graph-target-note { margin: 4px 0 8px; overflow-wrap: anywhere; }
+  .graph-selection-actions { flex-wrap: nowrap; }
+  .graph-selection-actions .btn-primary { flex: 1; }
+  .graph-details button { min-height: 44px; }
+  .graph-details button.graph-details-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex-shrink: 0; }
+  .graph-details-extra { margin-top: 8px; overflow-wrap: anywhere; }
   .graph-tools { left: 8px; bottom: 8px; }
+  .graph-tools button { width: 44px; height: 44px; }
 }

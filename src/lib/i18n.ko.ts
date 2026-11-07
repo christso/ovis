@@ -24,6 +24,10 @@ import { RELAY_KO } from "./i18n/relay.ko.ts";
  * braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Graph filters": "그래프 필터",
+  "{count} active": "{count}개 적용됨",
+  "Details and help": "상세 정보 및 도움말",
+
   "Inspect node": "노드 살펴보기",
   "Select a node": "노드 선택",
   "Zoom out": "축소",
