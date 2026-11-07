@@ -17,8 +17,6 @@ export const CHAT_KO: Record<string, string> = {
   "locked — the token gate is asking again": "잠김 — 토큰 게이트가 다시 물었습니다",
   "Enlarge diagram": "다이어그램 확대",
   "Diagram": "다이어그램",
-  "Zoom in": "확대",
-  "Zoom out": "축소",
   "Fit to screen": "화면에 맞춤",
   "More than one could be picked": "여러 개를 고를 수 있었음",
   "Code copied": "코드 복사됨",

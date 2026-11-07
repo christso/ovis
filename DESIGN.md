@@ -3973,3 +3973,52 @@ visible. Association is explicit, and selectors include IDs to disambiguate equa
 sessions without proven IDs stay visible as unassociated; stale or disconnected bindings cannot open
 terminals from Table. Rename changes a label, never an identity. Work and session names live in the
 manager's registry; naming a session does not rename its native agent or move its files.
+
+## Graph view
+
+Graph is another view of the shared Table inventory. Logical work and sessions retain their IDs
+when execution changes machine. Repository and checkout links describe recorded associations;
+labels, similar paths and sidebar placement never establish a relationship. Missing delegation
+or dependency evidence remains absent, with a coverage note beside the graph.
+
+The design follows [Folio's graph](https://github.com/evergreen-it-dev/folio/tree/main/web/src/app/graph)
+in separating pure projection/filtering from rendering and keeping selection separate from an
+explicit Open action. Its canvas/d3-force renderer and model were evaluated under Folio's MIT
+license. The implementation here is independently written; no Folio source is copied. Ovis uses
+SVG targets with native keyboard access and a node inspector selector for phone and keyboard use.
+Deterministic columns and retained drag positions keep routine live updates still; there is no
+force animation, including under reduced motion. Pan, pinch/wheel zoom, fit and keyboard controls
+operate on a persistent viewport. Machine grouping is optional and does not establish links.
+
+[Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel) provides the project-scoped thread and
+worktree navigation reference. Graph differs by showing explicitly recorded relationships across
+machines, rather than placing logical work under a machine. Opening a terminal must use the shared
+inventory's current live-target resolver and the existing Ovis selection callback, with no Herdr
+focus or input operation.
+
+Graph presentation state has its own `ovis:graph:v1` browser key, owned by
+`src/features/graph/useGraphState.ts`: version, selection, filters, optional machine grouping,
+positions and viewport. No existing settings record changes and no HTTP/WS contract carries it.
+Older Ovis releases do not read or write this new key. Unknown versions and unparseable JSON records
+are left intact; supported fields are sanitized before use. This reader refuses to overwrite
+records whose version or JSON it cannot read.
+Graph-owned query fields share selection/filter/focus without altering Ovis's pane/view location.
+
+
+Graph loads lazily after the device role is known; watch-only devices load neither its private
+registry nor its rendering chunk. The `page=graph` location composes with Ovis's existing
+`view=chat|terminal` pane lens and its machine/pane location. Graph and Table share App's one
+inventory hook. Logical-session Open resolves only `current_execution_id` through `flockTarget`;
+a previous live execution is not a substitute. Repository nodes represent recorded machine-local
+metadata and are scoped by machine plus recorded root, never unified by similar paths.
+
+
+Observed execution nodes include the exact shared binding identity, so reusing a pane for a
+new native session cannot redirect an old Graph selection or link. The address bar owns page
+and terminal history together: Open pushes one Workspace target, and Back/Forward restores the
+Graph page with its filters and selection. Native ownership comes from Table's ephemeral verified
+sources, never from raw Herdr session hints or Graph-side discovery.
+
+Phone Graph follows [Paseo's official mobile/session interface](https://github.com/getpaseo/paseo/blob/main/README.md), specifically its [compact workspace header](https://github.com/getpaseo/paseo/blob/main/packages/app/src/screens/workspace/compact-workspace-header/index.tsx) and [accessible filter trigger](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/hosts/host-filter.tsx): primary content and actions remain visible, secondary choices open on demand. Search stays beside a collapsed Graph filters trigger whose badge counts active advanced choices. Desktop controls remain expanded. The phone inspector keeps the selected name, status and Open action visible, with paths, relationship evidence and help behind Details. Expanded controls/details use the Graph's normal vertical scroll rather than a clipped controls scrollbox.
+
+A fresh phone view starts at readable node scale centered on the requested or first session; it changes no filters or layout positions. Existing supported saved positions or non-default viewport values always win, including a custom viewport before any positions exist. An empty record with only the default viewport is not a completed frame: if inventory arrives after a reload, it still receives initial framing. Fit graph and the 0 shortcut still show the full filtered overview, and the inspector selector reaches every filtered node. Disclosure state is transient and does not change the stored record or shareable location. No Paseo code or pixels were copied.

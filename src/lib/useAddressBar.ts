@@ -1,6 +1,7 @@
 import { type Dispatch, type RefObject, type SetStateAction, useEffect, useRef } from "react";
 import type { HerdrPane, HerdrWorkspace } from "../../shared/protocol.ts";
 import type { Machine } from "../../shared/machines.ts";
+import type { FlockView } from "./flockView.ts";
 import type { PaneView } from "./actions.ts";
 import { isNavigation, linkSearch, NAV_KEY, readLink, resolveLink, slugOf, type AppLink, type LinkNote } from "./deepLink.ts";
 import type { SelectionMark } from "./selectionMark.ts";
@@ -11,7 +12,9 @@ import type { useNewSessionState } from "./useNewSessionDialog.ts";
 import type { usePaneLens } from "./usePaneLens.ts";
 import type { useSettingsDialog } from "./useSettingsDialog.ts";
 
-export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, selectedWorkspace, viewing, selectedMachineId, releaseFile, locked, machines, snapshot, linkLanded, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, wideScreen, sidebarCollapsed, newTab, newFields, autoSelected, pendingFile, selectedMachine, openFile, machinesRef, selectTargetRef, pendingLink, setLinkLanded, linkSince, rosterSeq, setNewSessionOpen, pendingCreate, setHeaderNote, selectionRef, setLinkTick }: {
+export function useAddressBar({ page = "workspace", onPage, newSessionOpen, selectedPane, selectedPaneId, selectedWorkspace, viewing, selectedMachineId, releaseFile, locked, machines, snapshot, linkLanded, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, wideScreen, sidebarCollapsed, newTab, newFields, autoSelected, pendingFile, selectedMachine, openFile, machinesRef, selectTargetRef, pendingLink, setLinkLanded, linkSince, rosterSeq, setNewSessionOpen, pendingCreate, setHeaderNote, selectionRef, setLinkTick }: {
+  page?: FlockView;
+  onPage?(page: FlockView): void;
   newSessionOpen: boolean;
   selectedPane: HerdrPane | null;
   selectedPaneId: string | null;
@@ -53,6 +56,7 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
   // itself replace the entry. Nothing is written while locked or before the roster is in, so a
   // link survives the access gate and a slow first read.
   const writtenLink = useRef<AppLink | null>(null);
+  const onPageRef = useRef(onPage); onPageRef.current = onPage;
   // Back or Forward landed somewhere other than its entry said: that place is written over the entry
   const poppedTo = useRef(false);
   const newSessionOpenRef = useRef(newSessionOpen); newSessionOpenRef.current = newSessionOpen;
@@ -67,8 +71,18 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
     if (fileLeft) releaseFile();
   }, [fileLeft, releaseFile]);
   useEffect(() => {
-    if (locked !== false || machines.length === 0 || snapshot === null || !linkLanded) return;
+    if (locked !== false) return;
+    if (machines.length === 0 || snapshot === null || !linkLanded) {
+      const current = new URL(window.location.href);
+      const shownPage = readLink(current.search).page ?? "workspace";
+      if (page === shownPage) return;
+      if (page === "workspace") current.searchParams.delete("page"); else current.searchParams.set("page", page);
+      window.history.pushState(window.history.state, "", current);
+      writtenLink.current = null;
+      return;
+    }
     const link: AppLink = {
+      ...(page === "workspace" ? {} : { page }),
       machine: selectedMachineId, workspace: linkWorkspaceId, workspaceSlug: linkSlug, pane: selectedPaneId, view: selectedPaneId ? view : null, file: linkFile,
       settings: settingsOpen ? settingsPage : null, section: settingsOpen && settingsPage === settingsLinkPage ? settingsLinkSection : null,
       sidebar: wideScreen && sidebarCollapsed ? "hidden" : null,
@@ -82,12 +96,12 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
     // Back and Forward land where the address already says: nothing to write
     if (search === window.location.search) return;
     const url = `${window.location.pathname}${search}${window.location.hash}`;
-    if (previous !== null && !popped && !autoSelected && !settingsOpen && !newSessionOpen && isNavigation(previous, link)) {
-      // a move that leaves the open file behind takes the file's entry: no entry is left between
-      if (fileLeft) window.history.replaceState({ [NAV_KEY]: true }, "", url);
+    if (previous !== null && !popped && (!autoSelected || previous.page !== link.page) && !settingsOpen && !newSessionOpen && isNavigation(previous, link)) {
+      // Within a page, leaving a file takes its entry; changing pages preserves the page to return to.
+      if (fileLeft && previous.page === link.page) window.history.replaceState({ [NAV_KEY]: true }, "", url);
       else window.history.pushState({ [NAV_KEY]: true }, "", url);
     } else window.history.replaceState(window.history.state, "", url);
-  }, [locked, machines.length, snapshot, linkLanded, selectedMachineId, selectedPaneId, linkWorkspaceId, linkSlug, linkFile, fileLeft, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, newSessionOpen, newTab, newFields, wideScreen, sidebarCollapsed, autoSelected]);
+  }, [page, locked, machines.length, snapshot, linkLanded, selectedMachineId, selectedPaneId, linkWorkspaceId, linkSlug, linkFile, fileLeft, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, newSessionOpen, newTab, newFields, wideScreen, sidebarCollapsed, autoSelected]);
 
 
   // a file a link named opens over its pane once the pane is shown, as the chat's file links do
@@ -113,48 +127,51 @@ export function useAddressBar({ newSessionOpen, selectedPane, selectedPaneId, se
       // (hiding a PC here moves the selection off it), and the entry is written to say so
       if (settingsSteppedOff()) { sayShown(); return; }
       const link = readLink(window.location.search);
-      // before the PCs are in, nothing can say the entry's PC is still set up: it waits as a link
-      // opened with the page does, settled against its roster or answered with a note once they are
-      if (machinesRef.current.length === 0) {
-        if (!link.pane && !link.workspace) return;
-        selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
-        pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
-        linkSince.current = rosterSeq.current;
-        poppedTo.current = true;
-        return;
-      }
-      const machine = machinesRef.current.find((candidate) => candidate.id === link.machine);
-      const missing = !machine && machinesRef.current.length > 0;
-      // the New workspace dialog is part of the address it was open on: Back closes it, Forward opens
-      // it again, but not for a PC removed since
-      if (!link.create) setNewSessionOpen(false);
-      else if (!missing && !newSessionOpenRef.current) pendingCreate.current = link.create;
-      // an entry naming a PC since removed leaves the app where it is and says so, as a link to it would
-      if (missing) setHeaderNote("machine-missing");
-      else {
-        const pane = machine?.snapshot ? resolveLink(machine.snapshot, link).pane : link.pane;
-        if (pane === null) {
-          if (link.pane) {
-            selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
-            pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
-            linkSince.current = rosterSeq.current;
-            poppedTo.current = true;
-            setLinkTick((tick) => tick + 1);
-          }
+      if (link.page !== writtenLink.current?.page) poppedTo.current = true;
+      try {
+        // before the PCs are in, nothing can say the entry's PC is still set up: it waits as a link
+        // opened with the page does, settled against its roster or answered with a note once they are
+        if (machinesRef.current.length === 0) {
+          if (!link.pane && !link.workspace) return;
+          selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
+          pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
+          linkSince.current = rosterSeq.current;
+          poppedTo.current = true;
           return;
         }
-        const current = selectionRef.current;
-        // the entry's lens is drawn over the pane's own, as a tapped notification's is. Where it
-        // lands is written over the entry, so Forward keeps the entries after it
-        if (current.machineId !== link.machine || current.paneId !== pane) { poppedTo.current = true; selectTargetRef.current(link.machine, pane, link.pane === pane ? link.view ?? undefined : undefined); return; }
-      }
-      // the same pane, or no PC to go to: the entry landed on may still say what is no longer shown
-      // (the address a link to Settings opened the page with, under the dialog's own entries), so it says it now
-      sayShown();
+        const machine = machinesRef.current.find((candidate) => candidate.id === link.machine);
+        const missing = !machine && machinesRef.current.length > 0;
+        // the New workspace dialog is part of the address it was open on: Back closes it, Forward opens
+        // it again, but not for a PC removed since
+        if (!link.create) setNewSessionOpen(false);
+        else if (!missing && !newSessionOpenRef.current) pendingCreate.current = link.create;
+        // an entry naming a PC since removed leaves the app where it is and says so, as a link to it would
+        if (missing) setHeaderNote("machine-missing");
+        else {
+          const pane = machine?.snapshot ? resolveLink(machine.snapshot, link).pane : link.pane;
+          if (pane === null) {
+            if (link.pane) {
+              selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
+              pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
+              linkSince.current = rosterSeq.current;
+              poppedTo.current = true;
+              setLinkTick((tick) => tick + 1);
+            }
+            return;
+          }
+          const current = selectionRef.current;
+          // the entry's lens is drawn over the pane's own, as a tapped notification's is. Where it
+          // lands is written over the entry, so Forward keeps the entries after it
+          if (current.machineId !== link.machine || current.paneId !== pane) { poppedTo.current = true; selectTargetRef.current(link.machine, pane, link.pane === pane ? link.view ?? undefined : undefined); return; }
+        }
+        // the same pane, or no PC to go to: the entry landed on may still say what is no longer shown
+        // (the address a link to Settings opened the page with, under the dialog's own entries), so it says it now
+        sayShown();
+      } finally { onPageRef.current?.(link.page ?? "workspace"); }
     };
     const sayShown = (): void => {
       const shown = writtenLink.current;
-      const search = shown ? linkSearch(shown, window.location.search) : window.location.search;
+      const search = shown ? linkSearch({ ...shown, page: readLink(window.location.search).page }, window.location.search) : window.location.search;
       if (search !== window.location.search) window.history.replaceState(window.history.state, "", `${window.location.pathname}${search}${window.location.hash}`);
     };
     window.addEventListener("popstate", onPop);

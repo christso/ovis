@@ -325,7 +325,6 @@ export const SETTINGS_KO: Record<string, string> = {
   "Through a proxy": "프록시 경유",
   "Through Tailscale": "Tailscale 경유",
   "Through Tailscale Funnel": "Tailscale Funnel 경유",
-  "Unknown": "알 수 없음",
   "How this browser's request arrived, not how every device reaches the server.": "이 브라우저의 요청이 들어온 경로이며, 모든 기기가 서버에 접속하는 경로는 아닙니다.",
   "Public internet": "공개 인터넷",
   "Reachable": "접속 가능",

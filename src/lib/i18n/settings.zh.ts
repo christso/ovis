@@ -325,7 +325,6 @@ export const SETTINGS_ZH: Record<string, string> = {
   "Through a proxy": "经由代理",
   "Through Tailscale": "经由 Tailscale",
   "Through Tailscale Funnel": "经由 Tailscale Funnel",
-  "Unknown": "未知",
   "How this browser's request arrived, not how every device reaches the server.": "这是此浏览器请求到达的方式，而不是所有设备访问服务器的方式。",
   "Public internet": "公共互联网",
   "Reachable": "可访问",
