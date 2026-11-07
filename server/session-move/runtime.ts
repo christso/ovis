@@ -1,7 +1,7 @@
-import { existsSync, realpathSync } from "node:fs";
-import { relative } from "node:path";
+import { existsSync, readlinkSync, realpathSync } from "node:fs";
+import { isAbsolute, relative } from "node:path";
 import { agentLaunch } from "../agent-launch.ts";
-import { codexTranscriptPath, defaultCodexHome, paneCodexHomePlaced } from "../codex.ts";
+import { codexTranscriptPath, defaultCodexHome, paneCodexHomePlaced, paneCodexProcess } from "../codex.ts";
 import { sessionSnapshot, workspaceCreate } from "../herdr/client.ts";
 import type { SessionSnapshot } from "../../shared/protocol.ts";
 import { MoveRefused, readMoveFile } from "./files.ts";
@@ -10,7 +10,7 @@ import type { MoveNodeRuntime } from "./node.ts";
 
 export function moveRuntime(snapshot: () => Promise<SessionSnapshot>, configuredHome?: string): MoveNodeRuntime {
   const native = async (home: string, proxy: boolean) => {
-    if (proxy) { try { return await NativeMoveClient.open(home, "proxy"); } catch { /* stopped clients can leave no daemon; stdio only reads native history */ } }
+    if (proxy) { try { return await NativeMoveClient.open(home, "proxy"); } catch (error) { if (error instanceof MoveRefused && ["codex_incompatible", "native_home_mismatch"].includes(error.code)) throw error; } }
     return NativeMoveClient.open(home, "stdio");
   };
   return {
@@ -29,9 +29,16 @@ export function moveRuntime(snapshot: () => Promise<SessionSnapshot>, configured
     },
     async observe(paneId, threadId, lifetime) {
       const current = await snapshot(), pane = current.panes.find((pane) => pane.pane_id === paneId);
-      if (current.herdr_lifetime !== lifetime || pane?.agent !== "codex" || pane.agent_session?.kind !== "id" || pane.agent_session.value !== threadId || pane.restore_error || !pane.cwd) throw new MoveRefused("source_changed", "The source execution no longer matches the selected session");
-      if (pane.agent_status !== "idle" && pane.agent_status !== "waiting" && pane.agent_status !== "completed") throw new MoveRefused("source_busy", "Let the active Codex turn finish before previewing its transfer");
-      const located = await paneCodexHomePlaced(paneId, configuredHome);
+      if (current.herdr_lifetime !== lifetime || pane?.agent !== "codex" || pane.restore_error || !pane.cwd) throw new MoveRefused("source_changed", "The source execution no longer matches the selected session");
+      if (pane.agent_status !== "idle" && pane.agent_status !== "done") throw new MoveRefused("source_busy", "Let the active Codex turn finish before previewing its transfer");
+      const sourceProcess = await paneCodexProcess(paneId);
+      if (!sourceProcess) throw new MoveRefused("source_store_unknown", "Preview while this native Codex client is still open");
+      let executable = sourceProcess.argv?.[0];
+      if (process.platform === "linux") executable = readlinkSync(`/proc/${sourceProcess.pid}/exe`);
+      if (!executable || !isAbsolute(executable) || Bun.spawnSync([executable, "--version"], { stdout: "pipe", stderr: "ignore" }).stdout.toString().trim() !== "codex-cli 0.166.0") throw new MoveRefused("codex_incompatible", "The source process must be the supported Codex 0.166.0 runtime");
+      const repository = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], { cwd: pane.cwd, stdout: "pipe", stderr: "ignore" });
+      if (repository.exitCode !== 0 || realpathSync(repository.stdout.toString().trim()) !== realpathSync(pane.cwd)) throw new MoveRefused("unsupported_checkout", "Move sessions whose native working directory is the Git checkout root");
+      const located = await paneCodexHomePlaced(paneId);
       if (!located.placed) throw new MoveRefused("source_store_unknown", "The selected native Codex store cannot be proven");
       const home = realpathSync(located.home), path = await codexTranscriptPath(paneId, pane.cwd, home, current.panes);
       if (!path) throw new MoveRefused("source_store_unknown", "The selected native rollout cannot be proven");
@@ -57,9 +64,15 @@ export function moveRuntime(snapshot: () => Promise<SessionSnapshot>, configured
       const launched = await agentLaunch(paneId, { kind: "codex", args: ["resume", threadId] });
       if (!launched.agent_started) throw new MoveRefused("destination_start_failed", "The destination could not start native Codex resume");
     },
-    async paneSession(paneId, threadId, lifetime) {
+    async paneSession(paneId, threadId, lifetime, home) {
       const current = await snapshot(), pane = current.panes.find((pane) => pane.pane_id === paneId);
-      return current.herdr_lifetime === lifetime && pane?.agent === "codex" && pane.agent_session?.kind === "id" && pane.agent_session.value === threadId;
+      if (current.herdr_lifetime !== lifetime || pane?.agent !== "codex" || !pane.cwd) return false;
+      const located = await paneCodexHomePlaced(paneId);
+      if (!located.placed || realpathSync(located.home) !== home) return false;
+      const path = await codexTranscriptPath(paneId, pane.cwd, home, current.panes);
+      if (!path) return false;
+      const meta = JSON.parse(readMoveFile(home, relative(home, path).split("\\").join("/")).data.toString().split("\n")[0]!);
+      return meta.payload?.id === threadId;
     },
   };
 }

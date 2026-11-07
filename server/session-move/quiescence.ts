@@ -3,7 +3,7 @@ import { closeSync, constants, mkdirSync, openSync } from "node:fs";
 import { inside, MoveRefused } from "./files.ts";
 
 /** No signal, guessed TUI input, pane close or shared-daemon shutdown is a quiescence proof. */
-export interface QuiescentSource { readonly thread_id: string; assertHeld(): void; release(): void }
+export interface QuiescentSource { readonly thread_id: string; assertHeld(): void | Promise<void>; release(): void | Promise<void> }
 let library: ReturnType<typeof dlopen<{ flock: { args: [typeof FFIType.i32, typeof FFIType.i32]; returns: typeof FFIType.i32 } }>> | undefined;
 
 /**

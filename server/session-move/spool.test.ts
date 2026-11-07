@@ -1,0 +1,32 @@
+import { afterEach, expect, it } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { digest } from "./files.ts";
+import { MoveSpool } from "./spool.ts";
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const ID = "019a5a00-0000-7000-8000-000000000001";
+it("resumes exact chunks after restart, never truncates on replay, and materializes only verified files", () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-spool-")); roots.push(root);
+  const bytes = Buffer.from("owned payload"), file = { path: "untracked/work.txt", bytes: bytes.length, sha256: digest(bytes), executable: false };
+  const first = new MoveSpool(root, ID); first.offer({ version: 1, files: [file] });
+  expect(first.put(0, 0, bytes.subarray(0, 5))).toBe(5);
+  const resumed = new MoveSpool(root, ID); resumed.offer({ version: 1, files: [file] });
+  expect(resumed.offset(0)).toBe(5); expect(resumed.put(0, 0, bytes.subarray(0, 5))).toBe(5);
+  expect(() => resumed.put(0, 0, Buffer.from("wrong"))).toThrow("differs");
+  expect(() => resumed.put(0, 6, Buffer.from("x"))).toThrow("acknowledged offset");
+  expect(resumed.put(0, 5, bytes.subarray(5))).toBe(bytes.length);
+  resumed.materialize(join(root, "received"));
+  expect(readFileSync(join(root, "received", file.path))).toEqual(bytes);
+  resumed.materialize(join(root, "received"));
+  expect(() => resumed.offer({ version: 1, files: [{ ...file, sha256: digest(Buffer.from("other")) }] })).toThrow("different transfer manifest");
+});
+it("rejects checksums, unsafe paths, oversized chunks and malformed operation IDs", () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-spool-")); roots.push(root);
+  expect(() => new MoveSpool(root, "../escape")).toThrow("operation ID");
+  const spool = new MoveSpool(root, ID), file = { path: "work", bytes: 3, sha256: digest(Buffer.from("yes")), executable: false };
+  expect(() => spool.offer({ version: 1, files: [{ ...file, path: "../escape" }] })).toThrow("unsafe path");
+  spool.offer({ version: 1, files: [file] }); expect(() => spool.put(0, 0, Buffer.from("bad"))).toThrow("checksum");
+  expect(() => spool.materialize(join(root, "received"))).toThrow();
+});

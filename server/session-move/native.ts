@@ -16,6 +16,7 @@ export class NativeMoveClient {
     try {
       const initialized = await client.request("initialize", { clientInfo: { name: "ovis_session_move", title: "Ovis session move", version: "1" }, capabilities: null });
       if (!initialized || typeof initialized !== "object" || (initialized as { codexHome?: string }).codexHome !== home) throw new MoveRefused("native_home_mismatch", "Codex is using a different session store");
+      if (!/\/0\.166\.0(?:\s|$)/.test((initialized as { userAgent?: string }).userAgent ?? "")) throw new MoveRefused("codex_incompatible", "The running Codex server differs from the supported 0.166.0 runtime");
       child.stdin.write(JSON.stringify({ method: "initialized" }) + "\n");
       return client;
     } catch (error) { await client.close(); throw error; }

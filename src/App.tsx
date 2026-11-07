@@ -14,7 +14,7 @@ import { PANE_TABPANEL_ID, paneTabPanelLabel } from "./lib/paneRegion.ts";
 import { worktreeRepoName } from "./lib/composerStrip.ts";
 import { AccessGate } from "./components/AccessGate.tsx";
 import { FlockViews } from "./components/FlockViews.tsx";
-import { FlockTable } from "./components/FlockTable.tsx";
+import { MovableFlockTable } from "./components/SessionMoveTable.tsx";
 import { AgentSidebar } from "./components/AgentSidebar.tsx";
 import { SidebarActivityProvider } from "./lib/sidebarActivity.tsx";
 import { useFlockView } from "./lib/flockView.ts";
@@ -800,7 +800,7 @@ export function App() {
           onStarting={setupGuide.voidTickets}
           onPaired={() => void loadHealth()}
           onOpened={(paneId, agentStarted) => { if (agentStarted) actions.agentStarted("local", paneId); setupGuide.finish(() => selectTarget("local", paneId)); void load(); }} /></MachineContext.Provider>}
-        {flockView === "table" ? (auth?.role === "watch" ? <p className="flock-note">{t("This device can only watch")}</p> : <FlockTable registry={flock.registry} rows={flockRows} machines={machines} selected={selectedPaneId ? { machine_id: selectedMachineId, pane_id: selectedPaneId } : null} error={flock.error} refresh={flock.refresh} change={flock.change} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />)
+        {flockView === "table" ? (auth?.role === "watch" ? <p className="flock-note">{t("This device can only watch")}</p> : <MovableFlockTable registry={flock.registry} rows={flockRows} machines={machines} selected={selectedPaneId ? { machine_id: selectedMachineId, pane_id: selectedPaneId } : null} error={flock.error} refresh={flock.refresh} change={flock.change} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />)
         : flockView === "agents" ? <div className="flock-agents"><SidebarActivityProvider value={activity}><AgentSidebar machines={sidebarMachines} selectedMachineId={selectedMachineId} selectedPaneId={selectedPaneId} stateWord={(machine) => machine.state} watching={auth?.role === "watch"} onSelect={selectTarget} /></SidebarActivityProvider></div>
         : guideShown ? null :
         <div ref={paneAreaRef} className={`pane-split${splitOn ? " is-split" : ""}`} onDragEnterCapture={paneDragOver} onDragOverCapture={paneDragOver} onDragLeave={paneDragLeave} onDropCapture={paneDrop}>

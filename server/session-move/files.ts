@@ -65,3 +65,18 @@ export function writeMoveFile(root: string, file: MoveFile, data: Uint8Array): v
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(path, data, { flag: "wx", mode: file.executable ? 0o700 : 0o600 });
 }
+
+/** Frozen staging chunks are bounded reads; the receiving spool verifies the manifest checksum before publication. */
+export function readMoveChunk(root: string, file: MoveFile, offset: number, limit: number): Buffer {
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.bytes || !Number.isSafeInteger(limit) || limit <= 0) throw new MoveRefused("invalid_chunk", "Invalid transfer offset");
+  const fd = openSync(inside(root, file.path), constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = fstatSync(fd, { bigint: true });
+    if (!before.isFile() || before.size !== BigInt(file.bytes)) throw new MoveRefused("corrupt_transfer", "Frozen source snapshot changed");
+    const data = Buffer.alloc(Math.min(limit, file.bytes - offset));
+    for (let at = 0; at < data.length;) { const count = readSync(fd, data, at, data.length - at, offset + at); if (!count) throw new MoveRefused("corrupt_transfer", "Frozen source snapshot shrank"); at += count; }
+    const after = fstatSync(fd, { bigint: true });
+    if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new MoveRefused("corrupt_transfer", "Frozen source snapshot changed during transfer");
+    return data;
+  } finally { closeSync(fd); }
+}

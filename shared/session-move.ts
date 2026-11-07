@@ -9,6 +9,8 @@ export interface SessionMoveRequest {
 export type SessionMovePhase = "preview" | "quiescing" | "snapshotting" | "snapshotted" | "restoring" | "restored" | "launching" | "verifying" | "binding" | "complete" | "cancelled";
 export interface SessionMovePlan {
   request: SessionMoveRequest;
+  operation_id?: string;
+  snapshot_fingerprint?: string;
   source_machine_id: string;
   native_thread_id: string;
   source_checkout: string;

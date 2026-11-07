@@ -50,7 +50,9 @@ export class MoveJournal {
 
 function validRecord(item: SessionMoveRecord): boolean {
   const plan = item?.plan, request = plan?.request;
-  return !!item && key(item.id) && PHASES.has(item.phase) && !!plan && !!request
+  const needsSnapshot = ["snapshotted", "restoring", "restored", "launching", "verifying", "binding", "complete"].includes(item?.phase);
+  const needsDestination = ["binding", "complete"].includes(item?.phase);
+  return !!item && (!needsSnapshot || item.snapshot !== null) && (!needsDestination || item.destination !== null) && key(item.id) && PHASES.has(item.phase) && !!plan && !!request
     && key(request.session_id) && key(request.source_execution_id) && key(request.destination_machine_id) && key(request.destination_checkout)
     && Array.isArray(request.untracked_files) && request.untracked_files.every(key)
     && key(plan.source_machine_id) && key(plan.native_thread_id) && key(plan.source_checkout) && key(plan.fingerprint)

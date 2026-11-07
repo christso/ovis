@@ -43,7 +43,7 @@ export function snapshotHistoryIndex(home: string, ranges: readonly { id: string
 }
 
 /** The installed destination CLI initializes its schema first. Append selected cache rows atomically; never replace existing rows. */
-export function restoreHistoryIndex(home: string, snapshot: CodexHistoryIndex): void {
+export function restoreHistoryIndex(home: string, snapshot: CodexHistoryIndex, acceptIdentical = false): void {
   if (snapshot.version !== 1 || snapshot.tables.length !== TABLES.length || new Set(snapshot.tables.map((item) => item.table)).size !== TABLES.length
     || snapshot.tables.some((item) => !TABLES.includes(item.table) || item.columns.some((name) => !/^[a-z_]+$/.test(name)))) throw new MoveRefused("unsupported_history_index", "Unsupported Codex history index snapshot");
   const db = new Database(inside(home, "thread_history_1.sqlite"), sqliteConstants.SQLITE_OPEN_READWRITE);
@@ -53,8 +53,11 @@ export function restoreHistoryIndex(home: string, snapshot: CodexHistoryIndex): 
       for (const table of snapshot.tables) {
         const columns = (db.query(`PRAGMA table_info(${table.table})`).all() as { name: string }[]).map((item) => item.name);
         if (JSON.stringify(columns) !== JSON.stringify(table.columns)) throw new MoveRefused("unsupported_history_index", "Codex history columns differ from the source");
-        for (const id of snapshot.rollout_ids) {
-          if (db.query(`SELECT 1 FROM ${table.table} WHERE thread_id = ? LIMIT 1`).get(id)) throw new MoveRefused("destination_conflict", "Destination already has history for a transferred rollout");
+        const placeholders = snapshot.rollout_ids.map(() => "?").join(",");
+        const existing = db.query(`SELECT * FROM ${table.table} WHERE thread_id IN (${placeholders}) ORDER BY thread_id, ${table.table === "thread_history_projection_state" ? "next_rollout_ordinal" : "rollout_ordinal"}`).all(...snapshot.rollout_ids) as Record<string, Cell>[];
+        if (existing.length) {
+          if (!acceptIdentical || JSON.stringify(existing.map((row) => columns.map((column) => row[column]))) !== JSON.stringify(table.rows)) throw new MoveRefused("destination_conflict", "Destination already has history that differs or is not owned by this transfer");
+          continue;
         }
         const insert = db.query(`INSERT INTO ${table.table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`);
         const threadColumn = columns.indexOf("thread_id");
