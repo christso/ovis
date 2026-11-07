@@ -31,7 +31,7 @@ import { neighborPane } from "../../src/lib/layoutMap.ts";
 import { closeLayoutPane, resizeLayout, setLayoutSplitRatio, splitLayout, swapLayoutPanes } from "../../src/lib/layoutTree.ts";
 import { rollupStatus } from "../../src/lib/status.ts";
 import { movedTabOrder } from "../../src/lib/tabOrder.ts";
-import { agentSkillRows, CHATS, DEMO_AGENT_CATALOG, DEMO_FLOCK, DEMO_PUSH, PROMPT, resumedSession, SESSION_HISTORY_AGENTS, sessionHistoryRows, SPECS, type DemoSpec } from "./fixtures.ts";
+import { agentSkillRows, CHATS, DEMO_AGENT_CATALOG, DEMO_FLOCK, DEMO_SESSION_MOVES, DEMO_PUSH, PROMPT, resumedSession, SESSION_HISTORY_AGENTS, sessionHistoryRows, SPECS, type DemoSpec } from "./fixtures.ts";
 import { DemoHistory } from "./history.ts";
 import { screenAgent, screenCommand, screenFrame } from "./agentScreens.ts";
 import machinesFixture from "./fixtures/machines.json";
@@ -1298,6 +1298,10 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
   // Connection breadcrumbs stay inside the fictional demo; never send them to a real endpoint.
   if (path === "/api/connection-diagnostics") return new Response(null, { status: 204 });
   // the demo is one browser: a finish read here is kept in its own storage, with no other browser to tell
+  if (path === "/api/session-moves") {
+    if (method === "GET") return json(DEMO_SESSION_MOVES, 200, { "cache-control": "no-store" });
+    return error("demo_read_only", "Session transfers use configured PCs and are not run in the demo.", 400);
+  }
   if (path === "/api/flock") {
     if (method === "GET") return json({ ...DEMO_FLOCK, sources: machines }, 200, { "cache-control": "no-store" });
     return error("demo_read_only", "Logical associations are not saved in the demo. Use your own Ovis instance to associate sessions.", 400);

@@ -3973,3 +3973,41 @@ visible. Association is explicit, and selectors include IDs to disambiguate equa
 sessions without proven IDs stay visible as unassociated; stale or disconnected bindings cannot open
 terminals from Table. Rename changes a label, never an identity. Work and session names live in the
 manager's registry; naming a session does not rename its native agent or move its files.
+
+
+### Planned Codex session moves
+
+Table keeps the action beside the current registered execution. A single dialog
+shows destination, explicit untracked scope, preview, progress and recovery. This
+follows the Codex app's session-picker/resume model: a conversation is selected
+explicitly and native history remains native. Ovis adds the transfer preview because
+it must carry checkout work across configured PCs. No external application code or
+pixels were copied.
+
+Preview precedes native exit so the bridge can resolve the actual process and custom
+Codex home. The user finishes and exits Codex, then confirms it; Ovis refuses any
+remaining native writer lock. Recovery reopens the same operation, shows retained
+source data and checks an uncertain destination instead of offering a second launch.
+The moved-session link requires fresh proof of machine, daemon lifetime, pane and
+native identity before it becomes available. All dialog text is translated and uses
+existing dialog/button tokens on desktop and phone.
+
+The phone transfer surface follows Paseo's compact sheet pattern: a stable header
+and action footer around a scrollable body, constrained to the keyboard-visible
+frame. The references are its [mobile/session overview](https://github.com/getpaseo/paseo/blob/main/README.md),
+[adaptive sheet](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/adaptive-modal-sheet.tsx)
+and [safe-area/keyboard layout](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/adaptive-modal-sheet-layout.ts).
+Ovis retains its existing web sheet, touch and safe-area tokens; no source or pixels
+were copied. Unlike a session picker, transfer keeps the native-exit checkbox and
+individual file scope explicit, with the primary action on its own full-width row.
+
+Long session names and transfer paths wrap inside the surface, including the
+pending-move action behind it. The sheet's height also respects its containing
+visible frame: a full-layout-viewport `dvh` limit alone can put the header above an
+open phone keyboard. File rows and disclosures keep 44px touch targets, and the
+header/footer do not shrink when the body scrolls. If the body shrinks around a
+focused checkout field, the dialog scrolls that field fully into its own body; the
+footer cannot cover the field or its caret. Desktop controls retain their
+existing arrangement. Phone evidence uses fictional transfer/proof fixtures;
+keyboard-sized geometry is simulated in Chromium, without an actual-device Safari
+or native-transfer claim.

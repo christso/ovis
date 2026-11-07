@@ -16,6 +16,9 @@ import { isLoopbackBind, lanExposed } from "./access.ts";
 import { DeviceStore } from "./devices.ts";
 import { PreferenceStore } from "./preferences.ts";
 import { FlockStore } from "./flock.ts";
+import { MoveNode } from "./session-move/node.ts";
+import { MoveCoordinator } from "./session-move/coordinator.ts";
+import { moveRuntime } from "./session-move/runtime.ts";
 import { SeenStore } from "./seen.ts";
 import { TailnetIdentitySource } from "./tailscale.ts";
 import { SHELL_AGENTS, ShellAgentLocator } from "./shell-agent.ts";
@@ -323,9 +326,11 @@ export function createServer(
     websocket: core.websocket,
   });
 
+  const moveNode = new MoveNode(stateDir, moveRuntime(core.clientSnapshot, options.codexHome));
+  const sessionMoves = machines ? new MoveCoordinator(stateDir, flock, machines, core.clientSnapshot, moveNode, options.codexHome) : null;
   const requestLog = new RequestLog(stateDir);
   const services: RequestServices = {
-    options, flock, relay: ovisRelay, launcherSearch, savedLaunchers, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartup,
+    options, flock, moveNode, sessionMoves, relay: ovisRelay, launcherSearch, savedLaunchers, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartup,
     get portalStartupResult() { return portalStartupResult; },
   };
   ovisRelay.resume(services, server.port ?? DEFAULT_PORT);
@@ -374,6 +379,7 @@ export function createServer(
       });
     },
     stop: () => {
+      moveNode.close();
       void ovisRelay.shutdown();
       settlePortalStartup({ ok: false, error: new Error("Server stopped before Portal startup cleanup completed") });
       core.stop(() => {

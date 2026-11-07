@@ -12,6 +12,10 @@ import { DEFAULT_PORT } from "../shared/protocol.ts";
 import { authClient, deviceCookieValue, bearerMatches, handleAuthRequest, isAuthenticated, isSecureRequest, parseCookies, presentedToken, presentedTokenHeld, recordPresentedTokenFailure, requiresAuth, unauthorizedJson } from "./auth.ts";
 import { bindScope, cameThroughProxy, decideAccess, forwardingHeaders, isLoopbackAddress, isServeOwnerRequest, lanExposed, observedIngress } from "./access.ts";
 import { type DeviceStore, handleDeviceRequest, newStreamKey, sameBrowser, streamCookie, streamKeys, type DeviceMatch } from "./devices.ts";
+import { MOVE_NODE_PATH } from "./session-move/transport.ts";
+import { MOVE_PATH, handleMoveNode, handleSessionMoves } from "./session-move/routes.ts";
+import type { MoveNode } from "./session-move/node.ts";
+import type { MoveCoordinator } from "./session-move/coordinator.ts";
 import { readFlockSource, verifyFlockSnapshot } from "./flock-source.ts";
 import { handleFlockRequest, type FlockStore } from "./flock.ts";
 import { handlePreferencesRequest, type PreferenceStore } from "./preferences.ts";
@@ -77,6 +81,8 @@ export interface RequestServices {
   readonly devices: DeviceStore;
   readonly preferences: PreferenceStore;
   readonly flock: FlockStore;
+  readonly moveNode: MoveNode;
+  readonly sessionMoves: MoveCoordinator | null;
   readonly herdrSidebar: HerdrSidebarConfig;
   readonly identityOf: (grantPath: boolean, host: string | null) => Promise<TailnetIdentity>;
   readonly serveOnly: boolean;
@@ -113,7 +119,7 @@ export interface ServerContext {
 }
 
 export async function handleRequest(request: Request, ctx: ServerContext): Promise<Response | undefined> {
-  const { options, flock, launcherSearch, savedLaunchers, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
+  const { options, flock, moveNode, sessionMoves, launcherSearch, savedLaunchers, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
   const { sidecar, serialize, push, logPushError, omo, claudeAgents, opencodeAgents, plans, clientSnapshot, machines, broadcastAll, collector, queueFirstMessage } = core;
   return requestLog.handle(request, async (headers) => {
   const startup = portalStartupResult ?? await portalStartup;
@@ -133,7 +139,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   // custom header (update-api.ts), and whoever holds the token already drives every pane here. Only those two
   // requests, each by its own method and with no query: the token opens nothing else of these routes (#2054)
   const bridgeUpdatePath = url.search === "" && (pathname === "/api/updates" ? request.method === "GET" : pathname === "/api/updates/install" && request.method === "POST");
-  const bridgePath = pathname === "/api/bridge" || pathname === "/api/session" || pathname === SESSION_HISTORY_PATH || pathname === SESSION_RESUME_PATH || pathname === "/api/agents/launchers" || /^\/api\/agents\/launchers\/search\/?$/.test(pathname) || pathname === "/api/agents" || pathname === "/api/agent-catalog" || pathname === INSTALL_PATH || pathname === SIGN_IN_PATH || pathname === "/api/agent/rename" || pathname === "/api/agent/commands" || pathname === "/api/integrations" || pathname === "/api/usage/statusline" || pathname === "/api/plugins/actions" || pathname === "/api/plugin/action" || pathname.startsWith("/api/pane/") || pathname.startsWith("/api/workspace/") || pathname.startsWith("/api/worktree/") || pathname.startsWith("/api/tab/") || pathname === "/api/layout/ratio" || pathname.startsWith("/api/fs/") || pathname === "/ws" || bridgeUpdatePath;
+  const bridgePath = pathname === MOVE_NODE_PATH || pathname === "/api/bridge" || pathname === "/api/session" || pathname === SESSION_HISTORY_PATH || pathname === SESSION_RESUME_PATH || pathname === "/api/agents/launchers" || /^\/api\/agents\/launchers\/search\/?$/.test(pathname) || pathname === "/api/agents" || pathname === "/api/agent-catalog" || pathname === INSTALL_PATH || pathname === SIGN_IN_PATH || pathname === "/api/agent/rename" || pathname === "/api/agent/commands" || pathname === "/api/integrations" || pathname === "/api/usage/statusline" || pathname === "/api/plugins/actions" || pathname === "/api/plugin/action" || pathname.startsWith("/api/pane/") || pathname.startsWith("/api/workspace/") || pathname.startsWith("/api/worktree/") || pathname.startsWith("/api/tab/") || pathname === "/api/layout/ratio" || pathname.startsWith("/api/fs/") || pathname === "/ws" || bridgeUpdatePath;
   const ip = relayPeer === undefined ? ctx.requestIP(request) : null;
   const loopback = ip !== null && isLoopbackAddress(ip.address);
   const forwarded = relayPeer === undefined && cameThroughProxy(request.headers);
@@ -233,7 +239,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   // a repository's checkouts are its folders' paths and branches, those not open in herdr too; the worktree
   // dialog that lists them is a drive feature, and the sidebar names a branch only for a driving device (#2250)
   const worktreeList = /^\/api\/(?:machines\/[^/]+\/)?worktree\/list$/.test(pathname);
-  if (readOnly && (fileRead || directoryListing || repositoryDiff || launcherDefinitions || sessionHistory || commandRows || paneFiles || pluginRun || worktreeList || pathname === "/api/flock" || mutating && !ownPreferences)) {
+  if (readOnly && (fileRead || directoryListing || repositoryDiff || launcherDefinitions || sessionHistory || commandRows || paneFiles || pluginRun || worktreeList || pathname === "/api/flock" || pathname === MOVE_PATH || pathname === MOVE_NODE_PATH || mutating && !ownPreferences)) {
     setRequestRoute("watch-refusal");
     return jsonResponse({ error: { code: "read_only", message: "this device can only watch" } }, 403);
   }
@@ -274,7 +280,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
     if (pathname.startsWith("/api/machines/local/")) {
       if (!sameOrigin(request) || (request.method !== "GET" && request.headers.get("x-herdr-machine") !== "1")) return jsonResponse({ error: { code: "invalid_origin", message: "Use PC controls from this app" } }, 403);
       pathname = pathname.replace("/api/machines/local/", "/api/");
-      if (!/^\/api\/(session|agents|agent-catalog$|agent-catalog\/(?:install|sign-in)$|integrations|pane\/|workspace\/|worktree\/|tab\/|layout\/ratio$|agent\/(?:rename|commands)$|plugins\/actions$|plugin\/action$|sessions\/(?:history|resume)$)/.test(pathname)) return badRequest("invalid_route", "Unknown PC endpoint");
+      if (!/^\/api\/(session$|agents|agent-catalog$|agent-catalog\/(?:install|sign-in)$|integrations|pane\/|workspace\/|worktree\/|tab\/|layout\/ratio$|agent\/(?:rename|commands)$|plugins\/actions$|plugin\/action$|sessions\/(?:history|resume)$)/.test(pathname)) return badRequest("invalid_route", "Unknown PC endpoint");
       url.pathname = pathname;
     } else {
       // a worktree made with an agent waits on git and then agent.start, up to 150 s on the PC, and a
@@ -375,6 +381,8 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   if (pathname === "/api/connection-diagnostics") { setRequestRoute(pathname); return clientConnectionLog.handle(request, client ?? "unknown"); }
   if (pathname === "/api/telemetry") { setRequestRoute(pathname); return handleTelemetryRequest(request, options.telemetry); }
   // what every browser of this server shares; a watching device reads it and cannot change it (above)
+  if (pathname === MOVE_NODE_PATH) { setRequestRoute(MOVE_NODE_PATH); return handleMoveNode(request, moveNode, bridgeAuthorized || options.bridgeOnly === true && tokenMatched); }
+  if (pathname === MOVE_PATH) return handleSessionMoves(request, sessionMoves);
   if (pathname === "/api/flock") { setRequestRoute(pathname); return handleFlockRequest(request, flock, machines?.list() ?? [], (id) => readFlockSource(machines, id, clientSnapshot, options.codexHome), browserSnapshot); }
   if (pathname === "/api/preferences") { setRequestRoute(pathname); return handlePreferencesRequest(request, preferences); }
   // the finishes read in some browser of this server; a watching device reads them and cannot add to them (above)
