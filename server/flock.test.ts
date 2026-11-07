@@ -10,8 +10,30 @@ const roots: string[] = [];
 function root() { const dir = mkdtempSync(join(tmpdir(), "ovis-flock-")); roots.push(dir); return dir; }
 afterEach(() => { for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 const machine = (id = "local", lifetime = "herdr-1", native = "native-1"): Machine => ({ id, name: id, kind: "local", enabled: true, state: "connected", error: null,
-  snapshot: { agents: [], layouts: [], protocol: 1, version: "fixture", focused_workspace_id: "w1", focused_pane_id: "w1:p1", workspaces: [], tabs: [], panes: [{ pane_id: "w1:p1", workspace_id: "w1", tab_id: "w1:t1", terminal_id: "t1", revision: 0, focused: true, agent: "codex", agent_status: "working", cwd: "/fixture/repo", agent_session: { agent: "codex", kind: "id", source: "fixture", value: native } }], herdr_lifetime: lifetime } });
+  snapshot: { agents: [], layouts: [], protocol: 1, version: "fixture", focused_workspace_id: "w1", focused_pane_id: "w1:p1", workspaces: [], tabs: [], panes: [{ pane_id: "w1:p1", workspace_id: "w1", tab_id: "w1:t1", terminal_id: "t1", revision: 0, focused: true, agent: "codex", agent_status: "working", cwd: "/fixture/repo", agent_session: { agent: "codex", kind: "id", source: "fixture", value: native } }], herdr_lifetime: lifetime,
+    flock_bindings: [{ pane_id: "w1:p1", terminal_id: "t1", agent: "codex", native_session_id: native }] } });
 const binding = (id = "local") => ({ machine_id: id, pane_id: "w1:p1", herdr_lifetime: "herdr-1", agent: "codex", native_session_id: "native-1" });
+
+it("keeps a bare Herdr native-session hint visible but cannot adopt or target it", () => {
+  const source = machine();
+  delete source.snapshot!.flock_bindings;
+  const store = new FlockStore(root());
+  const [row] = flockInventory(store.read(), [source]);
+  expect(row!.availability).toBe("unsupported");
+  expect(flockTarget(row!)).toBeNull();
+  expect(() => store.change(0, { type: "adopt", name: "Wrong pane's thread", binding: binding() }, [source])).toThrow();
+  expect(store.read().revision).toBe(0);
+});
+
+it("uses verified ownership when the reported hint names another pane's thread, and rejects a recycled terminal", () => {
+  const source = machine();
+  source.snapshot!.panes[0]!.agent_session!.value = "another-panes-thread";
+  const store = new FlockStore(root());
+  const doc = store.change(0, { type: "adopt", name: "Proven session", binding: binding() }, [source]);
+  expect(doc.executions[0]!.native_session_id).toBe("native-1");
+  source.snapshot!.panes[0]!.terminal_id = "replacement-terminal";
+  expect(flockTarget(flockInventory(doc, [source])[0]!)).toBeNull();
+});
 
 it("keeps explicit identities through renames, restart, duplicate names and subsequent executions", () => {
   const dir = root(); const store = new FlockStore(dir);

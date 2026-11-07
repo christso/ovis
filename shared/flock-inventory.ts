@@ -18,9 +18,10 @@ export interface FlockRow {
 }
 
 export function flockBinding(machine: Machine, pane: HerdrPane): FlockBinding | null {
-  const session = pane.agent_session;
-  if (!machine.snapshot?.herdr_lifetime || !pane.agent || !session?.value || session.kind !== "id" || session.agent !== pane.agent || pane.restore_error) return null;
-  return { machine_id: machine.id, herdr_lifetime: machine.snapshot.herdr_lifetime, pane_id: pane.pane_id, agent: pane.agent, native_session_id: session.value };
+  if (!machine.snapshot?.herdr_lifetime || !pane.agent || pane.restore_error) return null;
+  const proofs = machine.snapshot.flock_bindings?.filter((proof) => proof.pane_id === pane.pane_id && proof.terminal_id === pane.terminal_id && proof.agent === pane.agent);
+  if (proofs?.length !== 1 || !proofs[0]!.native_session_id) return null;
+  return { machine_id: machine.id, herdr_lifetime: machine.snapshot.herdr_lifetime, pane_id: pane.pane_id, agent: pane.agent, native_session_id: proofs[0]!.native_session_id };
 }
 
 export function sameFlockBinding(a: FlockBinding, b: FlockBinding): boolean {

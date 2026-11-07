@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { FlockCommand, FlockRegistry } from "../shared/flock.ts";
 import { flockCommandValue, flockRegistryValue } from "../shared/flock-schema.ts";
 import type { Machine } from "../shared/machines.ts";
+import type { SessionSnapshot } from "../shared/protocol.ts";
 import { flockBinding, flockCheckout, sameFlockBinding } from "../shared/flock-inventory.ts";
 import { isJsonObject, jsonResponse } from "./http.ts";
 import { readStateDocument, writeStateDocument } from "./state-document.ts";
@@ -65,10 +66,24 @@ export class FlockStore {
 }
 
 /** Manager-only document: never forwarded through the per-machine API. */
-export async function handleFlockRequest(request: Request, store: FlockStore, machines: readonly Machine[], readSource?: (id: string) => Promise<readonly Machine[]>): Promise<Response> {
+export async function handleFlockRequest(request: Request, store: FlockStore, machines: readonly Machine[], readSource?: (id: string) => Promise<readonly Machine[]>, presentSnapshot: (snapshot: SessionSnapshot) => SessionSnapshot = (snapshot) => snapshot): Promise<Response> {
   const reply = (body: unknown, status = 200) => jsonResponse(body, status, { "cache-control": "no-store" });
   try {
-    if (request.method === "GET") return reply(store.read());
+    if (request.method === "GET") {
+      const registry = store.read();
+      if (new URL(request.url).searchParams.get("sources") !== "1") return reply(registry);
+      const sources = await Promise.all(machines.map(async (machine) => {
+        try {
+          if (readSource && machine.state === "connected") {
+            const source = (await readSource(machine.id))[0];
+            if (source) return source;
+          }
+        }
+        catch { /* unavailable proof cannot authorize an inventory row */ }
+        return { ...machine, snapshot: machine.snapshot ? { ...machine.snapshot, flock_bindings: readSource ? [] : machine.snapshot.flock_bindings } : null };
+      }));
+      return reply({ ...registry, sources: sources.map((source) => ({ ...source, snapshot: source.snapshot ? presentSnapshot(source.snapshot) : null })) });
+    }
     if (request.method !== "POST") return reply({ error: { code: "method_not_allowed", message: "Use GET or POST /api/flock" } }, 405);
     if (!sameOrigin(request) || request.headers.get("x-herdr-machine") !== "1") return reply({ error: { code: "invalid_origin", message: "Use controls from this app" } }, 403);
     const body = await request.text();

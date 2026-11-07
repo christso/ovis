@@ -1,4 +1,4 @@
-import type { FlockCommand, FlockRegistry } from "../../shared/flock.ts";
+import type { FlockCommand, FlockRead, FlockRegistry } from "../../shared/flock.ts";
 import { apiFetch } from "./api-request-id.ts";
 import { flockRegistryValue } from "../../shared/flock-schema.ts";
 import { ApiError, errorFrom } from "./api.ts";
@@ -9,8 +9,8 @@ async function registryResponse(response: Response): Promise<FlockRegistry> {
   return value;
 }
 
-export async function fetchFlock(): Promise<FlockRegistry> {
-  const response = await apiFetch("/api/flock");
+export async function fetchFlock(): Promise<FlockRead> {
+  const response = await apiFetch("/api/flock?sources=1");
   if (!response.ok) throw await errorFrom("/api/flock", response);
   return registryResponse(response);
 }

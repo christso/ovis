@@ -9,6 +9,6 @@ export type FlockView = "workspace" | "agents" | "table";
 export function useFlockView(enabled: boolean, machines: readonly Machine[]) {
   const [view, setView] = useState<FlockView>("workspace");
   const flock = useFlock(enabled && view === "table");
-  const rows = useFlockInventory(flock.registry, machines);
+  const rows = useFlockInventory(flock.registry, machines, flock.sources);
   return { view, setView, rows, ...flock };
 }

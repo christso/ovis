@@ -30,7 +30,7 @@ beforeAll(async () => {
 }, 15000);
 afterAll(async () => { app?.stop(); if (workspace) await workspaceClose(workspace); rmSync(root, { recursive: true, force: true }); });
 
-it("persists through the real authenticated HTTP seam, refuses stale revisions and checks current native binding", async () => {
+it("persists through authenticated HTTP, refuses stale revisions and never promotes raw native hints", async () => {
   const manager = app.context.services.core.machines!;
   let unsubscribe = () => {};
   let timer: ReturnType<typeof setTimeout>;
@@ -44,17 +44,19 @@ it("persists through the real authenticated HTTP seam, refuses stale revisions a
   const roster = await (await fetch(`${base}/api/machines`)).json() as MachineRoster;
   const machine = roster.machines.find((item) => item.id === "local")!;
   const selected = machine.snapshot!.panes.find((item) => item.pane_id === pane)!;
-  const binding = flockBinding(machine, selected)!;
-  expect(binding.native_session_id).toBe(native);
-  const response = await fetch(`${base}/api/flock`, { method: "POST", headers: headers(), body: JSON.stringify({ revision: 0, command: { type: "adopt", name: "Fixture session", binding } }) });
+  expect(flockBinding(machine, selected)).toBeNull();
+  const binding = { machine_id: machine.id, pane_id: pane, herdr_lifetime: machine.snapshot!.herdr_lifetime!, agent: "codex", native_session_id: native };
+  const unproven = await fetch(`${base}/api/flock`, { method: "POST", headers: headers(), body: JSON.stringify({ revision: 0, command: { type: "adopt", name: "Unproven fixture", binding } }) });
+  expect(unproven.status).toBe(409);
+  const response = await fetch(`${base}/api/flock`, { method: "POST", headers: headers(), body: JSON.stringify({ revision: 0, command: { type: "create-work", name: "Fixture work" } }) });
   expect(response.status).toBe(200);
   expect(response.headers.get("cache-control")).toBe("no-store");
   const doc = await response.json() as FlockRegistry;
-  expect(doc.executions[0]).toMatchObject(binding);
+  expect(doc.executions).toEqual([]);
+  expect(doc.works[0]!.name).toBe("Fixture work");
   const stale = await fetch(`${base}/api/flock`, { method: "POST", headers: headers(), body: JSON.stringify({ revision: 0, command: { type: "create-work", name: "Stale" } }) });
   expect(stale.status).toBe(409);
-  // Herdr pins a reported Codex session to its pane. Close a separate, unadopted source
-  // while the manager still offers its old snapshot, so only a fresh source read can refuse it.
+  // A cached report is not ownership proof, and closing its source cannot make it adoptable.
   const other = await workspaceCreate({ cwd: root, label: "ovis-test-flock-stale-source" });
   let closed = false;
   try {
@@ -62,8 +64,7 @@ it("persists through the real authenticated HTTP seam, refuses stale revisions a
     await herdrRpc("pane.report_agent", { pane_id: otherPane, source: "manual", agent: "codex", state: "idle" });
     await herdrRpc("pane.report_agent_session", { pane_id: otherPane, source: "herdr:codex", agent: "codex", seq: 1, agent_session_id: nextNative });
     const cached = { ...machine, snapshot: await app.context.services.core.clientSnapshot() };
-    const unadoptedBinding = flockBinding(cached, cached.snapshot.panes.find((item) => item.pane_id === otherPane)!)!;
-    expect(unadoptedBinding.native_session_id).toBe(nextNative);
+    const unadoptedBinding = { ...binding, pane_id: otherPane, native_session_id: nextNative };
     await workspaceClose(other.workspace.workspace_id); closed = true;
     const staleRoster = spyOn(manager, "list").mockReturnValue([cached]);
     try {
@@ -79,6 +80,7 @@ it("enforces origin, custom-header, authentication, watch and manager-only bound
   expect((await fetch(`${base}/api/flock`, { method: "POST", headers: { origin: "https://other.invalid", "x-herdr-machine": "1" }, body })).status).toBe(403);
   expect((await fetch(`${base}/api/flock`, { method: "POST", headers: { origin: base }, body })).status).toBe(403);
   for (const method of ["GET", "POST"]) expect((await fetch(`${base}/api/flock`, { method, headers: { ...headers(), cookie: watchCookie }, ...(method === "POST" ? { body } : {}) })).status).toBe(403);
+  expect((await fetch(`${base}/api/session?flock=1`, { headers: { cookie: watchCookie } })).status).toBe(403);
   expect((await fetch(`${base}/api/machines/local/flock`)).status).toBe(400);
   // The dedicated bridge credential cannot read the manager's registry.
   const privateDir = mkdtempSync(join(root, "private-"));

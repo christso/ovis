@@ -49,3 +49,15 @@ it("disables writes after an unreadable format until a supported registry reload
   await act(async () => { await latest.refresh(); });
   expect(latest.registry).toEqual(registry);
 });
+
+it("keeps ephemeral source proofs out of the registry and clears them when a refresh fails", async () => {
+  let unavailable = false;
+  const sources = [{ id: "owned-fixture", name: "Owned fixture", kind: "local" as const, enabled: true, state: "connected" as const, error: null, snapshot: null }];
+  setTransport({ ...nativeTransport, fetch: async () => unavailable ? new Response("unavailable", { status: 503 }) : Response.json({ ...registry, sources }) });
+  await act(async () => { renderer = create(createElement(Probe)); });
+  expect(latest.sources).toEqual(sources);
+  expect(latest.registry).toEqual(registry);
+  unavailable = true;
+  await act(async () => { await latest.refresh(); });
+  expect(latest.sources).toEqual([]);
+});

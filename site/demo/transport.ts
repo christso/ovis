@@ -1299,7 +1299,7 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
   if (path === "/api/connection-diagnostics") return new Response(null, { status: 204 });
   // the demo is one browser: a finish read here is kept in its own storage, with no other browser to tell
   if (path === "/api/flock") {
-    if (method === "GET") return json(DEMO_FLOCK, 200, { "cache-control": "no-store" });
+    if (method === "GET") return json({ ...DEMO_FLOCK, sources: machines }, 200, { "cache-control": "no-store" });
     return error("demo_read_only", "Logical associations are not saved in the demo. Use your own Ovis instance to associate sessions.", 400);
   }
   if (path === "/api/seen") return method === "POST" ? new Response(null, { status: 204 }) : json({ finishes: [] }, 200, { "cache-control": "no-store" });

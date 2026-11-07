@@ -27,6 +27,9 @@ machines.push(remote, offline, { ...offline, id: "fixture-unavailable", name: "F
 const unproven = structuredClone(machines[0]!.snapshot!.panes.find((pane) => pane.agent)!);
 unproven.pane_id = "fixture-unproven"; unproven.label = "Unproven fixture"; unproven.agent_session = null;
 machines[0]!.snapshot!.panes.push(unproven);
+// Explicit fictional ownership proofs stand in for the real native reader in this UI fixture.
+for (const machine of machines) if (machine.snapshot) machine.snapshot.flock_bindings = machine.snapshot.panes.flatMap((pane) => pane.agent && pane.agent_session?.kind === "id"
+  ? [{ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: pane.agent, native_session_id: pane.agent_session.value }] : []);
 const chosen = machines[0]!.snapshot!.panes.find((pane) => pane.agent)!;
 const evidence = process.env["UI_EVIDENCE_DIR"];
 let stateDir = join(root, "state");

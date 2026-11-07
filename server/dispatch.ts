@@ -12,7 +12,7 @@ import { DEFAULT_PORT } from "../shared/protocol.ts";
 import { authClient, deviceCookieValue, bearerMatches, handleAuthRequest, isAuthenticated, isSecureRequest, parseCookies, presentedToken, presentedTokenHeld, recordPresentedTokenFailure, requiresAuth, unauthorizedJson } from "./auth.ts";
 import { bindScope, cameThroughProxy, decideAccess, forwardingHeaders, isLoopbackAddress, isServeOwnerRequest, lanExposed, observedIngress } from "./access.ts";
 import { type DeviceStore, handleDeviceRequest, newStreamKey, sameBrowser, streamCookie, streamKeys, type DeviceMatch } from "./devices.ts";
-import { readFlockSource } from "./flock-source.ts";
+import { readFlockSource, verifyFlockSnapshot } from "./flock-source.ts";
 import { handleFlockRequest, type FlockStore } from "./flock.ts";
 import { handlePreferencesRequest, type PreferenceStore } from "./preferences.ts";
 import { handleSeenRequest, type SeenStore } from "./seen.ts";
@@ -375,7 +375,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   if (pathname === "/api/connection-diagnostics") { setRequestRoute(pathname); return clientConnectionLog.handle(request, client ?? "unknown"); }
   if (pathname === "/api/telemetry") { setRequestRoute(pathname); return handleTelemetryRequest(request, options.telemetry); }
   // what every browser of this server shares; a watching device reads it and cannot change it (above)
-  if (pathname === "/api/flock") { setRequestRoute(pathname); return handleFlockRequest(request, flock, machines?.list() ?? [], (id) => readFlockSource(machines, id, clientSnapshot)); }
+  if (pathname === "/api/flock") { setRequestRoute(pathname); return handleFlockRequest(request, flock, machines?.list() ?? [], (id) => readFlockSource(machines, id, clientSnapshot, options.codexHome), browserSnapshot); }
   if (pathname === "/api/preferences") { setRequestRoute(pathname); return handlePreferencesRequest(request, preferences); }
   // the finishes read in some browser of this server; a watching device reads them and cannot add to them (above)
   if (pathname === "/api/seen") { setRequestRoute(pathname); return handleSeenRequest(request, seen); }
@@ -455,10 +455,11 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
 
   if (pathname === "/api/session") {
     setRequestRoute(pathname);
+    if (url.searchParams.get("flock") === "1" && readOnly) return jsonResponse({ error: { code: "read_only", message: "this device can only watch" } }, 403);
     try {
       // another Ovis server reading this PC (its bridge token) applies its own rows; a browser gets this server's
-      const snapshot = await clientSnapshot();
-      return jsonResponse({ snapshot: bridgeAuthorized ? snapshot : browserSnapshot(snapshot) });
+      const snapshot = url.searchParams.get("flock") === "1" ? await verifyFlockSnapshot(clientSnapshot, options.codexHome) : await clientSnapshot();
+      return jsonResponse({ snapshot: bridgeAuthorized ? snapshot : browserSnapshot(snapshot) }, 200, { "cache-control": "no-store" });
     } catch (error) {
       return errorResponse(error);
     }
