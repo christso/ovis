@@ -30,7 +30,7 @@ function observation(value: unknown, ownId: string): FlockObservation | null {
   const event = { id: item.id, kind: item.kind === "started" ? "delegation" : "communication", source_native_session_id: ownId,
     target_native_session_id: typeof item.agent_thread_id === "string" ? item.agent_thread_id.toLowerCase() : item.agent_thread_id,
     occurred_at: new Date(timestamp).toISOString(), source: "codex" };
-  return flockObservationValue(event) && event.target_native_session_id.toLowerCase() !== ownId.toLowerCase() ? event : null;
+  return flockObservationValue(event) ? event : null;
 }
 
 /**
@@ -74,7 +74,6 @@ async function scan(path: string, ownId: string, key: string): Promise<FlockObse
     while (at < bytesRead) {
       const end = bytes.subarray(0, bytesRead).indexOf(0x0a, at);
       if (end < 0) {
-        // Do not retry an oversized unterminated record forever. Ordinary partial lines wait for append.
         if (current.skipLine || bytesRead - at > LINE_BYTES) { current.offset += bytesRead - at; current.skipLine = true; }
         break;
       }
@@ -82,7 +81,7 @@ async function scan(path: string, ownId: string, key: string): Promise<FlockObse
         try {
           const event = observation(JSON.parse(bytes.subarray(at, end).toString("utf8")), ownId);
           if (event && !current.events.has(event.id)) current.events.set(event.id, event);
-        } catch { /* A malformed native record does not establish a relationship. */ }
+        } catch {}
       }
       current.skipLine = false;
       current.offset += end + 1 - at;

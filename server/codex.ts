@@ -3030,11 +3030,6 @@ export async function codexTranscriptPath(paneId: string, cwd: string, home = de
   return loadedConversation((screen ?? await paneRead({ paneId, source: "recent", lines: 400, stripAnsi: true })).text, paths, home);
 }
 
-/** Flock uses the chat's ownership proof, never the shared daemon's reported thread hint. */
-export async function codexPaneSession(paneId: string, cwd: string, configured?: string, panes?: HerdrPane[]): Promise<string | null> {
-  return (await codexPaneSource(paneId, cwd, configured, panes))?.id ?? null;
-}
-
 async function codexPaneSource(paneId: string, cwd: string, configured?: string, panes?: HerdrPane[]): Promise<{ id: string; path: string } | null> {
   const { home, placed } = await paneCodexHomePlaced(paneId, configured);
   const path = await codexTranscriptPath(paneId, cwd, home, panes, !placed);

@@ -5,7 +5,7 @@ import type { Machine, PaneTarget } from "../../shared/machines.ts";
 import { ApiError } from "../lib/api.ts";
 import { flockColumn, flockTableRows, type FlockColumn } from "../lib/flockTable.ts";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
-import { flockRelationshipEndpoint, flockRelationships } from "../../shared/flock-relationships.ts";
+import { flockRelationshipEndpoint, flockRelationships, type FlockRelationship } from "../../shared/flock-relationships.ts";
 import { useT } from "../lib/i18n.ts";
 import type { Translate } from "../lib/i18n.ts";
 import "./FlockTable.css";
@@ -59,6 +59,14 @@ export function FlockTable(props: FlockTableProps) {
   const incompleteSources = props.machines.filter((machine) => machine.state !== "connected" || machine.snapshot === null);
   const visible = useMemo(() => flockTableRows(props.rows, query, machineId, column, descending), [props.rows, query, machineId, column, descending]);
   const relationships = useMemo(() => props.registry ? flockRelationships(props.registry) : [], [props.registry]);
+  const relationshipsByEndpoint = useMemo(() => {
+    const indexed = new Map<string, FlockRelationship[]>();
+    for (const relation of relationships) for (const id of [relation.source.id, relation.target.id]) {
+      const linked = indexed.get(id) ?? [];
+      linked.push(relation); indexed.set(id, linked);
+    }
+    return indexed;
+  }, [relationships]);
   const groups = useMemo(() => {
     if (!grouped) return [{ id: "", name: "", rows: visible }];
     const byMachine = new Map<string, { id: string; name: string; rows: FlockRow[] }>();
@@ -127,7 +135,7 @@ export function FlockTable(props: FlockTableProps) {
             const target = flockTarget(row);
             const native = row.execution ?? row.binding;
             const relationshipId = row.session ? `session:${row.session.id}` : props.registry && native?.agent === "codex" ? flockRelationshipEndpoint(props.registry, row.machine_id, native.native_session_id).id : null;
-            const related = relationships.filter((relation) => relation.source.id === relationshipId || relation.target.id === relationshipId);
+            const related = relationshipId ? relationshipsByEndpoint.get(relationshipId) ?? [] : [];
             const selected = target && target.machine_id === props.selected?.machine_id && target.pane_id === props.selected?.pane_id;
             return <tr role="row" key={row.id} data-row-id={row.id} data-selected={selected ? "true" : undefined}>
               <td role="cell" className="flock-name"><button type="button" className="flock-open" aria-current={selected ? "true" : undefined} disabled={!target} onClick={() => { if (target) props.onOpenTarget(target); }}>{row.name}</button></td>
