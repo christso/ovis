@@ -71,6 +71,7 @@ const BASE: Record<string, string> = {
   "You can close this dialog and reopen the move from Table.": "您可以关闭此对话框，然后从 Table 中重新打开此移动。",
   "Native history was verified and the new execution was recorded. The source copy was retained.": "已验证原生历史并记录新的执行。源副本已保留。",
   "Untracked work files": "未跟踪的工作文件",
+  "Select required session images and refresh the preview: {files}": "请选择必需的会话图片并刷新预览：{files}",
   "Only the individual files you select are included.": "仅包含您单独选择的文件。",
   "Files to transfer ({count})": "要传输的文件（{count}）",
   "{bytes} bytes": "{bytes} 字节",

@@ -69,6 +69,7 @@ const BASE: Record<string, string> = {
   "You can close this dialog and reopen the move from Table.": "このダイアログを閉じても、Table から移動を再度開けます。",
   "Native history was verified and the new execution was recorded. The source copy was retained.": "元の履歴を検証し、新しい実行を記録しました。移動元のコピーは保持されています。",
   "Untracked work files": "未追跡の作業ファイル",
+  "Select required session images and refresh the preview: {files}": "必須のセッション画像を選択してプレビューを更新してください: {files}",
   "Only the individual files you select are included.": "選択した個々のファイルだけが含まれます。",
   "Files to transfer ({count})": "転送するファイル（{count}）",
   "{bytes} bytes": "{bytes} バイト",

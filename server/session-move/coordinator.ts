@@ -51,7 +51,7 @@ export class MoveCoordinator {
         return { operation_id: id, snapshot_fingerprint: bundle.fingerprint, request, source_machine_id: source.machine_id, native_thread_id: source.native_session_id, source_checkout: bundle.codex.cwd,
           files: bundle.files.map((file) => ({ path: file.path, bytes: file.bytes, kind: file.path.startsWith("codex/") || file.path === "history-index.json" ? "codex" as const : file.path.startsWith("untracked/") ? "untracked" as const : "tracked" as const })),
           exclusions: ["Credentials, native configuration, hooks and Git remotes", "Unselected and ignored untracked files", "Full referenced native files can include discarded history beyond a fork or revert"],
-          untracked_candidates: bundle.untracked_candidates, fingerprint };
+          untracked_candidates: bundle.untracked_candidates, required_untracked: bundle.required_untracked, fingerprint };
       },
       preflight: async (plan) => {
         const execution = this.source(plan.request), id = operationId(plan.operation_id);
@@ -59,7 +59,9 @@ export class MoveCoordinator {
         if (sources[0]?.snapshot?.herdr_lifetime !== execution.herdr_lifetime) throw new MoveRefused("source_changed", "The source herdr lifetime changed");
         const capabilities = await Promise.all([this.call(execution.machine_id, id, "capabilities"), this.call(plan.request.destination_machine_id, id, "capabilities")]);
         codexCompatibility(capabilities[0] as CodexMoveRuntime, capabilities[1] as CodexMoveRuntime);
-        await this.call(plan.request.destination_machine_id, id, "destination", { checkout: plan.request.destination_checkout, bundle: await this.bundle(plan) });
+        const bundle = await this.bundle(plan);
+        if (bundle.required_untracked.length) throw new MoveRefused("untracked_scope", "Select required native image files and refresh the preview before moving");
+        await this.call(plan.request.destination_machine_id, id, "destination", { checkout: plan.request.destination_checkout, bundle });
       },
       quiesce: async (plan) => {
         const id = operationId(plan.operation_id);
@@ -96,6 +98,11 @@ export class MoveCoordinator {
           if (result.state !== "pending" || Date.now() >= deadline) return result;
           await Bun.sleep(100);
         }
+      },
+      bindingCommitted: async (plan, destination) => {
+        const registry = this.flock.read(), session = registry.sessions.find((item) => item.id === plan.request.session_id);
+        const current = registry.executions.find((item) => item.id === session?.current_execution_id);
+        return !!current && sameFlockBinding(current, { ...destination, agent: "codex" });
       },
       bind: async (_id, plan, destination) => {
         const registry = this.flock.read(), session = registry.sessions.find((item) => item.id === plan.request.session_id);

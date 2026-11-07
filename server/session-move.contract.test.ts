@@ -43,3 +43,11 @@ it("never allows a browser control credential or watcher to call the machine tra
   }
   expect((await (await fetch(`${base}/api/session-moves`)).json()).moves).toEqual([]);
 });
+
+it("does not expose private move state through local machine aliases", async () => {
+  for (const path of ["session-moves", "session-moves/node"]) {
+    const response = await fetch(`${base}/api/machines/local/${path}`, { headers: { cookie: watcher } });
+    expect(response.status).not.toBe(200);
+    expect(await response.text()).not.toContain('"moves"');
+  }
+});

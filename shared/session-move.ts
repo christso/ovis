@@ -17,6 +17,7 @@ export interface SessionMovePlan {
   files: { path: string; bytes: number; kind: "tracked" | "untracked" | "codex" }[];
   exclusions: string[];
   untracked_candidates?: string[];
+  required_untracked?: string[];
   fingerprint: string;
 }
 export interface SessionMoveSnapshot { id: string; sha256: string }

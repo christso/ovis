@@ -17,6 +17,8 @@ export interface MovePorts {
   launch(id: string, plan: SessionMovePlan, snapshot: SessionMoveSnapshot): Promise<void>;
   inspect(id: string, plan: SessionMovePlan, snapshot: SessionMoveSnapshot): Promise<
     { state: "absent" } | { state: "pending" | "unknown" } | { state: "resumed"; destination: SessionMoveDestination }>;
+  /** Read-only recovery of an already committed exact binding; never adopts a pending receipt. */
+  bindingCommitted?(plan: SessionMovePlan, destination: SessionMoveDestination): Promise<boolean>;
   /** Atomically adopt with expected source execution; if already applied, compare the exact destination binding. */
   bind(id: string, plan: SessionMovePlan, destination: SessionMoveDestination): Promise<void>;
 }
@@ -31,10 +33,13 @@ export class SessionMoves {
       const prior = this.journal.get(id);
       if (this.running.has(id) || prior.snapshot || !["preview", "quiescing", "snapshotting"].includes(prior.phase) || prior.plan.request.session_id !== request.session_id || prior.plan.request.source_execution_id !== request.source_execution_id) throw new MoveRefused("move_busy", "This move can no longer change its preview");
     }
-    const plan = await this.ports.preview(request, id);
-    const record: SessionMoveRecord = { id, phase: "preview", plan, snapshot: null, destination: null, error: null };
-    this.journal.save(record);
-    return record;
+    this.running.add(id);
+    try {
+      const plan = await this.ports.preview(request, id);
+      const record: SessionMoveRecord = { id, phase: "preview", plan, snapshot: null, destination: null, error: null };
+      this.journal.save(record);
+      return record;
+    } finally { this.running.delete(id); }
   }
   list(): SessionMoveRecord[] { return this.journal.list(); }
   isRunning(id: string): boolean { return this.running.has(id); }
@@ -54,8 +59,8 @@ export class SessionMoves {
       record = this.journal.get(id);
       if (fingerprint !== record.plan.fingerprint) throw new MoveRefused("preview_changed", "Review the current transfer preview before continuing");
       if (["complete", "cancelled"].includes(record.phase)) return record;
-      if (record.phase === "binding" && record.destination) {
-        await this.ports.bind(id, record.plan, record.destination); save("complete"); return record;
+      if (record.phase === "binding" && record.destination && await this.ports.bindingCommitted?.(record.plan, record.destination)) {
+        save("complete"); return record;
       }
       await this.ports.preflight(record.plan);
       if (record.phase === "preview") save("quiescing");

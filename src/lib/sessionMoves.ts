@@ -17,6 +17,7 @@ export function sessionMoveStateValue(value: unknown): value is SessionMoveState
     || ![request.session_id, request.source_execution_id, request.destination_machine_id, request.destination_checkout].every(text)
     || !strings(request.untracked_files) || !strings(plan.exclusions) || !Array.isArray(plan.files)
     || (plan.untracked_candidates !== undefined && !strings(plan.untracked_candidates))
+    || (plan.required_untracked !== undefined && !strings(plan.required_untracked))
     || !plan.files.every((raw) => { const file = object(raw); return text(file.path) && Number.isSafeInteger(file.bytes) && Number(file.bytes) >= 0 && ["tracked", "untracked", "codex"].includes(String(file.kind)); })
     || (record.error !== null && !text(record.error))) return false;
   const snapshot = object(record.snapshot), destination = object(record.destination);

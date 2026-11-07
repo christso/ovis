@@ -111,7 +111,7 @@ try {
           source_checkout: chosen.cwd!, fingerprint: `fixture-preview-${++previewRevision}-${input.untracked_files.join(",")}`,
           files: [{ path: "commits.bundle", bytes: 2048, kind: "tracked" }, { path: "codex/sessions/owned-history.jsonl", bytes: 1024, kind: "codex" }, ...input.untracked_files.map((name) => ({ path: name, bytes: 16, kind: "untracked" as const }))],
           exclusions: ["auth.json", "Ignored fixture files", "Referenced native files retain full discarded tails."],
-          ...{ untracked_candidates: ["notes.txt", "scratch.txt"] },
+          untracked_candidates: ["required.png", "scratch.txt"], required_untracked: input.untracked_files.includes("required.png") ? [] : ["required.png"],
         }, snapshot: null, destination: null, error: null };
         const state = { record, running: false };
         moves = [...moves.filter((move) => move.record.id !== record.id), state]; return respond(state);
@@ -191,14 +191,17 @@ try {
       await dialog.getByText("Files to transfer (2)", { exact: true }).waitFor();
       await dialog.getByText("Finish the active turn and exit this session in Codex, then continue here. Ovis will not stop the client for you.").waitFor();
       assert.equal(await dialog.getByRole("button", { name: "Move session", exact: true }).isEnabled(), false, "source exit must be explicitly acknowledged");
-      await dialog.getByLabel("notes.txt", { exact: true }).check();
+      await dialog.getByLabel("I finished the turn and exited this session in Codex.").check();
+      assert.equal(await dialog.getByRole("button", { name: "Move session", exact: true }).isEnabled(), false, "a required image must be selected and reviewed even after exit acknowledgement");
+      await dialog.getByText("Select required session images and refresh the preview: required.png", { exact: true }).waitFor();
+      await dialog.getByLabel("required.png", { exact: true }).check();
       assert.equal(await dialog.getByRole("button", { name: "Move session", exact: true }).isEnabled(), false, "unreviewed file scope cannot run");
       const operationId = moves[0]!.record.id;
       await dialog.getByRole("button", { name: "Refresh preview", exact: true }).click();
       await dialog.getByText("Files to transfer (3)", { exact: true }).waitFor();
       if (evidence) { mkdirSync(join(evidence, "session-move"), { recursive: true }); await page.screenshot({ path: join(evidence, "session-move", `preview-${width}.png`) }); }
       assert.equal(moves[0]!.record.id, operationId);
-      assert.deepEqual(moves[0]!.record.plan.request.untracked_files, ["notes.txt"]);
+      assert.deepEqual(moves[0]!.record.plan.request.untracked_files, ["required.png"]);
       await dialog.getByText("Transfer exclusions", { exact: true }).click();
       await dialog.getByText("auth.json", { exact: true }).waitFor();
       await dialog.getByLabel("I finished the turn and exited this session in Codex.").check();
@@ -213,7 +216,7 @@ try {
       await table.locator(`tr[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "View move", exact: true }).click();
       dialog = page.getByRole("dialog", { name: "Move session", exact: true });
       assert.equal(await dialog.getByLabel("Destination checkout", { exact: true }).inputValue(), "/work/moved-fixture");
-      assert.equal(await dialog.getByLabel("notes.txt", { exact: true }).isChecked(), true);
+      assert.equal(await dialog.getByLabel("required.png", { exact: true }).isChecked(), true);
       sourceExited = true; exitRefreshNeeded = true;
       await dialog.getByLabel("I finished the turn and exited this session in Codex.").check();
       await dialog.getByRole("button", { name: "Retry move", exact: true }).click();
