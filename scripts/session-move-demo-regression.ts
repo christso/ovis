@@ -1,9 +1,10 @@
 /** UI-only planned transfer coverage on fictional PCs. This does not resume or stop an installed agent. */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium, type Browser } from "playwright-core";
+import { chromium, type Browser, type Page } from "playwright-core";
 import machinesFixture from "../site/demo/fixtures/machines.json";
 import type { Machine } from "../shared/machines.ts";
 import type { SessionMoveRecord, SessionMoveRequest } from "../shared/session-move.ts";
@@ -35,6 +36,9 @@ const targetSnapshot = structuredClone(target.snapshot!);
 const chosen = source.snapshot!.panes.find((pane) => pane.agent === "codex")!;
 const other = source.snapshot!.panes.find((pane) => pane.agent === "claude")!;
 const evidence = process.env["UI_EVIDENCE_DIR"];
+const mobileAudit = process.env["MOVE_MOBILE_AUDIT"] === "1";
+const baselineAudit = process.env["MOVE_MOBILE_BASELINE"] === "1";
+const recordVideo = !!evidence && process.env["MOVE_UI_VIDEO"] === "1";
 let store: FlockStore;
 let moves: SessionMoveState[] = [];
 let sourceExited = false;
@@ -79,6 +83,159 @@ const harness = `<script>(() => {
   };
 })();</script>`;
 const respond = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
+async function auditMobile(): Promise<void> {
+  assert.ok(browser && server);
+  const output = evidence ? join(evidence, "session-move-mobile") : undefined;
+  if (output) mkdirSync(output, { recursive: true });
+  const findings: unknown[] = [];
+  if (output) {
+    const git = (args: string[]) => { const run = Bun.spawnSync(["git", ...args], { stdout: "pipe", stderr: "pipe" }); assert.equal(run.exitCode, 0); return run.stdout.toString(); };
+    writeFileSync(join(output, "source.json"), JSON.stringify({ head: git(["rev-parse", "HEAD"]).trim(), tracked_diff_sha256: createHash("sha256").update(git(["diff", "HEAD", "--binary"])).digest("hex"), files: Object.fromEntries(["src/components/SessionMoveDialog.css", "src/components/SessionMoveDialog.tsx", "scripts/session-move-demo-regression.ts"].map((path) => [path, createHash("sha256").update(readFileSync(path)).digest("hex")])), classification: "fictional UI transfer, native identity/auth/ownership proofs mocked; Chromium keyboard geometry only", baseline_css: process.env["MOVE_MOBILE_BASELINE_CSS"] ? createHash("sha256").update(readFileSync(process.env["MOVE_MOBILE_BASELINE_CSS"]!)).digest("hex") : null }, null, 2));
+  }
+  const scenarios = [{ width: 320, height: 844 }, { width: 390, height: 844 }, { width: 320, height: 480 }, { width: 390, height: 480 }, { width: 1280, height: 844 }];
+  for (const theme of ["dark", "light"] as const) for (const viewport of scenarios) {
+    const { width, height } = viewport, phone = width < 640, key = `${theme}-${width}x${height}`;
+    if (process.env["MOVE_MOBILE_CASE"] && process.env["MOVE_MOBILE_CASE"] !== key) continue;
+    store = new FlockStore(join(root, key)); moves = []; target.snapshot = structuredClone(targetSnapshot);
+    sourceExited = false; failHistory = true; pendingPolls = 0; statusUnreadable = false; exitRefreshNeeded = false;
+    const longName = `Owned mobile session ${"unbroken-logical-name".repeat(8)}`;
+    store.change(0, { type: "adopt", name: longName, binding: { machine_id: source.id, herdr_lifetime: source.snapshot!.herdr_lifetime!, pane_id: chosen.pane_id, agent: "codex", native_session_id: chosen.agent_session!.value } }, machines);
+    const context = await browser!.newContext({ viewport, locale: "en-US", ...(phone ? { isMobile: true, hasTouch: true } : {}), ...(recordVideo && width === 390 && height === 844 && theme === "dark" ? { recordVideo: { dir: join(root, "phone-video"), size: viewport } } : {}) });
+    await context.addInitScript((appearance) => {
+      localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme: appearance, darkTheme: "charcoal", lightTheme: "codex" }));
+      document.addEventListener("DOMContentLoaded", () => {
+        const badge = document.createElement("aside"); badge.textContent = "Phone UI fixture · fictional transfer/proofs";
+        badge.style.cssText = "position:fixed;top:2px;left:2px;z-index:9999;max-width:calc(100vw - 8px);background:var(--bg-panel);color:var(--text);font:11px system-ui;padding:3px;pointer-events:none";
+        document.body.append(badge);
+      });
+    }, theme);
+    const page = await context.newPage(); page.setDefaultTimeout(10000);
+    const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.message));
+    const capture = async (name: string) => { if (output) await page.screenshot({ path: join(output, `${key}-${name}.png`) }); };
+    const measure = async (stage: string) => {
+      const result = await page.evaluate(() => {
+        const dialog = document.querySelector<HTMLElement>(".session-move-dialog")!, body = dialog.querySelector<HTMLElement>(".session-move-body")!, footer = dialog.querySelector<HTMLElement>(".session-move-footer")!;
+        const rect = (element: Element) => { const r = element.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height }; };
+        const focused = document.activeElement instanceof HTMLInputElement ? document.activeElement : null;
+        const bounds = focused?.getBoundingClientRect();
+        return { focused: focused && bounds ? { rect: rect(focused), centerHit: document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2) === focused, scrollLeft: focused.scrollLeft, scrollWidth: focused.scrollWidth, clientWidth: focused.clientWidth, selectionStart: focused.selectionStart, valueLength: focused.value.length } : null, viewport: { width: innerWidth, height: innerHeight }, visualViewport: window.visualViewport ? { width: visualViewport!.width, height: visualViewport!.height, offsetTop: visualViewport!.offsetTop, offsetLeft: visualViewport!.offsetLeft, scale: visualViewport!.scale } : null, scrim: rect(dialog.parentElement!), bodyScrollTop: body.scrollTop, dialog: rect(dialog), footer: rect(footer), header: rect(dialog.querySelector(".modal-header")!), body: rect(body), bodyScroll: body.scrollHeight, bodyWidth: body.scrollWidth, rootWidth: document.documentElement.scrollWidth,
+          labels: [...dialog.querySelectorAll(".session-move-untracked label,.session-move-confirm")].map(rect), buttons: [...footer.querySelectorAll("button"), ...dialog.querySelectorAll(".session-move-fields input,.session-move-fields select,.modal-header button")].map(rect), summaries: [...dialog.querySelectorAll("summary")].map(rect) };
+      });
+      findings.push({ key, stage, ...result });
+      if (!baselineAudit) {
+        assert.ok(result.dialog.left >= -1 && result.dialog.right <= width + 1 && result.rootWidth <= width + 1, `${key}/${stage}: no page/dialog horizontal overflow`);
+        assert.ok(result.bodyWidth <= result.body.width + 1, `${key}/${stage}: long content wraps in the body`);
+        assert.ok(result.header.top >= -1 && result.footer.bottom <= (stage.startsWith("keyboard") ? 320 : height) + 1, `${key}/${stage}: header and actions remain inside the visible frame`);
+        assert.ok(result.body.height >= 50, `${key}/${stage}: the confirmation body remains scrollable`);
+        if (phone) for (const target of [...result.labels, ...result.buttons, ...result.summaries]) assert.ok(target.height >= 43, `${key}/${stage}: touch targets are at least 44 CSS pixels`);
+      }
+      return result;
+    };
+    try {
+      await page.goto(`http://127.0.0.1:${server!.port}/herdr-web-ui/demo/app/?pane=${encodeURIComponent(chosen.pane_id)}`);
+      if (phone) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
+      await page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: "Table", exact: true }).click();
+      if (baselineAudit && process.env["MOVE_MOBILE_BASELINE_CSS"]) {
+        // Restore exactly the supplied old Move stylesheet in the owned built app, leaving shared styles and live DOM intact.
+        await page.evaluate(() => {
+          const remove = (sheet: CSSStyleSheet | CSSGroupingRule) => {
+            for (let index = sheet.cssRules.length - 1; index >= 0; index--) {
+              const rule = sheet.cssRules[index]!;
+              if (rule instanceof CSSStyleRule && rule.selectorText.includes(".session-move-")) sheet.deleteRule(index);
+              else if (rule instanceof CSSGroupingRule) remove(rule);
+            }
+          };
+          for (const sheet of document.styleSheets) remove(sheet);
+        });
+        await page.addStyleTag({ content: readFileSync(process.env["MOVE_MOBILE_BASELINE_CSS"]!, "utf8") });
+      }
+      const row = page.locator(`[data-row-id="${store.read().executions[0]!.id}"]`);
+      // Scope this audit to the dialog; the parent Table owner is replacing its compact row action seam.
+      await row.getByRole("button", { name: "Move session", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+      const dialog = page.getByRole("dialog", { name: "Move session", exact: true });
+      const path = "/work/" + "long-unbroken-checkout".repeat(10);
+      await dialog.getByLabel("Destination PC", { exact: true }).selectOption(target.id);
+      await dialog.getByLabel("Destination checkout", { exact: true }).fill(path);
+      await dialog.getByRole("button", { name: "Preview transfer", exact: true }).click();
+      await dialog.getByRole("status").filter({ hasText: "Transfer preview" }).waitFor();
+      await measure("preview"); await capture("preview");
+      if (recordVideo && width === 390 && height === 844 && theme === "dark") {
+        // fixed wait: hold the already-measured phone preview legibly in the requested fixture recording.
+        await Bun.sleep(1500);
+      }
+      if (baselineAudit) {
+        if (phone) { await page.evaluate(() => { document.documentElement.setAttribute("data-keyboard", ""); document.documentElement.style.setProperty("--app-height", "320px"); }); await measure("keyboard"); await capture("keyboard"); }
+        console.log(`BASELINE Move phone ${key}: retained geometry without forcing unreachable controls`);
+        continue;
+      }
+      if (phone) {
+        const body = dialog.locator(".session-move-body"), bounds = (await body.boundingBox())!;
+        await body.evaluate((node) => { node.scrollTop = 0; });
+        const cdp = await context.newCDPSession(page), x = bounds.x + bounds.width - 10, y = bounds.y + Math.min(bounds.height - 15, 250), end = bounds.y + 15;
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+        for (let step = 1; step <= 8; step++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y + (end - y) * step / 8 }] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await cdp.detach();
+        await page.waitForFunction(() => document.querySelector(".session-move-body")!.scrollTop > 20);
+        assert.equal(await dialog.count(), 1, "an upward content pan scrolls without dismissing the sheet");
+      }
+      await dialog.getByRole("button", { name: "Show all transfer files", exact: true }).scrollIntoViewIfNeeded();
+      await dialog.getByRole("button", { name: "Show all transfer files", exact: true }).click();
+      assert.equal(await dialog.locator(".session-move-files li").count(), moves[0]!.record.plan.files.length);
+      await dialog.locator(".session-move-files li").last().scrollIntoViewIfNeeded();
+      await capture("last-file");
+      await dialog.getByLabel("required.png", { exact: true }).scrollIntoViewIfNeeded();
+      if (phone) await dialog.locator(".session-move-untracked label").filter({ hasText: "required.png" }).tap(); else await dialog.getByLabel("required.png", { exact: true }).check();
+      assert.equal(await dialog.getByRole("button", { name: "Move session", exact: true }).isEnabled(), false, "file selection needs a refreshed preview");
+      await dialog.getByRole("button", { name: "Refresh preview", exact: true }).click();
+      await page.waitForFunction(() => ![...document.querySelectorAll<HTMLButtonElement>(".session-move-footer button")].find((button) => button.textContent === "Refresh preview")?.disabled);
+      const confirmation = dialog.getByLabel("I finished the turn and exited this session in Codex.");
+      await confirmation.scrollIntoViewIfNeeded();
+      if (phone) await dialog.locator(".session-move-confirm").tap(); else await confirmation.check();
+      assert.equal(await confirmation.isChecked(), true);
+      await measure("confirmation"); await capture("confirmation");
+      if (recordVideo && width === 390 && height === 844 && theme === "dark") {
+        // fixed wait: show the explicitly selected file scope and native-exit confirmation in the fixture recording.
+        await Bun.sleep(1500);
+      }
+      if (phone) {
+        await dialog.getByLabel("Destination checkout", { exact: true }).focus();
+        await page.evaluate(() => { document.documentElement.setAttribute("data-keyboard", ""); document.documentElement.style.setProperty("--app-height", "320px"); });
+        await measure("keyboard"); await capture("keyboard-before-settle");
+        await page.waitForFunction(() => {
+          const input = document.querySelector<HTMLInputElement>(".session-move-fields input")!, body = document.querySelector(".session-move-body")!.getBoundingClientRect(), bounds = input.getBoundingClientRect();
+          return document.activeElement === input && bounds.top >= body.top - 1 && bounds.bottom <= body.bottom + 1 && document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2) === input;
+        }, undefined, { timeout: 1500 });
+        const focus = (await measure("keyboard-settled")).focused!;
+        assert.ok(focus.centerHit && focus.selectionStart === focus.valueLength && focus.scrollLeft > 0, "focused checkout and end caret remain visible without the footer covering them");
+        await capture("keyboard");
+        await page.setViewportSize({ width, height: 320 });
+        await measure("keyboard-resized-start"); await capture("keyboard-resized-before-settle");
+        try {
+          await page.waitForFunction(() => {
+            const input = document.querySelector<HTMLInputElement>(".session-move-fields input")!, body = document.querySelector(".session-move-body")!.getBoundingClientRect(), bounds = input.getBoundingClientRect();
+            return bounds.top >= body.top - 1 && bounds.bottom <= body.bottom + 1 && document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2) === input;
+          }, undefined, { timeout: 1500 });
+        } catch (error) { await measure("keyboard-resized-end"); await capture("keyboard-resized-end"); throw error; }
+        await measure("keyboard-resized"); await capture("keyboard-resized");
+        await page.setViewportSize(viewport);
+        await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); document.documentElement.style.removeProperty("--app-height"); document.documentElement.style.setProperty("--ui-scale", "1.25"); });
+        await measure("larger-text"); await capture("larger-text");
+        await confirmation.scrollIntoViewIfNeeded(); assert.equal(await confirmation.isChecked(), true);
+      }
+      assert.deepEqual(errors, []);
+      console.log(`PASS Move phone audit ${key}${baselineAudit ? " (baseline measurements only)" : ""}`);
+    } finally {
+      const video = page.video(); await context.close();
+      if (video && output && recordVideo) {
+        const path = join(output, `${key}-fictional-ui.mp4`);
+        const encoded = Bun.spawnSync(["ffmpeg", "-loglevel", "error", "-y", "-i", await video.path(), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", path]);
+        assert.equal(encoded.exitCode, 0); console.log(`Phone fixture MP4: ${path}`);
+      }
+      if (output) writeFileSync(join(output, "layout.json"), JSON.stringify(findings, null, 2));
+    }
+  }
+}
+
 try {
   await buildDemoApp(app);
   const index = join(app, "index.html");
@@ -114,6 +271,10 @@ try {
           exclusions: ["auth.json", "Ignored fixture files", "Referenced native files retain full discarded tails."],
           untracked_candidates: ["required.png", "scratch.txt"], required_untracked: input.untracked_files.includes("required.png") ? [] : ["required.png"],
         }, snapshot: null, destination: null, error: null };
+        if (mobileAudit) {
+          record.plan.files.push(...Array.from({ length: 205 }, (_, index) => ({ path: `untracked/${index}-${"long-unbroken-file-name".repeat(7)}.txt`, bytes: 1234567890, kind: "untracked" as const })));
+          record.plan.untracked_candidates!.push(...Array.from({ length: 18 }, (_, index) => `${index}-${"long-unbroken-work-path".repeat(7)}.txt`));
+        }
         const state = { record, running: false };
         moves = [...moves.filter((move) => move.record.id !== record.id), state]; return respond(state);
       }
@@ -150,12 +311,13 @@ try {
     return await file.exists() ? new Response(file) : new Response("not found", { status: 404 });
   } });
   browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
-  for (const width of [1280, 390]) {
+  if (mobileAudit) await auditMobile();
+  for (const width of mobileAudit ? [] : [1280, 390]) {
     store = new FlockStore(join(root, `state-${width}`)); moves = []; target.snapshot = structuredClone(targetSnapshot); sourceExited = false; failHistory = true; guards = []; launches = 0; runRequests = 0; generation = 0; statusUnreadable = false; pendingPolls = 0; exitRefreshNeeded = false; previewRevision = 0;
     for (const pane of [chosen, other]) store.change(store.read().revision, { type: "adopt", name: pane.agent === "codex" ? "Fixture session" : "Unrelated fixture session", binding: { machine_id: source.id, herdr_lifetime: source.snapshot!.herdr_lifetime!, pane_id: pane.pane_id, agent: pane.agent!, native_session_id: pane.agent_session!.value } }, machines);
     const originalSession = structuredClone(store.read().sessions[0]!);
     const originalExecution = structuredClone(store.read().executions[0]!);
-    const context = await browser.newContext({ viewport: { width, height: 844 }, locale: "en-US", ...(width === 390 ? { isMobile: true, hasTouch: true } : {}), ...(evidence && width === 1280 ? { recordVideo: { dir: join(root, "video"), size: { width: 1280, height: 844 } } } : {}) });
+    const context = await browser.newContext({ viewport: { width, height: 844 }, locale: "en-US", ...(width === 390 ? { isMobile: true, hasTouch: true } : {}), ...(recordVideo && width === 1280 ? { recordVideo: { dir: join(root, "video"), size: { width: 1280, height: 844 } } } : {}) });
     await context.addInitScript(() => {
       localStorage.setItem("ovis:settings", JSON.stringify({ language: "en" }));
       document.addEventListener("DOMContentLoaded", () => {
@@ -296,7 +458,7 @@ try {
       console.log(`PASS planned transfer UI ${width}: reviewed file scope, explicit native exit, refusal, reload/reconciliation, preserved identity and explicit terminal selection`);
     } finally {
       const video = page.video(); await context.close();
-      if (video && evidence) {
+      if (video && recordVideo && evidence) {
         const output = join(evidence, "session-move", `planned-transfer-fixture-${width}.mp4`);
         mkdirSync(join(evidence, "session-move"), { recursive: true });
         const encoded = Bun.spawnSync(["ffmpeg", "-loglevel", "error", "-y", "-i", await video.path(), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", output]);
