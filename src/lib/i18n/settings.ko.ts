@@ -310,7 +310,6 @@ export const SETTINGS_KO: Record<string, string> = {
   "Pairing gate": "페어링 게이트",
   "Not yet closed": "아직 닫히지 않음",
   "Closed": "닫힘",
-  "Unavailable": "확인 불가",
   "No device has been paired yet, so no pairing code is asked for.": "아직 페어링한 기기가 없어 페어링 코드를 묻지\u00a0않습니다.",
   "A new browser needs a pairing code or the token.": "새 브라우저는 페어링 코드나 토큰이 필요합니다.",
   "The device list cannot be read, so no new device can pair. This PC, the token and Tailscale sign-in still work.": "기기 목록을 읽을\u00a0수\u00a0없어 새 기기를 페어링할\u00a0수\u00a0없습니다. 이 PC, 토큰, Tailscale 로그인은 그대로 작동합니다.",

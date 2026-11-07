@@ -18,7 +18,6 @@ export const MACHINES_JA: Record<string, string> = {
   "Starting without Windows sign-in can break Codex sandbox commands, and desktop-control tools may be unavailable. This choice applies to one start.": "Windows にサインインせず起動すると、Codex のサンドボックスコマンドが失敗したり、デスクトップ操作ツールを利用できなかったりする場合があります。この選択は今回の起動にのみ適用されます。",
   "Expand {name}": "{name} を展開",
   "Collapse {name}": "{name} を折りたたむ",
-  "Disconnected": "切断されました",
   "Connection error": "接続エラー",
   "New workspace on {name}": "{name} で新しいワークスペース",
   "PCs and workspaces": "PC とワークスペース",

@@ -84,6 +84,7 @@ run_script scripts/terminal-sync-output-regression.ts
 run_script scripts/terminal-bundled-mono-regression.ts
 run_script scripts/application-paging-regression.ts
 run_script scripts/pane-paging-demo-regression.ts
+run_script scripts/flock-table-demo-regression.ts
 run_script scripts/link-menu-demo-regression.ts
 run_script scripts/key-bar-customization-demo-regression.ts
 run_script scripts/key-bar-hold-repeat-regression.ts

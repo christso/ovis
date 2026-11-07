@@ -12,6 +12,8 @@ import { DEFAULT_PORT } from "../shared/protocol.ts";
 import { authClient, deviceCookieValue, bearerMatches, handleAuthRequest, isAuthenticated, isSecureRequest, parseCookies, presentedToken, presentedTokenHeld, recordPresentedTokenFailure, requiresAuth, unauthorizedJson } from "./auth.ts";
 import { bindScope, cameThroughProxy, decideAccess, forwardingHeaders, isLoopbackAddress, isServeOwnerRequest, lanExposed, observedIngress } from "./access.ts";
 import { type DeviceStore, handleDeviceRequest, newStreamKey, sameBrowser, streamCookie, streamKeys, type DeviceMatch } from "./devices.ts";
+import { readFlockSource, verifyFlockSnapshot } from "./flock-source.ts";
+import { handleFlockRequest, type FlockStore } from "./flock.ts";
 import { handlePreferencesRequest, type PreferenceStore } from "./preferences.ts";
 import { handleSeenRequest, type SeenStore } from "./seen.ts";
 import { remoteAccess } from "./tailscale.ts";
@@ -74,6 +76,7 @@ export interface RequestServices {
   readonly bootId: string;
   readonly devices: DeviceStore;
   readonly preferences: PreferenceStore;
+  readonly flock: FlockStore;
   readonly herdrSidebar: HerdrSidebarConfig;
   readonly identityOf: (grantPath: boolean, host: string | null) => Promise<TailnetIdentity>;
   readonly serveOnly: boolean;
@@ -110,7 +113,7 @@ export interface ServerContext {
 }
 
 export async function handleRequest(request: Request, ctx: ServerContext): Promise<Response | undefined> {
-  const { options, launcherSearch, savedLaunchers, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
+  const { options, flock, launcherSearch, savedLaunchers, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
   const { sidecar, serialize, push, logPushError, omo, claudeAgents, opencodeAgents, plans, clientSnapshot, machines, broadcastAll, collector, queueFirstMessage } = core;
   return requestLog.handle(request, async (headers) => {
   const startup = portalStartupResult ?? await portalStartup;
@@ -230,7 +233,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   // a repository's checkouts are its folders' paths and branches, those not open in herdr too; the worktree
   // dialog that lists them is a drive feature, and the sidebar names a branch only for a driving device (#2250)
   const worktreeList = /^\/api\/(?:machines\/[^/]+\/)?worktree\/list$/.test(pathname);
-  if (readOnly && (fileRead || directoryListing || repositoryDiff || launcherDefinitions || sessionHistory || commandRows || paneFiles || pluginRun || worktreeList || mutating && !ownPreferences)) {
+  if (readOnly && (fileRead || directoryListing || repositoryDiff || launcherDefinitions || sessionHistory || commandRows || paneFiles || pluginRun || worktreeList || pathname === "/api/flock" || mutating && !ownPreferences)) {
     setRequestRoute("watch-refusal");
     return jsonResponse({ error: { code: "read_only", message: "this device can only watch" } }, 403);
   }
@@ -372,6 +375,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   if (pathname === "/api/connection-diagnostics") { setRequestRoute(pathname); return clientConnectionLog.handle(request, client ?? "unknown"); }
   if (pathname === "/api/telemetry") { setRequestRoute(pathname); return handleTelemetryRequest(request, options.telemetry); }
   // what every browser of this server shares; a watching device reads it and cannot change it (above)
+  if (pathname === "/api/flock") { setRequestRoute(pathname); return handleFlockRequest(request, flock, machines?.list() ?? [], (id) => readFlockSource(machines, id, clientSnapshot, options.codexHome), browserSnapshot); }
   if (pathname === "/api/preferences") { setRequestRoute(pathname); return handlePreferencesRequest(request, preferences); }
   // the finishes read in some browser of this server; a watching device reads them and cannot add to them (above)
   if (pathname === "/api/seen") { setRequestRoute(pathname); return handleSeenRequest(request, seen); }
@@ -451,10 +455,11 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
 
   if (pathname === "/api/session") {
     setRequestRoute(pathname);
+    if (url.searchParams.get("flock") === "1" && readOnly) return jsonResponse({ error: { code: "read_only", message: "this device can only watch" } }, 403);
     try {
       // another Ovis server reading this PC (its bridge token) applies its own rows; a browser gets this server's
-      const snapshot = await clientSnapshot();
-      return jsonResponse({ snapshot: bridgeAuthorized ? snapshot : browserSnapshot(snapshot) });
+      const snapshot = url.searchParams.get("flock") === "1" ? await verifyFlockSnapshot(clientSnapshot, options.codexHome) : await clientSnapshot();
+      return jsonResponse({ snapshot: bridgeAuthorized ? snapshot : browserSnapshot(snapshot) }, 200, { "cache-control": "no-store" });
     } catch (error) {
       return errorResponse(error);
     }

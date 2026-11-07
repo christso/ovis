@@ -18,7 +18,6 @@ export const MACHINES_KO: Record<string, string> = {
   "Starting without Windows sign-in can break Codex sandbox commands, and desktop-control tools may be unavailable. This choice applies to one start.": "Windows 로그인 없이 시작하면 Codex 샌드박스 명령이 실패할 수 있고 데스크톱 제어 도구를 사용하지 못할 수 있습니다. 이 선택은 한 번의 시작에만 적용됩니다.",
   "Expand {name}": "{name} 펼치기",
   "Collapse {name}": "{name} 접기",
-  "Disconnected": "연결 끊김",
   "Connection error": "연결 오류",
   "New workspace on {name}": "{name}에 새 워크스페이스",
   "PCs and workspaces": "PC와 워크스페이스",
