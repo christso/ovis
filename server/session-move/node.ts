@@ -55,7 +55,23 @@ export class MoveNode {
     let receipt: NodeReceipt;
     try { receipt = JSON.parse(readMoveFile(root, "node.json", 4 * 1024 * 1024).data.toString()); }
     catch { throw new MoveRefused("invalid_node_receipt", "Transfer receipt cannot be read; its data was preserved"); }
-    if (receipt?.version !== 1) throw new MoveRefused("invalid_node_receipt", "Transfer receipt version is unsupported");
+    try {
+      if (receipt?.version !== 1) throw new Error("version");
+      if (receipt.source) {
+        for (const value of Object.values(receipt.source)) text(value);
+        if (![receipt.source.home, receipt.source.cwd].every(isAbsolute) || !receipt.source.thread_id || !receipt.source.pane_id || !receipt.source.lifetime) throw new Error("source");
+        inside(receipt.source.home, receipt.source.rollout);
+      }
+      if (receipt.bundle) bundleValue(receipt.bundle);
+      if (receipt.source_dir && (!receipt.source || !receipt.bundle || dirname(receipt.source_dir) !== root || !/^snapshot-[a-f0-9-]{36}$/.test(basename(receipt.source_dir)))) throw new Error("snapshot");
+      if (receipt.destination) {
+        const destination = receipt.destination;
+        destinationPath(text(destination.checkout)); text(destination.home);
+        if (!isAbsolute(destination.home) || !["prepared", "restored", "creating", "starting", "started"].includes(destination.phase)) throw new Error("destination");
+        if (["starting", "started"].includes(destination.phase)) { text(destination.pane_id); text(destination.lifetime); }
+        bundleValue(destination.bundle);
+      }
+    } catch { throw new MoveRefused("invalid_node_receipt", "Transfer receipt is unsupported or malformed; its data was preserved"); }
     return receipt;
   }
   private save(id: string, receipt: NodeReceipt): void {
@@ -178,8 +194,12 @@ export class MoveNode {
       try {
         // Initialize destination schema. Current-root cache rebuild is native, inherited rows are scoped imports.
         await native.call("thread/turns/list", { threadId: destination.bundle.codex.thread_id, limit: 1 });
-        if (!existsSync(join(this.root(id), "index-imported.json"))) {
-          const intent = join(this.root(id), "index-intent.json"), checksum = destination.bundle.codex.history_index?.sha256 ?? "none";
+        const checksum = destination.bundle.codex.history_index?.sha256 ?? "none";
+        if (existsSync(join(this.root(id), "index-imported.json"))) {
+          const saved = JSON.parse(readMoveFile(this.root(id), "index-imported.json").data.toString());
+          if (saved?.version !== 1 || saved.sha256 !== checksum) throw new MoveRefused("destination_conflict", "History import receipt differs from this operation");
+        } else {
+          const intent = join(this.root(id), "index-intent.json");
           let resume = false;
           if (existsSync(intent)) {
             const saved = JSON.parse(readMoveFile(this.root(id), "index-intent.json").data.toString());
@@ -223,7 +243,7 @@ export class MoveNode {
 }
 
 function bundleValue(bundle: TransferBundle): void {
-  if (bundle?.version !== 1 || bundle.checkout?.version !== 1 || bundle.codex?.version !== 1 || !/^[a-f0-9]{64}$/.test(bundle.history) || !Array.isArray(bundle.files)) throw new MoveRefused("invalid_manifest", "Invalid native transfer bundle");
+  if (bundle?.version !== 1 || bundle.checkout?.version !== 1 || bundle.codex?.version !== 1 || !/^[a-f0-9]{64}$/.test(bundle.history) || !Array.isArray(bundle.files) || !/^[a-f0-9]{64}$/.test(bundle.fingerprint)) throw new MoveRefused("invalid_manifest", "Invalid native transfer bundle");
   if (!/^[a-f0-9-]{36}$/.test(bundle.codex.thread_id) || !bundle.codex.files.some((file) => file.path === bundle.codex.root)
     || bundle.codex.files.some((file) => !/^sessions\/\d{4}\/\d{2}\/\d{2}\/rollout-[a-f0-9T_-]+\.jsonl$/.test(file.path))
     || bundle.codex.history_index && bundle.codex.history_index.path !== "history-index.json") throw new MoveRefused("invalid_manifest", "Native publication may only contain canonical rollout files and their scoped index");

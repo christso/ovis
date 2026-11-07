@@ -327,7 +327,7 @@ export function createServer(
   });
 
   const moveNode = new MoveNode(stateDir, moveRuntime(core.clientSnapshot, options.codexHome));
-  const sessionMoves = machines ? new MoveCoordinator(stateDir, flock, machines, core.clientSnapshot, moveNode) : null;
+  const sessionMoves = machines ? new MoveCoordinator(stateDir, flock, machines, core.clientSnapshot, moveNode, options.codexHome) : null;
   const requestLog = new RequestLog(stateDir);
   const services: RequestServices = {
     options, flock, moveNode, sessionMoves, relay: ovisRelay, launcherSearch, savedLaunchers, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartup,

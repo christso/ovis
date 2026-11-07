@@ -64,6 +64,6 @@ export function MovableFlockTable(props: FlockTableProps) {
     {statusError && <p className="session-move-error" role="alert">{t("Move status is unavailable. Refresh before starting or retrying a move.")} <button type="button" className="btn btn-ghost" onClick={() => void read()}>{t("Refresh")}</button></p>}
     {moves.some(unfinished) && <aside className="session-move-pending" aria-label={t("Pending session moves")}><span>{t("Pending session moves")}</span>{moves.filter(unfinished).map((state) => <button key={state.record.id} type="button" className="btn btn-ghost" onClick={() => setSelected({ row: props.rows.find((row) => row.execution?.id === state.record.plan.request.source_execution_id) ?? null, id: state.record.id })}>{t("View move")}{" · "}{props.registry?.sessions.find((session) => session.id === state.record.plan.request.session_id)?.name ?? state.record.plan.request.session_id}</button>)}</aside>}
     <FlockTable {...props} executionAction={action} />
-    {selected && <SessionMoveDialog row={selectedRow} name={sessionName} machines={props.machines} state={active} statusError={statusError} onState={receive} onClose={close} onOpenTarget={props.onOpenTarget} />}
+    {selected && <SessionMoveDialog rows={props.rows} row={selectedRow} name={sessionName} machines={props.machines} state={active} statusError={statusError} onState={receive} onClose={close} onOpenTarget={props.onOpenTarget} />}
   </>;
 }
