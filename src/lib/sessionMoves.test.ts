@@ -46,3 +46,13 @@ it("never advises reopening a source client when a destination launch may alread
   expect(moveRefusal("source_not_quiescent", t, "preview")).toContain("Finish the turn");
   expect(moveRefusal("source_not_quiescent", t, "launching")).toContain("destination launch may already exist");
 });
+
+it("explains supported-scope refusals without presenting them as retryable connection failures", () => {
+  const t = (key: string): string => key;
+  expect(moveRefusal("unsupported_checkout", t)).toContain("index flags");
+  expect(moveRefusal("unsupported_runtime", t)).toContain("built-in OpenAI");
+  expect(moveRefusal("unsupported_filesystem", t)).toContain("same filesystem");
+  expect(moveRefusal("artifact_path_conflict", t)).toContain("same absolute checkout path");
+  expect(moveRefusal("source_busy", t)).toContain("Finish the active");
+  expect(moveRefusal("untracked_scope", t)).toContain("Select required");
+});

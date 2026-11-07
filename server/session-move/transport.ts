@@ -38,6 +38,13 @@ export class MoveTransport {
           untracked_scope: "Select all required native image files in the reviewed untracked scope",
           unsupported_artifact: "This session has unsupported queued work, goals, tools or attachments",
           codex_incompatible: "Session moves require matching supported Codex versions",
+          unsupported_checkout: "Resolve unsupported Git checkout state before previewing",
+          unsupported_runtime: "Only built-in OpenAI sessions without custom runtime capabilities are supported",
+          unsupported_filesystem: "Choose a checkout on the destination transfer staging filesystem",
+          artifact_path_conflict: "Local image sessions require the same absolute destination checkout path",
+          unsupported_history_index: "Destination native history schema is incompatible",
+          source_store_unknown: "Preview while the selected native Codex client is still open",
+          destination_signed_out: "Sign in to Codex on the destination before previewing",
         };
         let code: string | undefined;
         try { const error = JSON.parse(Buffer.from(await readCapped(response, 8 * 1024)).toString()); if (typeof error?.error?.code === "string" && Object.hasOwn(known, error.error.code)) code = error.error.code; } catch { /* remote diagnostics stay private */ }
