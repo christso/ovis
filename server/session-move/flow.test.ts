@@ -34,3 +34,13 @@ for (const failure of ["chunk", "launch"] as const) it.skipIf(process.platform =
     expect(fixture.verifyWork().working).toBe("working\n");
   } finally { await fixture.close(); }
 });
+
+it.skipIf(process.platform === "win32")("qualifies a custom source home observed from the native process instead of its missing default store", async () => {
+  const fixture = await moveFlowFixture(undefined, { requireSourceHome: true });
+  try {
+    const preview = await fixture.coordinator.moves.preview(fixture.request);
+    await fixture.exit();
+    expect((await fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).phase).toBe("complete");
+    expect(fixture.counts()).toEqual({ creates: 1, launches: 1 });
+  } finally { await fixture.close(); }
+});

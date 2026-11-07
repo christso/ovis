@@ -7,6 +7,7 @@ import { writePrivateState } from "../private-state.ts";
 import { restoreCheckout, verifyCheckout, snapshotCheckout, type CheckoutSnapshot } from "./checkout.ts";
 import { restoreCodexHistory, snapshotCodex, type CodexSnapshot, type CodexMoveRuntime } from "./codex.ts";
 import { digest, inside, MoveRefused, readMoveChunk, readMoveFile, writeMoveFile, type MoveFile } from "./files.ts";
+import { preflightHistoryIndex } from "./history-index.ts";
 import { MoveSpool, operationId } from "./spool.ts";
 import { holdQuiescentCodex, type QuiescentSource } from "./quiescence.ts";
 import { MOVE_CHUNK_BYTES, type MoveNodeRequest } from "./transport.ts";
@@ -15,7 +16,7 @@ import { nativeHistoryProof, verifyNativeResume, type NativeMoveRpc } from "./ve
 export interface SourceObservation { home: string; rollout: string; cwd: string; thread_id: string; lifetime: string; pane_id: string }
 export interface NodeNative extends NativeMoveRpc { close(): Promise<void> }
 export interface MoveNodeRuntime {
-  capabilities(): Promise<CodexMoveRuntime & { home: string }>;
+  capabilities(home?: string): Promise<CodexMoveRuntime & { home: string }>;
   observe(paneId: string, threadId: string, lifetime: string): Promise<SourceObservation>;
   native(home: string, proxy: boolean): Promise<NodeNative>;
   create(cwd: string, home: string, label: string): Promise<{ pane_id: string; lifetime: string }>;
@@ -98,12 +99,12 @@ export class MoveNode {
     const captured = codex.files.find((file) => file.path === source.rollout.replace(/^archived_sessions\//, "sessions/"));
     if (!captured || captured.sha256 !== latest.sha256) throw new MoveRefused("source_changed", "Source history changed while preparing the preview");
     const files = [checkout.bundle, checkout.staged, checkout.unstaged, ...checkout.untracked.map((file) => ({ ...file, path: `untracked/${file.path}` })), ...codex.files.map((file) => ({ ...file, path: `codex/${file.path}` })), ...(codex.history_index ? [codex.history_index] : [])];
-    const fingerprint = digest(Buffer.from(JSON.stringify({ files, head: checkout.head, staged: checkout.staged.sha256, unstaged: checkout.unstaged.sha256, untracked: checkout.untracked, history, root: codex.root, artifacts: codex.checkout_artifacts })));
+    const fingerprint = digest(Buffer.from(JSON.stringify({ files, head: checkout.head, staged: checkout.staged.sha256, unstaged: checkout.unstaged.sha256, untracked: checkout.untracked, history, root: codex.root, history_scope: codex.history_scope, artifacts: codex.checkout_artifacts })));
     return { dir, bundle: { version: 1, checkout, codex, history, fingerprint, files, untracked_candidates: [...checkout.excluded_untracked, ...selected].sort() } };
   }
   private async step(id: string, action: string, payload: Record<string, unknown>): Promise<unknown> {
     const receipt = this.read(id);
-    if (action === "capabilities") { const { home: _home, ...capabilities } = await this.runtime.capabilities(); return { protocol: 1, ...capabilities }; }
+    if (action === "capabilities") { const { home: _home, ...capabilities } = await this.runtime.capabilities(receipt.source?.home); return { protocol: 1, ...capabilities }; }
     if (action === "source") {
       const pane = text(payload.pane_id), thread = text(payload.thread_id), lifetime = text(payload.lifetime);
       const selected = payload.untracked_files;
@@ -126,7 +127,10 @@ export class MoveNode {
       if (source.codex.checkout_artifacts.length && source.codex.cwd !== checkout) throw new MoveRefused("artifact_path_conflict", "Image-bearing sessions require the same absolute checkout path");
       for (const file of source.codex.files) if (existsSync(inside(capabilities.home, file.path, true)) && !receipt.destination) throw new MoveRefused("destination_conflict", "Destination already has a referenced native session file");
       // A duplicate native UUID can live under a different filename or database path.
-      if (!receipt.destination) nativeThreadConflict(capabilities.home, source.codex.thread_id);
+      if (!receipt.destination) {
+        nativeThreadConflict(capabilities.home, source.codex.thread_id);
+        if (source.codex.history_scope) preflightHistoryIndex(capabilities.home, source.codex.history_scope);
+      }
       return { protocol: 1, ...capabilities, home: undefined };
     }
     if (action === "hold") {
@@ -246,7 +250,7 @@ function bundleValue(bundle: TransferBundle): void {
   if (bundle?.version !== 1 || bundle.checkout?.version !== 1 || bundle.codex?.version !== 1 || !/^[a-f0-9]{64}$/.test(bundle.history) || !Array.isArray(bundle.files) || !/^[a-f0-9]{64}$/.test(bundle.fingerprint)) throw new MoveRefused("invalid_manifest", "Invalid native transfer bundle");
   if (!/^[a-f0-9-]{36}$/.test(bundle.codex.thread_id) || !bundle.codex.files.some((file) => file.path === bundle.codex.root)
     || bundle.codex.files.some((file) => !/^sessions\/\d{4}\/\d{2}\/\d{2}\/rollout-[a-f0-9T_-]+\.jsonl$/.test(file.path))
-    || bundle.codex.history_index && bundle.codex.history_index.path !== "history-index.json") throw new MoveRefused("invalid_manifest", "Native publication may only contain canonical rollout files and their scoped index");
+    || !!bundle.codex.history_index !== !!bundle.codex.history_scope || bundle.codex.history_index && bundle.codex.history_index.path !== "history-index.json") throw new MoveRefused("invalid_manifest", "Native publication may only contain canonical rollout files and their scoped index");
   const expected = [bundle.checkout.bundle, bundle.checkout.staged, bundle.checkout.unstaged, ...bundle.checkout.untracked.map((file) => ({ ...file, path: `untracked/${file.path}` })), ...bundle.codex.files.map((file) => ({ ...file, path: `codex/${file.path}` })), ...(bundle.codex.history_index ? [bundle.codex.history_index] : [])];
   if (JSON.stringify(expected) !== JSON.stringify(bundle.files) || bundle.checkout.bundle.path !== "commits.bundle" || bundle.checkout.staged.path !== "staged.patch" || bundle.checkout.unstaged.path !== "unstaged.patch") throw new MoveRefused("invalid_manifest", "Transfer files do not match the native snapshot");
 }

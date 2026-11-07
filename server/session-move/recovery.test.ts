@@ -3,6 +3,7 @@ import { expect, it, spyOn } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { privateStateFs } from "../private-state.ts";
+import { fixtureHistoryIndex } from "./history-index.fixture.ts";
 import { FIXTURE_THREAD, moveFlowFixture } from "./flow.fixture.ts";
 const owned = it.skipIf(process.platform === "win32");
 function failReceipt(name: string) {
@@ -66,6 +67,16 @@ owned("preserves malformed versioned node receipts and refuses side effects afte
     writeFileSync(path, malformed); fixture.restartNodes(); fixture.restart();
     await expect(fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).rejects.toThrow();
     expect(readFileSync(path, "utf8")).toBe(malformed);
+    expect(fixture.counts()).toEqual({ creates: 0, launches: 0 });
+    expect(existsSync(fixture.target)).toBe(false);
+  } finally { await fixture.close(); }
+});
+
+owned("refuses inherited destination cache conflicts during preview while the native source remains open", async () => {
+  const fixture = await moveFlowFixture(undefined, { segmented: true });
+  try {
+    fixtureHistoryIndex(fixture.targetHome, FIXTURE_THREAD, 100, 10);
+    await expect(fixture.coordinator.moves.preview(fixture.request)).rejects.toMatchObject({ code: "destination_conflict" });
     expect(fixture.counts()).toEqual({ creates: 0, launches: 0 });
     expect(existsSync(fixture.target)).toBe(false);
   } finally { await fixture.close(); }

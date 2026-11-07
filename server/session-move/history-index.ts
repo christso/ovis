@@ -1,9 +1,11 @@
 import { constants as sqliteConstants, Database } from "bun:sqlite";
+import { existsSync } from "node:fs";
 import { digest, inside, MAX_MOVE_BYTES, MoveRefused } from "./files.ts";
 
 const TABLES = ["thread_turns", "thread_items", "thread_history_projection_state"] as const;
 type Cell = string | number | null;
 interface TableRows { table: typeof TABLES[number]; columns: string[]; rows: Cell[][] }
+export interface CodexHistoryScope { schema: string; rollout_ids: string[] }
 export interface CodexHistoryIndex { version: 1; schema: string; rollout_ids: string[]; tables: TableRows[] }
 
 function schema(db: Database): string {
@@ -68,5 +70,18 @@ export function restoreHistoryIndex(home: string, snapshot: CodexHistoryIndex, a
         }
       }
     }).immediate();
+  } finally { db.close(); }
+}
+
+/** Read-only early conflict/schema check. A missing cache is initialized later by the exact qualified CLI. */
+export function preflightHistoryIndex(home: string, scope: CodexHistoryScope): void {
+  if (!/^[a-f0-9]{64}$/.test(scope.schema) || !scope.rollout_ids.length || scope.rollout_ids.some((id) => !/^[a-f0-9-]{36}$/.test(id))) throw new MoveRefused("invalid_history_index", "Invalid native history index scope");
+  const path = inside(home, "thread_history_1.sqlite", true);
+  if (!existsSync(path)) return;
+  const db = new Database(path, { readonly: true, create: false });
+  try {
+    if (schema(db) !== scope.schema) throw new MoveRefused("unsupported_history_index", "Destination Codex history schema differs from the source");
+    const placeholders = scope.rollout_ids.map(() => "?").join(",");
+    for (const table of [...TABLES, "thread_realtime_items"]) if (db.query(`SELECT 1 FROM ${table} WHERE thread_id IN (${placeholders}) LIMIT 1`).get(...scope.rollout_ids)) throw new MoveRefused("destination_conflict", "Destination already has inherited native history");
   } finally { db.close(); }
 }
