@@ -79,6 +79,18 @@ export function SessionMoveDialog({ row, rows, name, machines, state, statusErro
   const surface = useFocusTrap<HTMLDivElement>(true, { initialFocus: close });
   useSheetSwipe(surface, onClose);
   usePhoneSheetBack(onClose);
+  useEffect(() => {
+    const body = surface.current?.querySelector<HTMLElement>(".session-move-body");
+    if (!body) return;
+    const observer = new ResizeObserver(() => {
+      const focused = document.activeElement;
+      if (!(focused instanceof HTMLElement) || !body.contains(focused) || !focused.matches("input:not([type=checkbox]):not([type=radio]), textarea, select")) return;
+      const field = focused.getBoundingClientRect(), frame = body.getBoundingClientRect();
+      if (field.top < frame.top || field.bottom > frame.bottom) focused.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [surface]);
   const record = state?.record ?? null;
   const request = record?.plan.request;
   const sourceMachineId = record?.plan.source_machine_id ?? row?.machine_id ?? "";
