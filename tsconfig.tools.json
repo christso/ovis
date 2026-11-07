@@ -38,6 +38,8 @@
     "scripts/chat-fallback-fixture.tsx",
     "scripts/chat-outcome-note-browser-qa.ts",
     "scripts/chat-outcome-note-fixture.tsx",
+    "scripts/graph-fixture.tsx",
+    "scripts/graph-browser-regression.ts",
     "scripts/chat-virtual-fixture.tsx",
     "scripts/chat-virtual-browser-qa.ts",
     "scripts/chat-gjc-streaming-browser-qa.ts",
