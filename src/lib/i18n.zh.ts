@@ -28,6 +28,12 @@ import { RELAY_ZH } from "./i18n/relay.zh.ts";
  * Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Observed relationships": "已观测的关系",
+  "Delegation": "委派",
+  "Communication": "通信",
+  "{count} recorded events": "{count} 条已记录事件",
+  "Last activity": "最近活动",
+  "No observed relationships": "暂无已观测的关系",
   "Inventory is incomplete for: {machines}.": "以下机器的清单不完整：{machines}。",
   "The registry changed. Cancel and reopen this form to review current values.": "登记已更改。请取消并重新打开此表单，以查看当前值。",
   "Unavailable": "无法确认",

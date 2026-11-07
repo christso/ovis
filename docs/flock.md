@@ -64,3 +64,27 @@ A subsequent `adopt` command with `session_id` appends a new execution and updat
 current execution ID atomically. Optional `expected_execution_id` additionally checks the current
 execution before appending, for intentional Move's compare-and-swap. Move owns its operation journal
 and idempotence. No terminal lifecycle operation is performed by the registry itself.
+
+## Observed agent relationships
+
+Table's execution details show read-only delegation and communication relationships. The manager
+collects successful native coordination receipts alongside verified source inventory and retains
+only session IDs, event IDs, relationship kinds and occurrence times in the optional `observations`
+array of `flock.json`. Repeated polling does not add events or increase message counts. Historical
+execution bindings resolve endpoints to logical sessions, preserving links through a planned move.
+An endpoint without an unambiguous logical association remains an observed native session, with
+no assumed live terminal target or root-agent status.
+
+Capture currently supports Codex's durable completed `SubAgentActivity` receipts with an own-thread
+ID, native target ID and a successful `started` or `interacted` activity. The source reader follows
+the same verified rollout as native ownership, checks the source identity and reads complete records
+within a bounded budget. Unsupported/legacy formats and earlier transcript segments may have no
+coverage. Plain Herdr CLI start/prompt operations do not publish caller identity in this protocol
+and cannot be attributed. Other CLIs, prose mentions and unsuccessful requests create no links.
+The inspector does not expose message contents. Its counts describe recorded receipts, not delivery
+acknowledgements or a complete communication history.
+
+There is no manual agent-link editor or browser relationship mutation command. Existing work
+membership and execution/session association remain identity operations. Observations are passive:
+they do not alter prompts, send messages, assign work, grant control or block execution. Table and
+Graph consume the same recorded relationships.

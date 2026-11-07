@@ -22,7 +22,8 @@ const longCheckout = `${longRepository}/worktrees/mobile-table-layout-with-a-lon
 const longBranch = "feat/readable-mobile-executions-with-long-branch-context";
 const fixturePane = machines[0]!.snapshot!.panes.find((pane) => pane.agent)!;
 fixturePane.agent = "codex";
-fixturePane.agent_session = { agent: "codex", kind: "id", source: "fixture", value: `native-local-${fixturePane.pane_id}` };
+fixturePane.agent_session = { agent: "codex", kind: "id", source: "fixture", value: "11111111-1111-4111-8111-111111111111" };
+machines[0]!.snapshot!.flock_observations = ["delegation", "communication", "communication"].map((kind, index) => ({ id: `fixture-call-${index}`, kind: kind as "delegation" | "communication", source_native_session_id: fixturePane.agent_session!.value, target_native_session_id: "22222222-2222-4222-8222-222222222222", occurred_at: `2026-11-08T00:0${index}:00Z`, source: "codex" }));
 for (const fixtureWorkspace of machines[0]!.snapshot!.workspaces) {
 fixtureWorkspace.worktree = { checkout_path: longCheckout, repo_root: longRepository, repo_key: "fixture-repo", repo_name: "Fixture commerce", is_linked_worktree: true };
 fixtureWorkspace.tokens = { ...fixtureWorkspace.tokens, branch: longBranch };
@@ -41,7 +42,7 @@ machines[0]!.snapshot!.panes.push(unproven);
 for (const machine of machines) if (machine.snapshot) machine.snapshot.flock_bindings = machine.snapshot.panes.flatMap((pane) => pane.agent && pane.agent_session?.kind === "id"
   ? [{ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: pane.agent, native_session_id: pane.agent_session.value }] : []);
 const rawMachines = structuredClone(machines);
-for (const machine of rawMachines) if (machine.snapshot) delete machine.snapshot.flock_bindings;
+for (const machine of rawMachines) if (machine.snapshot) { delete machine.snapshot.flock_bindings; delete machine.snapshot.flock_observations; }
 const chosen = machines[0]!.snapshot!.panes.find((pane) => pane.agent)!;
 const evidence = process.env["UI_EVIDENCE_DIR"];
 let stateDir = join(root, "state");
@@ -127,7 +128,7 @@ try {
       await form.waitFor({ state: "hidden" });
       const work = store.read().works[0]!;
       await table.getByRole("combobox", { name: "Machine", exact: true }).selectOption("local");
-      const firstRow = table.locator("tbody tr").filter({ has: page.locator(".flock-open:enabled") }).first();
+      const firstRow = table.locator("tbody tr").filter({ has: page.getByRole("button", { name: chosen.label!, exact: true }) });
       await firstRow.getByRole("button", { name: "Associate session", exact: true }).click();
       form = table.getByRole("form", { name: "Session association" });
       await form.getByLabel("Name", { exact: true }).fill("Table fixture session");
@@ -137,6 +138,11 @@ try {
       const session = store.read().sessions[0]!;
       const execution = store.read().executions[0]!;
       const registered = table.locator(`tr[data-row-id="${execution.id}"]`);
+      await registered.locator("summary").click();
+      await registered.getByText("Observed relationships", { exact: true }).waitFor();
+      assert.equal(await registered.getByText("Codex 22222222", { exact: true }).count(), 2, "Table shows the same directed observed relationships as Graph");
+      await registered.getByText("2 recorded events").waitFor();
+      await registered.locator("summary").click();
       await registered.getByRole("button", { name: "Edit association" }).click();
       form = table.getByRole("form", { name: "Session association" });
       await form.getByLabel("Name", { exact: true }).fill("Renamed fixture");
@@ -160,7 +166,7 @@ try {
       await form.waitFor({ state: "hidden" });
       // A distinct machine intentionally reuses pane IDs. Associate one execution explicitly with the same logical session.
       await table.getByRole("combobox", { name: "Machine", exact: true }).selectOption(remote.id);
-      await table.locator("tbody tr").first().getByRole("button", { name: "Associate session", exact: true }).click();
+      await table.locator("tbody tr").filter({ has: page.getByRole("button", { name: chosen.label!, exact: true }) }).getByRole("button", { name: "Associate session", exact: true }).click();
       form = table.getByRole("form", { name: "Session association" });
       await form.getByRole("combobox", { name: "Logical session", exact: true }).selectOption(session.id);
       await form.getByRole("button", { name: "Save association" }).click();

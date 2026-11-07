@@ -24,6 +24,12 @@ import { RELAY_KO } from "./i18n/relay.ko.ts";
  * braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Observed relationships": "관측된 관계",
+  "Delegation": "위임",
+  "Communication": "통신",
+  "{count} recorded events": "기록된 이벤트 {count}개",
+  "Last activity": "최근 활동",
+  "No observed relationships": "관측된 관계 없음",
   "Inventory is incomplete for: {machines}.": "인벤토리가 완전하지 않은 머신: {machines}.",
   "The registry changed. Cancel and reopen this form to review current values.": "작업 목록이 변경되었습니다. 취소한 후 양식을 다시 열어 현재 값을 확인하세요.",
   "Unavailable": "확인 불가",

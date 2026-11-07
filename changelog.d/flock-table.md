@@ -1,4 +1,6 @@
 ### Added
+- Table execution details show automatically observed Codex delegation and communication, with
+  recorded counts and activity times retained across refreshes and planned machine moves.
 - Table view lists agent executions across configured machines with sorting, filtering and optional
   machine grouping. Explicit work/session associations keep their identities through renames and
   restarts, and stale or disconnected executions remain visible without opening a recycled pane.

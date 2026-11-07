@@ -23,9 +23,16 @@ export function flockRelationshipEndpoint(registry: FlockRegistry, machineId: st
 
 export function flockRelationships(registry: FlockRegistry): FlockRelationship[] {
   const relations = new Map<string, FlockRelationship>();
+  const endpoints = new Map<string, FlockRelationshipEndpoint>();
+  const endpoint = (machine: string, native: string) => {
+    const key = JSON.stringify([machine, native]);
+    let value = endpoints.get(key);
+    if (!value) { value = flockRelationshipEndpoint(registry, machine, native); endpoints.set(key, value); }
+    return value;
+  };
   for (const event of registry.observations ?? []) {
-    const source = flockRelationshipEndpoint(registry, event.machine_id, event.source_native_session_id);
-    const target = flockRelationshipEndpoint(registry, event.machine_id, event.target_native_session_id);
+    const source = endpoint(event.machine_id, event.source_native_session_id);
+    const target = endpoint(event.machine_id, event.target_native_session_id);
     if (source.id === target.id) continue;
     const id = JSON.stringify([event.kind, source.id, target.id]);
     const before = relations.get(id);

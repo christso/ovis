@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FlockStore, handleFlockRequest } from "./flock.ts";
@@ -36,4 +36,22 @@ it("resolves historical native endpoints to stable logical sessions after a mach
     { id: "new", session_id: "logical", checkout_id: null, machine_id: "remote", herdr_lifetime: "new", pane_id: "p", agent: "codex", native_session_id: sourceId, created_at: event.occurred_at }], observations: [{ ...event, machine_id: "local" }] };
   expect(flockRelationships(registry)[0]?.source).toMatchObject({ id: "session:logical", label: "Coordinator", session_id: "logical" });
   expect(flockRelationships(registry)[0]?.target.session_id).toBeNull();
+});
+
+it("does not accept browser-created links or copy message content from a source receipt", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-observations-"));
+  try {
+    const store = new FlockStore(root), source = machine();
+    Object.assign(source.snapshot!.flock_observations![0]!, { message: "private fixture message" });
+    store.observe([source]);
+    const before = readFileSync(join(root, "flock.json"), "utf8");
+    expect(before).not.toContain("private fixture message");
+    const response = await handleFlockRequest(new Request("http://localhost/api/flock", { method: "POST", headers: { origin: "http://localhost", "x-herdr-machine": "1" }, body: JSON.stringify({ revision: store.read().revision, command: { type: "create-link", ...event } }) }), store, [source]);
+    expect(response.status).toBe(400);
+    expect(readFileSync(join(root, "flock.json"), "utf8")).toBe(before);
+    const corrupt = { ...store.read(), observations: [{ ...event, machine_id: "local", kind: "future-kind" }] };
+    writeFileSync(join(root, "flock.json"), JSON.stringify(corrupt));
+    expect(() => store.observe([source])).toThrow("preserved");
+    expect(JSON.parse(readFileSync(join(root, "flock.json"), "utf8"))).toEqual(corrupt);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -26,6 +26,12 @@ import { RELAY_JA } from "./i18n/relay.ja.ts";
  * in English. Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Observed relationships": "観測された関係",
+  "Delegation": "委任",
+  "Communication": "通信",
+  "{count} recorded events": "記録されたイベント {count} 件",
+  "Last activity": "最終アクティビティ",
+  "No observed relationships": "観測された関係はありません",
   "Inventory is incomplete for: {machines}.": "次のマシンの一覧は未確認です: {machines}。",
   "The registry changed. Cancel and reopen this form to review current values.": "レジストリが変更されました。キャンセルしてフォームを開き直し、現在の値を確認してください。",
   "Unavailable": "確認できません",

@@ -5,6 +5,7 @@ import type { Machine, PaneTarget } from "../../shared/machines.ts";
 import { ApiError } from "../lib/api.ts";
 import { flockColumn, flockTableRows, type FlockColumn } from "../lib/flockTable.ts";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
+import { flockRelationshipEndpoint, flockRelationships } from "../../shared/flock-relationships.ts";
 import { useT } from "../lib/i18n.ts";
 import type { Translate } from "../lib/i18n.ts";
 import "./FlockTable.css";
@@ -57,6 +58,7 @@ export function FlockTable(props: FlockTableProps) {
   const activeFilters = Number(Boolean(query.trim())) + Number(Boolean(machineId)) + Number(grouped) + Number(column !== "name" || descending);
   const incompleteSources = props.machines.filter((machine) => machine.state !== "connected" || machine.snapshot === null);
   const visible = useMemo(() => flockTableRows(props.rows, query, machineId, column, descending), [props.rows, query, machineId, column, descending]);
+  const relationships = useMemo(() => props.registry ? flockRelationships(props.registry) : [], [props.registry]);
   const groups = useMemo(() => {
     if (!grouped) return [{ id: "", name: "", rows: visible }];
     const byMachine = new Map<string, { id: string; name: string; rows: FlockRow[] }>();
@@ -123,6 +125,9 @@ export function FlockTable(props: FlockTableProps) {
           {grouped && <tr role="row" className="flock-group"><th role="rowheader" colSpan={7} scope="rowgroup">{group.name || t("Unavailable")}</th></tr>}
           {group.rows.map((row) => {
             const target = flockTarget(row);
+            const native = row.execution ?? row.binding;
+            const relationshipId = row.session ? `session:${row.session.id}` : props.registry && native?.agent === "codex" ? flockRelationshipEndpoint(props.registry, row.machine_id, native.native_session_id).id : null;
+            const related = relationships.filter((relation) => relation.source.id === relationshipId || relation.target.id === relationshipId);
             const selected = target && target.machine_id === props.selected?.machine_id && target.pane_id === props.selected?.pane_id;
             return <tr role="row" key={row.id} data-row-id={row.id} data-selected={selected ? "true" : undefined}>
               <td role="cell" className="flock-name"><button type="button" className="flock-open" aria-current={selected ? "true" : undefined} disabled={!target} onClick={() => { if (target) props.onOpenTarget(target); }}>{row.name}</button></td>
@@ -141,6 +146,11 @@ export function FlockTable(props: FlockTableProps) {
                 {row.execution && <><dt>{t("Execution")}</dt><dd>{row.execution.id}{row.session?.current_execution_id === row.execution.id ? ` · ${t("Current")}` : ` · ${t("Previous")}`}</dd></>}
                 {row.binding && <><dt>{t("Native session")}</dt><dd>{row.binding.native_session_id}</dd><dt>{t("Pane")}</dt><dd>{row.binding.pane_id}</dd></>}
                 {row.checkout && <><dt>{t("Checkout")}</dt><dd>{row.checkout.path}</dd></>}
+                <dt>{t("Observed relationships")}</dt><dd>{related.length ? <ul>{related.map((relation) => {
+                  const outgoing = relation.source.id === relationshipId;
+                  const neighbour = outgoing ? relation.target : relation.source;
+                  return <li key={relation.id}>{relation.kind === "delegation" ? t("Delegation") : t("Communication")} {outgoing ? "→" : "←"} <span title={neighbour.native_session_id}>{neighbour.label}</span> · {t("{count} recorded events", { count: relation.count })}<br /><span>{t("Last activity")}: <time dateTime={relation.last_at}>{new Date(relation.last_at).toLocaleString()}</time></span></li>;
+                })}</ul> : t("No observed relationships")}</dd>
               </dl></details></td>
             </tr>;
           })}

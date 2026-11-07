@@ -3973,3 +3973,12 @@ visible. Association is explicit, and selectors include IDs to disambiguate equa
 sessions without proven IDs stay visible as unassociated; stale or disconnected bindings cannot open
 terminals from Table. Rename changes a label, never an identity. Work and session names live in the
 manager's registry; naming a session does not rename its native agent or move its files.
+
+Observed relationships appear read-only inside the same execution-details disclosure on desktop
+and phone, following this Table's existing Paseo-inspired compact metadata pattern. Native Codex
+successful coordination receipts contribute directed delegation and communication edges to the
+shared registry. Only metadata is retained; requests, prose, raw Herdr hints and unsupported
+formats supply no relationship. Deduplication preserves counts across refreshes and restarts.
+Historical execution bindings resolve to stable logical sessions after a move, while unknown
+endpoints remain unavailable. These observations do not change agent behaviour, and there is no
+manual agent-link mutation UI or API. Source evidence and coverage limits are in `docs/flock.md`.
