@@ -43,6 +43,8 @@ const harness = (machines: Machine[]) => `<script>(() => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
     if (['/api/pane/focus', '/api/pane/input', '/api/pane/send', '/api/pane/keys'].includes(url.pathname)) controls.push(url.pathname);
     if (url.pathname === '/api/flock') return network(input, init);
+    if (url.pathname === '/api/fs/stat') return Response.json({path:'/fixture/README.md',name:'README.md',size:29,modified:'2026-11-07T00:00:00Z',mime:'text/markdown',kind:'text'});
+    if (url.pathname === '/api/fs/file') return new Response('# Fictional Graph file\\n', {headers:{'content-type':'text/markdown'}});
     if (url.pathname === '/api/health' && url.searchParams.get('scope') === 'bridge' && new URLSearchParams(location.search).get('hold_auth') === '1') { await new Promise(resolve => { window.graphFixture.releaseAuth = resolve; }); return demo(input, init); }
     if (url.pathname === '/api/machines') return Response.json({machines:fixture});
     if (url.pathname === '/api/session') return Response.json({snapshot:fixture[0].snapshot});
@@ -78,7 +80,7 @@ try {
     store.change(1, { type: "adopt", binding: flockBinding(machines[0]!, machines[0]!.snapshot!.panes[0]!)!, work_id: store.read().works[0]!.id, name: "Prune orchard" }, machines);
     const session = store.read().sessions[0]!, old = store.read().executions[0]!, sessionId = `session:${session.id}`;
     const context = await browser.newContext({ viewport: { width, height: videoDir ? 1000 : 844 }, ...(videoDir ? { recordVideo: { dir: videoDir, size: { width, height: 1000 } } } : {}), locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(width === 390 ? { isMobile: true, hasTouch: true } : {}) });
-    await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme })), theme);
+    await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme, fileOpen: "panel" })), theme);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const errors: string[] = [], assets: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message)); page.on("request", (request) => { if (request.url().includes("GraphPanel-")) assets.push(request.url()); });
@@ -142,6 +144,12 @@ try {
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
       await page.locator(`[data-graph-node="execution:${store.read().sessions[0]!.current_execution_id}"]`).waitFor();
       assert.equal(await node().getAttribute("transform"), position, "execution move preserves logical node layout");
+      if (width >= 980) {
+        const withFile = new URL(page.url()); withFile.searchParams.delete("page"); withFile.searchParams.set("file", "README.md");
+        await page.goto(withFile.href);
+        await page.locator("aside.file-panel .file-viewer").waitFor();
+        await openGraph(); await node().waitFor(); await inspect(sessionId);
+      }
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
       if (videoDir) {
