@@ -1,5 +1,5 @@
 import { afterEach, expect, it, spyOn } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Machine } from "../shared/machines.ts";
@@ -10,8 +10,12 @@ import { FlockStore, handleFlockRequest } from "./flock.ts";
 import * as codex from "./codex.ts";
 import { snapshotWithoutHiddenTokens } from "./herdr-sidebar.ts";
 import { readFlockSource, verifyFlockSnapshot } from "./flock-source.ts";
+import type { FlockObservation } from "../shared/flock.ts";
+import { codexCoordinationObservations } from "./codex-relationships.ts";
 
 const roots: string[] = [];
+const own = "11111111-1111-4111-8111-111111111111", target = "22222222-2222-4222-8222-222222222222";
+const observation: FlockObservation = { id: "observed-send", kind: "communication", source_native_session_id: own, target_native_session_id: target, occurred_at: "2026-11-08T00:00:00Z", source: "codex" };
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const snapshot = (native: string): SessionSnapshot => ({ agents: [], layouts: [], protocol: 1, version: "fixture", tabs: [], workspaces: [], herdr_lifetime: "remote-herdr",
   flock_bindings: [{ pane_id: "w1:p1", terminal_id: "terminal", agent: "codex", native_session_id: native }],
@@ -21,8 +25,12 @@ const local = async (): Promise<SessionSnapshot> => { throw new Error("Remote ad
 
 it("discards incoming proof metadata for an agent without a verified reader", async () => {
   const source = snapshot("unproven"); source.panes[0]!.agent = "claude";
-  expect((await verifyFlockSnapshot(async () => source)).flock_bindings).toEqual([]);
+  source.flock_observations = [observation];
+  const verified = await verifyFlockSnapshot(async () => source);
+  expect(verified.flock_bindings).toEqual([]);
+  expect(verified.flock_observations).toEqual([]);
   expect(source.flock_bindings).toHaveLength(1);
+  expect(source.flock_observations).toHaveLength(1);
 });
 
 for (const replacement of ["lifetime", "terminal", "cwd", "agent"] as const) it(`drops native proof if ${replacement} changes while ownership is being read`, async () => {
@@ -32,12 +40,47 @@ for (const replacement of ["lifetime", "terminal", "cwd", "agent"] as const) it(
   if (replacement === "cwd") after.panes[0]!.cwd = "/fixture/replaced";
   if (replacement === "agent") after.panes[0]!.agent = "claude";
   let changed = false;
-  const reader = spyOn(codex, "codexPaneSession").mockImplementation(async () => { changed = true; return "replacement-native"; });
+  const reader = spyOn(codex, "codexPaneCoordination").mockImplementation(async () => { changed = true; return { id: own, observations: [observation], rolloutPath: "/fixture/rollout.jsonl" }; });
   const source = { ...machine(), kind: "local" as const };
   const manager = { list: () => [source] } as unknown as MachineManager;
   try {
     const sources = await readFlockSource(manager, source.id, async () => changed ? after : before);
     expect(sources[0]!.snapshot!.flock_bindings).toEqual([]);
+    expect(sources[0]!.snapshot!.flock_observations).toEqual([]);
+  } finally { reader.mockRestore(); }
+});
+
+it("transports native receipts with the same proven session and discards incoming observations", async () => {
+  const source = snapshot("untrusted-hint");
+  source.flock_observations = [{ ...observation, id: "untrusted-snapshot" }];
+  const reader = spyOn(codex, "codexPaneCoordination").mockResolvedValue({ id: own, observations: [observation], rolloutPath: "/fixture/rollout.jsonl" });
+  try {
+    const verified = await verifyFlockSnapshot(async () => source);
+    expect(verified.flock_bindings).toEqual([{ pane_id: "w1:p1", terminal_id: "terminal", agent: "codex", native_session_id: own }]);
+    expect(verified.flock_observations).toEqual([observation]);
+    expect(source.flock_observations[0]!.id).toBe("untrusted-snapshot");
+  } finally { reader.mockRestore(); }
+});
+
+it("imports a successful native rollout receipt through source verification and the ordinary registry read", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-flock-native-receipt-")); roots.push(root);
+  const path = join(root, "rollout.jsonl");
+  writeFileSync(path, [
+    { type: "session_meta", payload: { id: own, source: "cli" } },
+    { timestamp: observation.occurred_at, type: "event_msg", payload: { type: "item_completed", thread_id: own,
+      item: { type: "SubAgentActivity", id: observation.id, kind: "interacted", agent_thread_id: target } } },
+  ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  // Only pane/native ownership is fictional; parsing, snapshot bracketing, manager import and persistence are real.
+  const reader = spyOn(codex, "codexPaneCoordination").mockImplementation(async () => ({ id: own, observations: await codexCoordinationObservations(path, own), rolloutPath: path }));
+  const source = { ...machine(), kind: "local" as const }, store = new FlockStore(root);
+  const manager = { list: () => [source] } as unknown as MachineManager;
+  const get = () => handleFlockRequest(new Request("http://localhost/api/flock?sources=1"), store, [source],
+    (id) => readFlockSource(manager, id, async () => source.snapshot!));
+  try {
+    const response = await get(); expect(response.status).toBe(200);
+    expect(store.read().observations).toEqual([{ ...observation, occurred_at: "2026-11-08T00:00:00.000Z", machine_id: source.id }]);
+    await get(); expect(store.read().observations).toHaveLength(1);
+    expect(new FlockStore(root).read().observations).toEqual(store.read().observations);
   } finally { reader.mockRestore(); }
 });
 

@@ -30,7 +30,7 @@ export class FlockStore {
     for (const machine of sources) {
       if (machine.state !== "connected" || !machine.snapshot?.herdr_lifetime) continue;
       for (const event of machine.snapshot.flock_observations ?? []) {
-        if (!flockObservationValue(event) || !machine.snapshot.flock_bindings?.some((binding) => binding.agent === "codex" && binding.native_session_id === event.source_native_session_id)) continue;
+        if (!flockObservationValue(event) || !machine.snapshot.flock_bindings?.some((binding) => binding.agent === "codex" && binding.native_session_id.toLowerCase() === event.source_native_session_id.toLowerCase())) continue;
         const stored = { id: event.id, kind: event.kind, source_native_session_id: event.source_native_session_id,
           target_native_session_id: event.target_native_session_id, occurred_at: event.occurred_at, source: event.source, machine_id: machine.id };
         const key = flockObservationKey(stored);

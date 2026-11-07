@@ -1,27 +1,36 @@
 import type { Machine } from "../shared/machines.ts";
 import type { SessionSnapshot } from "../shared/protocol.ts";
 import type { MachineManager } from "./machines.ts";
-import { codexPaneSession } from "./codex.ts";
+import { codexPaneCoordination } from "./codex.ts";
 import { FlockError } from "./flock.ts";
 import { discard, readCappedJson, REMOTE_LIMITS } from "./remote-json.ts";
+import { retainCodexCoordinationScans } from "./codex-relationships.ts";
 
 /** Proof is bridge-owned and ephemeral. Unsupported readers never promote a raw native-session hint. */
 export async function verifyFlockSnapshot(readSnapshot: () => Promise<SessionSnapshot>, codexHome?: string): Promise<SessionSnapshot> {
   const snapshot = await readSnapshot();
   const flock_bindings: NonNullable<SessionSnapshot["flock_bindings"]> = [];
+  const observations = new Map<string, NonNullable<SessionSnapshot["flock_observations"]>>();
+  const paths = new Map<string, string>();
   if (snapshot.herdr_lifetime) for (const pane of snapshot.panes) {
     if (pane.agent !== "codex" || !pane.cwd || pane.restore_error) continue;
     try {
-      const id = await codexPaneSession(pane.pane_id, pane.cwd, codexHome, snapshot.panes);
-      if (id) flock_bindings.push({ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: pane.agent, native_session_id: id });
+      const source = await codexPaneCoordination(pane.pane_id, pane.cwd, codexHome, snapshot.panes);
+      if (source) {
+        flock_bindings.push({ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: pane.agent, native_session_id: source.id });
+        observations.set(pane.pane_id, source.observations);
+        paths.set(pane.pane_id, source.rolloutPath);
+      }
     } catch { /* uncertain ownership remains visible but unsupported */ }
   }
   const current = await readSnapshot();
-  return { ...current, flock_bindings: current.herdr_lifetime !== snapshot.herdr_lifetime ? [] : flock_bindings.filter((proof) => {
+  const proven = current.herdr_lifetime !== snapshot.herdr_lifetime ? [] : flock_bindings.filter((proof) => {
     const before = snapshot.panes.find((pane) => pane.pane_id === proof.pane_id);
     const after = current.panes.find((pane) => pane.pane_id === proof.pane_id);
     return after && after.terminal_id === proof.terminal_id && after.agent === proof.agent && !after.restore_error && after.cwd === before?.cwd;
-  }) };
+  });
+  retainCodexCoordinationScans(new Set(proven.flatMap((proof) => paths.get(proof.pane_id) ?? [])));
+  return { ...current, flock_bindings: proven, flock_observations: proven.flatMap((proof) => observations.get(proof.pane_id) ?? []) };
 }
 
 /** Adoption checks fresh native ownership as well as the pane incarnation. Older peers fail closed. */
