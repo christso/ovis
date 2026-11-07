@@ -19,8 +19,8 @@ export function flockRegistryValue(raw: unknown): raw is FlockRegistry {
     if (!Array.isArray(raw.observations)) return false;
     const seen = new Set<string>();
     for (const event of raw.observations) {
-      if (!flockObservationValue(event) || !text((event as Record<string, unknown>).machine_id)) return false;
-      const key = flockObservationKey(event as import("./flock.ts").FlockStoredObservation);
+      if (!flockObservationValue(event) || !("machine_id" in event) || !text(event.machine_id)) return false;
+      const key = flockObservationKey({ ...event, machine_id: event.machine_id });
       if (seen.has(key)) return false;
       seen.add(key);
     }
