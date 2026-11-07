@@ -36,3 +36,12 @@ it("requires the installed remote capability rather than updating the machine", 
     (async () => new Response("owned-fixture-token", { status: 404 })));
   await expect(transport.call("configured", request)).rejects.toMatchObject({ code: "move_unsupported" });
 });
+
+it("preserves actionable unsupported-scope codes while replacing remote diagnostics with fixed text", async () => {
+  for (const code of ["unsupported_checkout", "unsupported_runtime", "unsupported_filesystem", "artifact_path_conflict", "unsupported_history_index", "source_store_unknown"]) {
+    const transport = new MoveTransport({ list: () => [remote], endpoint: () => endpoint }, async () => null,
+      async () => Response.json({ error: { code, message: `private native output ${endpoint.token}` } }, { status: 409 }));
+    try { await transport.call("configured", request); throw new Error("Expected owned refusal"); }
+    catch (error) { expect(error).toMatchObject({ code }); expect(String(error)).not.toContain(endpoint.token); expect(String(error)).not.toContain("private native output"); }
+  }
+});

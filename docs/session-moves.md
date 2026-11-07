@@ -39,7 +39,8 @@ stopped. Recovery must re-establish that ownership before continuing.
 
 Supported snapshots contain ordinary Git checkouts and native plain JSONL rollouts,
 including paginated/reverted history. Submodules, symbolic links, unresolved Git
-conflicts, Git content filters and assume-unchanged/skip-worktree index flags are refused. The destination checkout is new,
+conflicts, Git content filters and assume-unchanged/skip-worktree index flags are refused. The destination checkout must share a filesystem with its Ovis state directory,
+and its parent directory must already exist. The checkout is new,
 private and detached at the source HEAD. Its commits arrive in a self-contained Git
 bundle. Separate binary patches preserve the Git index and working tree. Only
 individually selected, non-ignored untracked files are included; excluded files must

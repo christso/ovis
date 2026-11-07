@@ -35,11 +35,18 @@ export function moveRefusal(code: string | null | undefined, t: Translate, phase
   }
   if (code === "source_not_quiescent" && phase && ["launching", "verifying", "binding"].includes(phase)) return t("A destination launch may already exist. Check its status before continuing; Ovis will not start another copy.");
   switch (code) {
+    case "source_busy": return t("Finish the active Codex turn before previewing or moving this session.");
+    case "untracked_scope": return t("Select required session images and refresh the preview before moving.");
+    case "unsupported_artifact": return t("This session has unsupported attachments, queued work, goals or native tools. Clear them in Codex before previewing again.");
+    case "unsupported_checkout": return t("Resolve unsupported Git state: conflicts, symlinks, submodules, filters or hidden index flags.");
+    case "unsupported_runtime": return t("This session requires the built-in OpenAI provider without custom runtime capabilities.");
+    case "unsupported_filesystem": return t("Choose a new checkout on the same filesystem as the destination Ovis state directory.");
+    case "artifact_path_conflict": return t("Sessions with local images require the same absolute checkout path on the destination.");
     case "source_not_quiescent": return t("Codex still owns this session. Finish the turn and exit its native client, then retry.");
     case "source_changed": case "preview_changed": return t("The source changed. Refresh the preview and review the files before continuing.");
     case "destination_conflict": return t("The destination already contains conflicting work or session data. Choose another checkout or resolve the conflict there.");
     case "machine_unavailable": return t("Both configured PCs must be connected before this move can continue.");
-    case "codex_incompatible": case "move_unsupported": return t("Both PCs need a compatible Ovis bridge and Codex 0.166.0 on Linux or macOS before this session can move.");
+    case "unsupported_history_index": case "codex_incompatible": case "move_unsupported": return t("Both PCs need a compatible Ovis bridge and Codex 0.166.0 on Linux or macOS before this session can move.");
     case "destination_signed_out": return t("Sign in to Codex on the destination, then refresh the preview.");
     case "reconciliation_required": return t("A destination launch may already exist. Check its status before continuing; Ovis will not start another copy.");
     case "resume_mismatch": case "resume_history_mismatch": case "native_history_invalid": return t("The destination session or its history could not be verified. The source copy was retained.");
