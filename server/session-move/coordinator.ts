@@ -16,7 +16,7 @@ import { MOVE_CHUNK_BYTES, MoveTransport } from "./transport.ts";
 export class MoveCoordinator {
   readonly moves: SessionMoves;
   private readonly transport: MoveTransport;
-  constructor(stateDir: string, private readonly flock: FlockStore, private readonly machines: MachineManager, private readonly localSnapshot: () => Promise<SessionSnapshot>, readonly node: MoveNode) {
+  constructor(stateDir: string, private readonly flock: FlockStore, private readonly machines: MachineManager, private readonly localSnapshot: () => Promise<SessionSnapshot>, readonly node: MoveNode, private readonly codexHome?: string) {
     this.transport = new MoveTransport(machines, (request) => node.call(request));
     this.moves = new SessionMoves(new MoveJournal(stateDir), this.ports());
   }
@@ -55,7 +55,7 @@ export class MoveCoordinator {
       },
       preflight: async (plan) => {
         const execution = this.source(plan.request), id = operationId(plan.operation_id);
-        const sources = await readFlockSource(this.machines, execution.machine_id, this.localSnapshot);
+        const sources = await readFlockSource(this.machines, execution.machine_id, this.localSnapshot, this.codexHome);
         if (sources[0]?.snapshot?.herdr_lifetime !== execution.herdr_lifetime) throw new MoveRefused("source_changed", "The source herdr lifetime changed");
         const capabilities = await Promise.all([this.call(execution.machine_id, id, "capabilities"), this.call(plan.request.destination_machine_id, id, "capabilities")]);
         codexCompatibility(capabilities[0] as CodexMoveRuntime, capabilities[1] as CodexMoveRuntime);
@@ -103,7 +103,7 @@ export class MoveCoordinator {
         const current = registry.executions.find((execution) => execution.id === session?.current_execution_id);
         if (current && sameFlockBinding(current, binding)) return;
         if (session?.current_execution_id !== plan.request.source_execution_id) throw new MoveRefused("source_changed", "The logical session changed while its move was being verified");
-        const sources = await readFlockSource(this.machines, destination.machine_id, this.localSnapshot);
+        const sources = await readFlockSource(this.machines, destination.machine_id, this.localSnapshot, this.codexHome);
         this.flock.change(registry.revision, { type: "adopt", binding, session_id: plan.request.session_id, expected_execution_id: plan.request.source_execution_id }, sources);
       },
     };

@@ -1,9 +1,18 @@
 # Planned Codex session transfer
 
-Implementation of fork issue #20 is in progress. The dedicated `server/session-move/`
-modules supply transfer primitives and recovery; they are not yet connected to Table,
-HTTP dispatch or an Ovis dialog. No production transfer action is available from these
-modules alone. Integration depends on issue #19's logical identity model being merged.
+Table's **Move session** action transfers a registered current Codex execution to a
+configured, connected PC. It preserves the logical name/work association and appends
+a distinct execution only after native resume is verified. Older execution records
+and source files remain available. Both bridges must provide the transfer protocol;
+Ovis never updates a bridge as a side effect of a move.
+
+Preview while the source Codex client is still open, select the destination/new
+checkout and individual untracked files, then review the artifact list. Finish the
+turn and exit that Codex client yourself. Confirm the exit in the dialog, refresh the
+same preview if native exit changed the artifacts, then start the transfer. A loaded
+client is refused even when idle. Reopen **View move** to inspect progress, retry a
+safe transfer step or check an uncertain destination. Cancel is available before
+launch; it does not delete the retained checkout or native files.
 
 This is a planned move while the source PC is available. It does not continuously
 replicate a conversation and cannot recover an unexpectedly lost PC.
@@ -69,7 +78,7 @@ with empty inherited history pages. The snapshot exports only rows keyed by the 
 inherited rollout IDs from `thread_turns`, `thread_items` and
 `thread_history_projection_state`. It does not copy a whole shared SQLite database.
 Source reads use a consistent read transaction. Destination import compares the exact
-schema and eight migration records, rejects existing rows for those rollout IDs, and
+schema and eight migration records, rejects unowned or different rows for those rollout IDs, and
 appends in one transaction. The installed destination CLI initializes its own schema
 before the import. Realtime history and incomplete projection coverage are refused.
 
@@ -83,8 +92,22 @@ and item page matching the source proof. No prompt is sent to verify it.
 Older Ovis releases neither read nor write it. Unknown versions or malformed records
 remain byte for byte and refuse writes. Atomic private-file replacement persists an
 intent before each external operation. No existing browser or bridge store is migrated.
-The document currently has no public HTTP contract; that belongs to the pending
-integration.
+`GET /api/session-moves` returns `{ moves: [{ record, running }] }`.
+`POST /api/session-moves` accepts `preview` with a request (and optional same-operation
+`id`), `run` with `id` and the confirmed `fingerprint`, or `cancel` with `id`.
+Both are control-only; mutations require the existing same-origin custom-header
+boundary. The bounded `/api/session-moves/node` POST is additionally restricted to
+configured bridge credentials; a browser control credential cannot call it.
+Shared receipt types are re-exported by `shared/protocol.ts`.
+
+Each bridge keeps private version-1 operation receipts/chunk manifests under
+`move-nodes/<operation UUID>` and `move-spool/<operation UUID>`. Unknown/malformed
+formats refuse without replacing their bytes. Snapshots, chunks and receipts can
+contain private conversation/work data and follow the state directory's private-file
+boundary. Partial private checkout staging is rebuilt until fully verified; an owned
+publication and exact cache import can reconcile after interruption. Unrelated or
+modified destination data always conflicts. Retained operation data is not automatically
+pruned; removing it is an explicit administrator action after reconciliation.
 
 A source snapshot is retained on failure. Restore and native launch are distinct steps.
 If a connection fails after launch, retry inspects the operation's destination receipt;
@@ -100,8 +123,8 @@ capabilities and destination conflicts before source ownership changes, and impl
 operation-owned snapshot/restore/launch receipts. It must never accept arbitrary SSH
 hosts, target URLs or shell commands from a transfer request. The supplied transport
 uses a fixed bridge route, redirect rejection, bounded requests/responses and private
-error messages. Its node dispatch, registry adapter and UI wiring are pending Table
-integration. Existing bridges without transfer capability must fail preflight, not be
+error messages. Its node dispatch uses the existing manager transport and source-proof reader;
+Table owns the single logical registry. Existing bridges without transfer capability must fail preflight, not be
 updated as a side effect of moving a session.
 
 ## Validation
@@ -110,10 +133,25 @@ Run fixture coverage through the supported isolated runner:
 
 ```sh
 bun run check run bun test ./server/session-move
-OVIS_CODEX_MOVE_NATIVE_TEST=1 bun run check run bun test ./server/session-move/native.contract.test.ts
+CHECK_WAIT_SECONDS=600 bun run check run bun test ./server/session-move.contract.test.ts
+CHECK_WAIT_SECONDS=600 bun run check run bun scripts/session-move-demo-regression.ts
+CHECK_WAIT_SECONDS=600 OVIS_CODEX_MOVE_NATIVE_TEST=1 bun run check run bun test ./server/session-move/native.contract.test.ts ./server/session-move/native-flow.contract.test.ts
+CHECK_WAIT_SECONDS=600 bun run check run bun scripts/session-move-native-regression.ts
 ```
 
-The second command requires the installed 0.166.0 CLI. It creates and removes its own
+The native command requires the installed 0.166.0 CLI. It creates and removes its own
 source/destination homes, invokes only owned app-server processes, inherits no API keys
 or credential homes, and never calls `turn/start`. Without the flag, native qualification
 is skipped rather than touching an installed user's sessions.
+
+
+Installed-native coverage loads a synthetic conversation through the actual Codex
+0.166.0 app-server, transfers across two owned loopback HTTP endpoints, resumes at a
+new cwd and checks native transcript pages plus staged/working/selected work. It
+injects lost acknowledgements and proves one destination launch. The native browser
+script shows the real dialog with the same pipeline, and can record outside git using
+`UI_EVIDENCE_DIR`. Herdr pane identity/launch and signed-in capability are explicit
+fixtures in these tests. They do not qualify real SSH machines, production native TUI
+launch, destination credentials/model access, macOS or Windows. No live user-session
+dogfooding is claimed. The separate demo browser matrix uses fully fictional
+transport and proof metadata and is not native resume evidence.

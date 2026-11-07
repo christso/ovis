@@ -24,7 +24,7 @@ for (const interrupted of ["patches", "untracked"] as const) owned(`rebuilds pri
     if (interrupted === "patches") expect(Bun.spawnSync(["git", "reset", "--hard", "HEAD"], { cwd: temporary, stdout: "ignore", stderr: "ignore" }).exitCode).toBe(0);
     rmSync(join(temporary, "later.txt"));
     expect(existsSync(fixture.target)).toBe(false); expect(fixture.counts()).toEqual({ creates: 0, launches: 0 });
-    fixture.restart(); expect((await fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).phase).toBe("complete");
+    fixture.restartNodes(); fixture.restart(); expect((await fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).phase).toBe("complete");
     expect(fixture.verifyWork()).toMatchObject({ committed: "committed\n", staged: "staged\n", working: "working\n", selected: "selected work\n" });
     expect(readFileSync(join(fixture.target, "later.txt"), "utf8")).toBe("later selected work\n");
   } finally { fault?.mockRestore(); await fixture.close(); }
@@ -51,8 +51,22 @@ owned("reconciles native index commit before its completion marker using exact r
     const db = new Database(join(fixture.targetHome, "thread_history_1.sqlite"), { readonly: true });
     try { expect(db.query("SELECT count(*) AS n FROM thread_items WHERE thread_id = ?").get(FIXTURE_THREAD)).toEqual({ n: 1 }); } finally { db.close(); }
     expect(fixture.counts()).toEqual({ creates: 0, launches: 0 });
-    fixture.restart(); expect((await fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).phase).toBe("complete");
+    fixture.restartNodes(); fixture.restart(); expect((await fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).phase).toBe("complete");
     const checked = new Database(join(fixture.targetHome, "thread_history_1.sqlite"), { readonly: true });
     try { expect(checked.query("SELECT count(*) AS n FROM thread_items WHERE thread_id = ?").get(FIXTURE_THREAD)).toEqual({ n: 1 }); } finally { checked.close(); }
   } finally { fault?.mockRestore(); await fixture.close(); }
+});
+
+owned("preserves malformed versioned node receipts and refuses side effects after restart", async () => {
+  const fixture = await moveFlowFixture();
+  try {
+    const preview = await fixture.coordinator.moves.preview(fixture.request); await fixture.exit();
+    const path = join(fixture.root, "source-state", "move-nodes", preview.id, "node.json");
+    const malformed = JSON.stringify({ version: 1, source_dir: "/unowned/path" });
+    writeFileSync(path, malformed); fixture.restartNodes(); fixture.restart();
+    await expect(fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).rejects.toThrow();
+    expect(readFileSync(path, "utf8")).toBe(malformed);
+    expect(fixture.counts()).toEqual({ creates: 0, launches: 0 });
+    expect(existsSync(fixture.target)).toBe(false);
+  } finally { await fixture.close(); }
 });

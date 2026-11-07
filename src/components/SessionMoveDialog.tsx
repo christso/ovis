@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRight, X } from "lucide-react";
-import { flockBinding, sameFlockBinding, type FlockRow } from "../../shared/flock-inventory.ts";
+import { sameFlockBinding, type FlockRow } from "../../shared/flock-inventory.ts";
 import type { Machine, PaneTarget } from "../../shared/machines.ts";
 import type { SessionMovePhase } from "../../shared/session-move.ts";
 import { ApiError } from "../lib/api.ts";
@@ -49,6 +49,7 @@ export function moveRefusal(code: string | null | undefined, t: Translate, phase
 }
 interface Props {
   row: FlockRow | null;
+  rows: readonly FlockRow[];
   name: string;
   machines: readonly Machine[];
   state: SessionMoveState | null;
@@ -62,7 +63,7 @@ const uncertain = (phase: SessionMovePhase): boolean => ["launching", "verifying
 const samePaths = (a: readonly string[], b: readonly string[]): boolean => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 
 /** Codex's native resume picker informs explicit session selection; transfer adds a reviewed file scope and native-exit step. */
-export function SessionMoveDialog({ row, name, machines, state, statusError, onState, onClose, onOpenTarget }: Props) {
+export function SessionMoveDialog({ row, rows, name, machines, state, statusError, onState, onClose, onOpenTarget }: Props) {
   const t = useT();
   const id = useId();
   const close = useRef<HTMLButtonElement>(null);
@@ -81,10 +82,7 @@ export function SessionMoveDialog({ row, name, machines, state, statusError, onS
   const [showAll, setShowAll] = useState(false);
   const candidates = record ? (record.plan as typeof record.plan & { untracked_candidates?: string[] }).untracked_candidates ?? record.plan.files.filter((file) => file.kind === "untracked").map((file) => file.path) : [];
   const destinationReceipt = record?.destination;
-  const reportedMachine = machines.find((machine) => machine.id === destinationReceipt?.machine_id);
-  const reportedPane = reportedMachine?.snapshot?.panes.find((pane) => pane.pane_id === destinationReceipt?.pane_id);
-  const reportedBinding = reportedMachine?.enabled && reportedMachine.state === "connected" && reportedPane ? flockBinding(reportedMachine, reportedPane) : null;
-  const destinationReported = !!destinationReceipt && !!reportedBinding && sameFlockBinding({ ...destinationReceipt, agent: "codex" }, reportedBinding);
+  const destinationReported = !!destinationReceipt && rows.some((item) => item.availability === "live" && item.binding && sameFlockBinding({ ...destinationReceipt, agent: "codex" }, item.binding));
   const destinations = machines.filter((machine) => machine.id !== sourceMachineId && machine.enabled && machine.state === "connected");
   const running = state?.running === true;
   const terminal = record?.phase === "complete" || record?.phase === "cancelled";

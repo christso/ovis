@@ -65,16 +65,16 @@ export async function moveFlowFixture(driver?: FlowDriver, options: { segmented?
     async start() { launches++; if (driver) await driver.start(targetHome, target); launched = true; },
     async paneSession(_pane, thread, lifetime) { return launched && thread === FIXTURE_THREAD && lifetime === destinationLifetime; },
   });
-  const sourceNode = new MoveNode(join(root, "source-state"), runtime(false)), destinationNode = new MoveNode(join(root, "target-state"), runtime(true));
+  let sourceNode = new MoveNode(join(root, "source-state"), runtime(false)), destinationNode = new MoveNode(join(root, "target-state"), runtime(true));
   const sourceToken = randomUUID(), targetToken = randomUUID();
-  const serve = (destination: boolean, node: MoveNode, token: string) => Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+  const serve = (destination: boolean, node: () => MoveNode, token: string) => Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     if (new URL(request.url).pathname === "/api/session") return jsonResponse({ snapshot: view(destination) });
-    const copy = request.clone(); const result = await handleMoveNode(request, node, request.headers.get("authorization") === `Bearer ${token}`);
+    const copy = request.clone(); const result = await handleMoveNode(request, node(), request.headers.get("authorization") === `Bearer ${token}`);
     const sent = await copy.json() as { action: string };
     if (destination && (dropChunk && sent.action === "write-chunk" || dropLaunch && sent.action === "launch")) { dropChunk = false; dropLaunch = false; return new Response("owned simulated disconnect", { status: 503 }); }
     return result;
   } });
-  const sourceServer = serve(false, sourceNode, sourceToken), targetServer = serve(true, destinationNode, targetToken);
+  const sourceServer = serve(false, () => sourceNode, sourceToken), targetServer = serve(true, () => destinationNode, targetToken);
   const machines = (): Machine[] => [
     { id: "owned-source", kind: "ssh", name: "Owned source", enabled: true, state: "connected", error: null, snapshot: view(false) },
     { id: "owned-destination", kind: "ssh", name: "Owned destination", enabled: true, state: "connected", error: null, snapshot: view(true) },
@@ -84,10 +84,11 @@ export async function moveFlowFixture(driver?: FlowDriver, options: { segmented?
   const flock = new FlockStore(state); let registry = flock.change(0, { type: "create-work", name: "Owned work" }, machines());
   registry = flock.change(registry.revision, { type: "adopt", name: "Owned logical session", work_id: registry.works[0]!.id, binding: { machine_id: "owned-source", herdr_lifetime: sourceLifetime, pane_id: "owned:p0", agent: "codex", native_session_id: FIXTURE_THREAD } }, machines());
   let coordinator = new MoveCoordinator(state, flock, manager, async () => view(false), sourceNode);
-  return { root, source, target, home, targetHome, rollout, state, registry, flock, machines, sourceNode, destinationNode, get coordinator() { return coordinator; },
+  return { root, source, target, home, targetHome, rollout, state, registry, flock, machines, get sourceNode() { return sourceNode; }, get destinationNode() { return destinationNode; }, get coordinator() { return coordinator; },
     request: { session_id: registry.sessions[0]!.id, source_execution_id: registry.executions[0]!.id, destination_machine_id: "owned-destination", destination_checkout: target, untracked_files: ["selected.txt"] },
     async exit() { if (sourceExited) return; if (driver) await driver.exit(); else lock!.release(); sourceExited = true; },
     failChunk() { dropChunk = true; }, failLaunch() { dropLaunch = true; }, counts: () => ({ creates, launches }),
+    restartNodes() { sourceNode.close(); destinationNode.close(); sourceNode = new MoveNode(join(root, "source-state"), runtime(false)); destinationNode = new MoveNode(join(root, "target-state"), runtime(true)); },
     restart() { coordinator = new MoveCoordinator(state, flock, manager, async () => view(false), sourceNode); },
     async api(request: Request) { return handleSessionMoves(request, coordinator); },
     verifyWork() { return { committed: git(target, "show", "HEAD:work.txt"), staged: git(target, "show", ":work.txt"), working: readFileSync(join(target, "work.txt"), "utf8"), selected: readFileSync(join(target, "selected.txt"), "utf8"), status: git(target, "status", "--porcelain") }; },

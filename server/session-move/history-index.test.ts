@@ -52,3 +52,17 @@ it("rolls back the entire append on a schema mismatch, conflict or out-of-scope 
   db.exec("ALTER TABLE thread_items ADD COLUMN future TEXT"); db.close();
   expect(() => restoreHistoryIndex(destination, snapshot)).toThrow("schema differs");
 });
+
+it("accepts only complete identical rows for an owned interrupted import and rejects altered rows", () => {
+  const { home, destination, range } = fixture();
+  const snapshot = snapshotHistoryIndex(home, range);
+  restoreHistoryIndex(destination, snapshot);
+  expect(() => restoreHistoryIndex(destination, snapshot, true)).not.toThrow();
+  const db = new Database(join(destination, "thread_history_1.sqlite"));
+  db.query("UPDATE thread_items SET item_json = 'changed independently' WHERE thread_id = ?").run(ID);
+  db.close();
+  expect(() => restoreHistoryIndex(destination, snapshot, true)).toThrow("differs");
+  const verified = new Database(join(destination, "thread_history_1.sqlite"), { readonly: true });
+  try { expect(verified.query("SELECT item_json FROM thread_items").all()).toEqual([{ item_json: "changed independently" }]); }
+  finally { verified.close(); }
+});

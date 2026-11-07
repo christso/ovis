@@ -3973,3 +3973,21 @@ visible. Association is explicit, and selectors include IDs to disambiguate equa
 sessions without proven IDs stay visible as unassociated; stale or disconnected bindings cannot open
 terminals from Table. Rename changes a label, never an identity. Work and session names live in the
 manager's registry; naming a session does not rename its native agent or move its files.
+
+
+### Planned Codex session moves
+
+Table keeps the action beside the current registered execution. A single dialog
+shows destination, explicit untracked scope, preview, progress and recovery. This
+follows the Codex app's session-picker/resume model: a conversation is selected
+explicitly and native history remains native. Ovis adds the transfer preview because
+it must carry checkout work across configured PCs. No external application code or
+pixels were copied.
+
+Preview precedes native exit so the bridge can resolve the actual process and custom
+Codex home. The user finishes and exits Codex, then confirms it; Ovis refuses any
+remaining native writer lock. Recovery reopens the same operation, shows retained
+source data and checks an uncertain destination instead of offering a second launch.
+The moved-session link requires fresh proof of machine, daemon lifetime, pane and
+native identity before it becomes available. All dialog text is translated and uses
+existing dialog/button tokens on desktop and phone.
