@@ -1,7 +1,8 @@
 import { useT } from "../lib/i18n.ts";
 import "./FlockTable.css";
 
-export type FlockView = "workspace" | "agents" | "table";
+import type { FlockView } from "../lib/flockView.ts";
+export type { FlockView } from "../lib/flockView.ts";
 /** Changing this view never changes the selected terminal target. Graph extends this one selector. */
 export function FlockViews({ view, onChange }: { view: FlockView; onChange(view: FlockView): void }) {
   const t = useT();

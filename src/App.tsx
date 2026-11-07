@@ -13,12 +13,11 @@ import { paneCovered, paneContentKey, paneContentPresented } from "./lib/panePre
 import { PANE_TABPANEL_ID, paneTabPanelLabel } from "./lib/paneRegion.ts";
 import { worktreeRepoName } from "./lib/composerStrip.ts";
 import { AccessGate } from "./components/AccessGate.tsx";
-import { FlockViews, type FlockView } from "./components/FlockViews.tsx";
+import { FlockViews } from "./components/FlockViews.tsx";
 import { FlockTable } from "./components/FlockTable.tsx";
 import { AgentSidebar } from "./components/AgentSidebar.tsx";
 import { SidebarActivityProvider } from "./lib/sidebarActivity.tsx";
-import { useFlock } from "./lib/useFlock.ts";
-import { useFlockInventory } from "./lib/flockInventory.ts";
+import { useFlockView } from "./lib/flockView.ts";
 import { AgentMark } from "./components/AgentMark.tsx";
 import { NewSessionDialog } from "./components/NewSessionDialog.tsx";
 import { SetupGuide, SetupGuideResume } from "./components/SetupGuide.tsx";
@@ -195,9 +194,7 @@ export function App() {
   const { locked, setLocked, lockReason, pairCode, consumePairCode, pairingUnconfirmed, onPaired, auth, canSignOut, security, readBridgeHealth } = useAccessState();
   const { pairedNotices, setPairedNotices, dismissPairedNotice } = usePairedNotices();
   const updates = useUpdates(locked === false);
-  const [flockView, setFlockView] = useState<FlockView>("workspace");
-  const flock = useFlock(locked === false && auth?.role !== "watch" && flockView === "table");
-  const flockRows = useFlockInventory(flock.registry, machines);
+  const { view: flockView, setView: setFlockView, rows: flockRows, ...flock } = useFlockView(locked === false && auth?.role !== "watch", machines);
   const { selectedPaneId, setSelectedPaneId, notificationViewTarget, setNotificationViewTarget, terminalPeek, setTerminalPeek, endPeek, pendingLink, linkLanded, setLinkLanded, rosterSeq, linkSince, selectionSince, rosterTick, setRosterTick, linkTick, setLinkTick } = useSelectionState({ initialLink });
   const { otherRecheck, otherRosterTick, setOtherRosterTick } = useSplitRecheck();
   const { rosterIn, pendingFile, selectionHint, setHeaderNote, note, autoSelected, setAutoSelected } = useLinkLanding({ initialLink, otherRecheck, setOtherRosterTick, pendingLink, rosterSeq, setRosterTick, linkLanded, t });
