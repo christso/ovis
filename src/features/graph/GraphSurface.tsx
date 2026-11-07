@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Circle, CircleCheck, CircleHelp, CirclePause, LoaderCircle, OctagonAlert } from "lucide-react";
 import { useT } from "../../lib/i18n.ts";
 import { graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
@@ -23,13 +23,21 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<{ id: string | null; start: Point; viewport: Viewport; point: Point; moved: boolean } | null>(null);
   const pinch = useRef<{ distance: number; midpoint: Point; viewport: Viewport } | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
   const byId = new Map(nodes.map((node) => [node.id, node]));
+  const highlighted = hovered && byId.has(hovered) ? hovered : byId.has(selected) ? selected : null;
+  const neighbours = new Set(highlighted ? [highlighted] : []);
+  for (const edge of edges) {
+    if (edge.source === highlighted) neighbours.add(edge.target);
+    if (edge.target === highlighted) neighbours.add(edge.source);
+  }
   const localPoint = (event: { clientX: number; clientY: number }) => {
     const box = svgRef.current!.getBoundingClientRect();
     return { x: event.clientX - box.left, y: event.clientY - box.top };
   };
   const begin = (event: PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
+    setHovered(null);
     const point = localPoint(event);
     pointers.current.set(event.pointerId, point);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -67,10 +75,11 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
   };
   const finish = (event: PointerEvent<SVGSVGElement>) => {
     pointers.current.delete(event.pointerId);
-    if (event.type !== "pointercancel" && gesture.current?.id && !gesture.current.moved) onSelect(gesture.current.id);
+    if (event.type !== "pointercancel" && gesture.current && !gesture.current.moved) onSelect(gesture.current.id ?? "");
     gesture.current = null; pinch.current = null;
   };
   const keyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (event.key === "Escape") { event.preventDefault(); setHovered(null); onSelect(""); return; }
     if (event.target !== event.currentTarget) return;
     const shifts: Record<string, Point> = { ArrowLeft: { x: 60, y: 0 }, ArrowRight: { x: -60, y: 0 }, ArrowUp: { x: 0, y: 60 }, ArrowDown: { x: 0, y: -60 } };
     const shift = shifts[event.key];
@@ -87,12 +96,13 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
   });
   const nodeLabel = (node: GraphNode) => `${node.label} · ${graphStatusLabel(t, node.status ?? "unknown")} · ${node.freshness ? graphFreshnessLabel(t, node.freshness) : graphKindLabel(t, node.kind)}`;
   return <svg ref={svgRef} className="graph-surface" role="group" aria-label={t("Interactive graph")} tabIndex={0}
-    onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={() => { gesture.current = null; pointers.current.clear(); pinch.current = null; }} onKeyDown={keyDown}>
+    onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onPointerLeave={() => setHovered(null)} onLostPointerCapture={() => { gesture.current = null; pointers.current.clear(); pinch.current = null; }} onKeyDown={keyDown}>
     <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
       {edges.map((edge) => {
         const a = positions[edge.source], b = positions[edge.target];
         if (!a || !b) return null;
-        return <g key={edge.id} className={`graph-edge graph-edge-${edge.kind}`}>
+        const related = edge.source === highlighted || edge.target === highlighted;
+        return <g key={edge.id} className={`graph-edge graph-edge-${edge.kind}${highlighted ? related ? " graph-related" : " graph-muted" : ""}`}>
           <title>{`${byId.get(edge.source)?.label} → ${byId.get(edge.target)?.label}: ${graphRelationLabel(t, edge.kind)} · ${edge.evidence}`}</title>
           <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} vectorEffect="non-scaling-stroke" />
         </g>;
@@ -101,8 +111,9 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
         const point = positions[node.id];
         if (!point) return null;
         const Icon = node.status ? STATUS_ICON[node.status] : Circle;
-        return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-status-${node.status ?? "unknown"}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}`}
+        return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-status-${node.status ?? "unknown"}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}${highlighted ? neighbours.has(node.id) ? " graph-related" : " graph-muted" : ""}`}
           transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={nodeLabel(node)} aria-pressed={selected === node.id}
+          onPointerEnter={(event) => { if (event.pointerType === "mouse" && event.buttons === 0) setHovered(node.id); }} onPointerLeave={() => setHovered(null)}
           onClick={(event) => { if (event.detail === 0) onSelect(node.id); }}
           onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(node.id); } }}>
           <title>{nodeLabel(node)}</title>

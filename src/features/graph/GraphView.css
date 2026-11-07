@@ -15,9 +15,12 @@
 .graph-surface:active { cursor: grabbing; }
 .graph-edge line { stroke: var(--border-strong); stroke-width: 1.5; }
 .graph-edge-delegation line { stroke-dasharray: 5 4; stroke: var(--accent); }
+.graph-muted { opacity: 0.22; }
+.graph-edge.graph-related line { stroke: var(--accent); stroke-width: 2.5; }
 .graph-node { cursor: pointer; }
 .graph-node rect { fill: var(--bg-panel); stroke: var(--border-strong); stroke-width: 1.5; }
-.graph-node:hover rect, .graph-node:focus-visible rect, .graph-selected rect { stroke: var(--accent); stroke-width: 3; }
+.graph-node.graph-related rect { stroke: var(--accent); stroke-width: 2; }
+.graph-node:hover rect, .graph-node:focus-visible rect, .graph-node.graph-selected rect { stroke: var(--accent); stroke-width: 3; }
 .graph-node:focus { outline: none; }
 .graph-node-label { fill: var(--text-strong); font-size: 13px; font-family: var(--font-ui); }
 .graph-node-kind { fill: var(--text-dim); font-size: 11px; font-family: var(--font-ui); }

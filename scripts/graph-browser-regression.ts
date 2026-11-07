@@ -70,8 +70,45 @@ try {
         await page.getByRole("combobox", { name: "Machine", exact: true }).selectOption("");
         await options(false);
       }
+      const graphSurface = page.getByRole("group", { name: "Interactive graph", exact: true });
+      const layoutBeforeSelection = await graphSurface.evaluate((svg) => ({ viewport: svg.firstElementChild?.getAttribute("transform"), nodes: [...svg.querySelectorAll("[data-graph-node]")].map((item) => [item.getAttribute("data-graph-node"), item.getAttribute("transform")]) }));
       await node.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
       await page.waitForFunction(() => document.querySelector('[data-graph-node="session"]')?.getAttribute("aria-pressed") === "true");
+      stage = "selection neighbourhood";
+      const opacity = (id: string) => page.locator(`[data-graph-node="${id}"]`).evaluate((element) => Number(getComputedStyle(element).opacity));
+      assert.equal(await opacity("session"), 1, "selected node remains visible");
+      assert.equal(await opacity("execution"), 1, "direct neighbour remains visible");
+      assert.ok(await opacity("checkout") < 0.5, "selection dims a second-degree node instead of highlighting the whole component");
+      assert.ok(await opacity("offline") < 0.5, "selection dims unrelated nodes");
+      assert.equal(await page.locator('.graph-edge').filter({ hasText: "Recorded session: prune" }).evaluate((element) => Number(getComputedStyle(element).opacity)), 1, "selected node's incident link remains visible");
+      assert.ok(await page.locator('.graph-edge').filter({ hasText: "Recorded repository: orchard" }).evaluate((element) => Number(getComputedStyle(element).opacity)) < 0.5, "unrelated links are dimmed");
+      assert.deepEqual(await graphSurface.evaluate((svg) => ({ viewport: svg.firstElementChild?.getAttribute("transform"), nodes: [...svg.querySelectorAll("[data-graph-node]")].map((item) => [item.getAttribute("data-graph-node"), item.getAttribute("transform")]) })), layoutBeforeSelection, "highlighting keeps nodes and viewport in place");
+      if (!mobile) {
+        await page.locator('[data-graph-node="checkout"]').hover();
+        assert.equal(await opacity("repo"), 1, "mouse hover previews direct neighbours");
+        assert.ok(await opacity("session") < 0.5, "hover does not expand through indirect relationships");
+        assert.equal(await node.getAttribute("aria-pressed"), "true", "hover does not replace persistent selection");
+        await page.getByLabel("Search graph", { exact: true }).hover();
+        assert.equal(await opacity("execution"), 1, "leaving the hovered node restores selection highlighting");
+        assert.ok(await opacity("repo") < 0.5);
+      }
+      await node.focus(); await page.keyboard.press("Escape");
+      assert.equal(await node.getAttribute("aria-pressed"), "false", "Escape from a node clears selection");
+      assert.equal(await opacity("offline"), 1, "clearing selection restores the full graph");
+      await node.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
+      const blank = await graphSurface.evaluate((svg) => {
+        const box = svg.getBoundingClientRect();
+        for (const [x, y] of [[box.x + 10, box.y + 10], [box.right - 10, box.y + 10]]) {
+          const target = document.elementFromPoint(x!, y!);
+          if (target?.closest("svg.graph-surface") === svg && !target.closest("[data-graph-node]")) return { x: x!, y: y! };
+        }
+        return null;
+      });
+      assert.ok(blank, "fixture has a visible empty canvas target");
+      if (mobile) await page.touchscreen.tap(blank.x, blank.y); else await page.mouse.click(blank.x, blank.y);
+      assert.equal(await node.getAttribute("aria-pressed"), "false", "empty canvas tap clears selection");
+      assert.equal(await opacity("offline"), 1);
+      await node.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
       assert.equal(await page.locator('[data-graph-node="done"]').count(), 0);
       await node.focus(); await page.keyboard.press("Enter");
       await page.getByRole("heading", { name: "Prune branches", exact: true }).waitFor();
@@ -96,6 +133,7 @@ try {
       await page.getByLabel("Search graph", { exact: true }).fill("compost");
       await page.locator('[data-graph-node="offline"]').waitFor();
       assert.equal(await node.count(), 0);
+      assert.equal(await page.locator('[data-graph-node="offline"]').evaluate((element) => Number(getComputedStyle(element).opacity)), 1, "filtered-out selection never dims every visible node");
       const offline = page.locator('[data-graph-node="offline"]');
       await offline.focus(); await page.keyboard.press("Space");
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true);
@@ -118,6 +156,7 @@ try {
         await page.mouse.move(sessionBox.x + sessionBox.width / 2, sessionBox.y + sessionBox.height / 2); await page.mouse.down();
         await page.mouse.move(sessionBox.x + sessionBox.width / 2 + 35, sessionBox.y + sessionBox.height / 2 + 25, { steps: 5 }); await page.mouse.up();
         assert.notEqual(await node.getAttribute("transform"), beforeDrag, "node drag changes its retained layout position");
+        assert.equal(await page.locator('[data-graph-node="offline"]').getAttribute("aria-pressed"), "true", "dragging another node preserves the current selection");
       }
       await options(true); await page.getByLabel("Show completed", { exact: true }).check(); await options(false);
       await page.locator('[data-graph-node="done"]').waitFor();
@@ -133,6 +172,7 @@ try {
         await page.mouse.move(box.x + 20, box.y + 20); await page.mouse.down();
         await page.mouse.move(box.x + 70, box.y + 60, { steps: 5 }); await page.mouse.up();
         assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), transformBeforeDrag, "pointer background drag pans");
+        assert.equal(await page.locator('[data-graph-node="offline"]').getAttribute("aria-pressed"), "true", "background pan does not clear selection");
         const transformBeforeWheel = await surface.locator(":scope > g").getAttribute("transform");
         await page.mouse.wheel(0, -120);
         await page.waitForFunction((before) => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== before, transformBeforeWheel);
@@ -195,6 +235,7 @@ try {
         return [...svg.querySelectorAll("[data-graph-node]")].every((node) => { const box = node.getBoundingClientRect(); return box.x >= stage.x && box.right <= stage.right && box.y >= stage.y && box.bottom <= stage.bottom; });
       }), "Fit graph keeps every filtered node accessible in the overview");
       if (mobile) {
+        await node.focus(); await page.keyboard.press("Enter");
         await surface.scrollIntoViewIfNeeded();
         const box = (await surface.boundingBox())!;
         const cdp = await context.newCDPSession(page);
@@ -205,6 +246,7 @@ try {
         await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
         const scaleAfter = Number((await surface.locator(":scope > g").getAttribute("transform"))!.match(/scale\(([^)]+)\)/)![1]);
         assert.ok(Math.abs(scaleAfter / scaleBefore - 2) < 0.05, `pinch follows finger distance (${scaleAfter / scaleBefore})`);
+        assert.equal(await node.getAttribute("aria-pressed"), "true", "pinch cancellation does not clear selection");
         const afterPinch = await surface.locator(":scope > g").getAttribute("transform");
         await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 3, x: box.x + 20, y: box.y + 20 }] });
         await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ id: 3, x: box.x + 55, y: box.y + 45 }] });
