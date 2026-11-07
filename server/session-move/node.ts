@@ -26,7 +26,7 @@ export interface MoveNodeRuntime {
 }
 export interface TransferBundle {
   version: 1; checkout: CheckoutSnapshot; codex: CodexSnapshot; history: string; fingerprint: string;
-  files: MoveFile[]; untracked_candidates: string[];
+  files: MoveFile[]; untracked_candidates: string[]; required_untracked: string[];
 }
 interface NodeReceipt {
   version: 1; source?: SourceObservation; source_dir?: string; bundle?: TransferBundle;
@@ -84,9 +84,13 @@ export class MoveNode {
     const dir = inside(this.root(id), `snapshot-${randomUUID()}`, true); mkdirSync(dir, { mode: 0o700 });
     const checkout = snapshotCheckout(source.cwd, dir, selected), codex = snapshotCodex(source.home, source.rollout, source.thread_id, dir);
     if (codex.cwd !== source.cwd) throw new MoveRefused("source_changed", "The source checkout changed");
+    const required: string[] = [];
     for (const artifact of codex.checkout_artifacts) {
       const tracked = Bun.spawnSync(["git", "ls-files", "--error-unmatch", "--", artifact], { cwd: source.cwd, stdout: "ignore", stderr: "ignore" }).exitCode === 0;
-      if (!tracked && !selected.includes(artifact)) throw new MoveRefused("untracked_scope", "Select the referenced image file before moving this session");
+      if (!tracked && !selected.includes(artifact)) {
+        if (!checkout.excluded_untracked.includes(artifact)) throw new MoveRefused("unsupported_artifact", "Required session images must be ordinary non-ignored checkout files");
+        required.push(artifact);
+      }
     }
     const native = await this.runtime.native(source.home, true);
     let history: string;
@@ -100,7 +104,7 @@ export class MoveNode {
     if (!captured || captured.sha256 !== latest.sha256) throw new MoveRefused("source_changed", "Source history changed while preparing the preview");
     const files = [checkout.bundle, checkout.staged, checkout.unstaged, ...checkout.untracked.map((file) => ({ ...file, path: `untracked/${file.path}` })), ...codex.files.map((file) => ({ ...file, path: `codex/${file.path}` })), ...(codex.history_index ? [codex.history_index] : [])];
     const fingerprint = digest(Buffer.from(JSON.stringify({ files, head: checkout.head, staged: checkout.staged.sha256, unstaged: checkout.unstaged.sha256, untracked: checkout.untracked, history, root: codex.root, history_scope: codex.history_scope, artifacts: codex.checkout_artifacts })));
-    return { dir, bundle: { version: 1, checkout, codex, history, fingerprint, files, untracked_candidates: [...checkout.excluded_untracked, ...selected].sort() } };
+    return { dir, bundle: { version: 1, checkout, codex, history, fingerprint, files, required_untracked: required, untracked_candidates: [...checkout.excluded_untracked, ...selected].sort() } };
   }
   private async step(id: string, action: string, payload: Record<string, unknown>): Promise<unknown> {
     const receipt = this.read(id);
@@ -135,6 +139,7 @@ export class MoveNode {
     }
     if (action === "hold") {
       if (!receipt.source || !receipt.bundle) throw new MoveRefused("source_unobserved", "Preview the source before exiting its native client");
+      if (payload.capture === true && receipt.bundle.required_untracked.length) throw new MoveRefused("untracked_scope", "Select the referenced image files and refresh the preview before moving");
       if (payload.capture === true && payload.expected !== receipt.bundle.fingerprint) throw new MoveRefused("source_changed", "The source bundle is no longer the confirmed preview");
       let lease = this.held.get(id);
       if (!lease) { lease = holdQuiescentCodex(receipt.source.home, receipt.source.thread_id); this.held.set(id, lease); }

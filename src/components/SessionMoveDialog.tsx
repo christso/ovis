@@ -90,9 +90,10 @@ export function SessionMoveDialog({ row, rows, name, machines, state, statusErro
   const destinationConnected = destinations.some((machine) => machine.id === destination);
   const absoluteCheckout = checkout.startsWith("/") && !checkout.includes("\0");
   const dirty = !!request && (request.destination_machine_id !== destination || request.destination_checkout !== checkout || !samePaths(request.untracked_files, untracked));
+  const missingImages = record?.plan.required_untracked ?? [];
   const stalePreview = record?.error === "source_changed" || record?.error === "preview_changed";
   const canPreview = editable && destinationConnected && absoluteCheckout && !pending && !running && !statusError;
-  const canRun = !!record && !terminal && !dirty && !stalePreview && destinationConnected && !pending && !running && !statusError && (!early(record.phase) || nativeExited);
+  const canRun = !!record && !terminal && !dirty && !stalePreview && !missingImages.length && destinationConnected && !pending && !running && !statusError && (!early(record.phase) || nativeExited);
   const files = showAll ? record?.plan.files ?? [] : record?.plan.files.slice(0, 200) ?? [];
 
   useEffect(() => {
@@ -150,6 +151,7 @@ export function SessionMoveDialog({ row, rows, name, machines, state, statusErro
             {candidates.length > 0 && <fieldset className="session-move-untracked" disabled={!editable || pending || running}><legend>{t("Untracked work files")}</legend><p className="session-move-note">{t("Only the individual files you select are included.")}</p>{candidates.map((path) => <label key={path}><input type="checkbox" checked={untracked.includes(path)} onChange={(event) => setUntracked((current) => event.target.checked ? [...current, path] : current.filter((item) => item !== path))} /><span>{path}</span></label>)}</fieldset>}
             <details className="session-move-files" open><summary>{t("Files to transfer ({count})", { count: record.plan.files.length })}</summary><ul>{files.map((file, index) => <li key={`${file.kind}:${file.path}:${index}`}><code>{file.path}</code><span>{t("{bytes} bytes", { bytes: file.bytes })}</span></li>)}</ul>{!showAll && record.plan.files.length > files.length && <button type="button" className="btn btn-ghost" onClick={() => setShowAll(true)}>{t("Show all transfer files")}</button>}</details>
             <details className="session-move-exclusions"><summary>{t("Transfer exclusions")}</summary><p>{t("Credentials, source configuration and ignored files are not transferred.")}</p><ul>{record.plan.exclusions.map((exclusion, index) => <li key={`${exclusion}:${index}`}>{exclusion}</li>)}</ul></details>
+            {missingImages.length > 0 && <p className="session-move-note">{t("Select required session images and refresh the preview: {files}", { files: missingImages.join(", ") })}</p>}
             {dirty && <p className="session-move-note">{t("Refresh the preview to review this destination and file selection.")}</p>}
             {early(record.phase) && <label className="session-move-confirm"><input type="checkbox" checked={nativeExited} disabled={pending || running} onChange={(event) => setNativeExited(event.target.checked)} /><span>{t("I finished the turn and exited this session in Codex.")}</span></label>}
           </>}

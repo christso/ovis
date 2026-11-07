@@ -61,6 +61,7 @@ const BASE: Record<string, string> = {
   "You can close this dialog and reopen the move from Table.": "이 대화 상자를 닫고 Table에서 이동을 다시 열 수 있습니다.",
   "Native history was verified and the new execution was recorded. The source copy was retained.": "Codex 기록을 확인하고 새 실행을 기록했습니다. 원본 복사본은 유지되었습니다.",
   "Untracked work files": "추적되지 않은 작업 파일",
+  "Select required session images and refresh the preview: {files}": "필수 세션 이미지를 선택하고 미리보기를 새로 고치세요: {files}",
   "Only the individual files you select are included.": "선택한 개별 파일만 포함됩니다.",
   "Files to transfer ({count})": "전송할 파일 ({count})",
   "{bytes} bytes": "{bytes}바이트",

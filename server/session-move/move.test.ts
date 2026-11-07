@@ -98,14 +98,14 @@ describe("planned transfer recovery", () => {
   });
   it("reconciles a registry commit after crash without resuming or snapshotting again", async () => {
     let committed = false;
-    const { moves, calls, journal, ports, dir } = setup({ bind: async () => { calls.push("bind"); if (!committed) { committed = true; throw new Error("crash after idempotent binding commit"); } } });
+    const { moves, calls, journal, ports, dir } = setup({ bindingCommitted: async () => committed, bind: async () => { calls.push("bind"); if (!committed) { committed = true; throw new Error("crash after idempotent binding commit"); } } });
     const item = await moves.preview(request);
     await expect(moves.run(item.id, item.plan.fingerprint)).rejects.toThrow("crash after");
     expect(journal.get(item.id).phase).toBe("binding");
     expect((await new SessionMoves(new MoveJournal(dir), ports).run(item.id, item.plan.fingerprint)).phase).toBe("complete");
     expect(calls.filter((name) => name === "quiesce")).toHaveLength(1);
     expect(calls.filter((name) => name === "launch")).toHaveLength(1);
-    expect(calls.filter((name) => name === "bind")).toHaveLength(2);
+    expect(calls.filter((name) => name === "bind")).toHaveLength(1);
   });
   it("serializes moves for one logical session and permits cancellation before launch", async () => {
     const { moves } = setup();
@@ -132,4 +132,62 @@ it("never acknowledges an oversized journal write that would make recovery unrea
   await expect(moves.preview(request)).rejects.toThrow("journal is full");
   expect(journal.list()).toHaveLength(1);
   expect(journal.get(first.id).phase).toBe("cancelled");
+});
+
+it("never adopts from an uncommitted binding receipt after the source reopens", async () => {
+  let busy = false;
+  const { moves, ports, calls, journal, dir } = setup({
+    bind: async () => { calls.push("pending bind"); throw new Error("Owned precommit failure"); },
+  });
+  const quiesce = ports.quiesce;
+  ports.quiesce = async (plan) => { if (busy) throw new MoveRefused("source_not_quiescent", "Owned source reopened"); return quiesce(plan); };
+  const item = await moves.preview(request);
+  await expect(moves.run(item.id, item.plan.fingerprint)).rejects.toThrow("precommit");
+  expect(journal.get(item.id).phase).toBe("binding");
+  busy = true; ports.bind = async () => { calls.push("unsafe adoption"); };
+  await expect(new SessionMoves(new MoveJournal(dir), ports).run(item.id, item.plan.fingerprint)).rejects.toMatchObject({ code: "source_not_quiescent" });
+  expect(calls).not.toContain("unsafe adoption");
+});
+
+it("keeps one durable logical reservation across distinct operation IDs and a reconstructed unresolved launch", async () => {
+  const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+  const { moves, ports, calls, dir, journal } = setup({ preflight: async () => { entered.resolve(); await resume.promise; }, launch: async () => { calls.push("launch"); throw new Error("Owned lost launch reply"); } });
+  const first = await moves.preview(request);
+  const running = moves.run(first.id, first.plan.fingerprint); await entered.promise;
+  const another = new SessionMoves(new MoveJournal(dir), ports);
+  await expect(another.preview({ ...request, destination_machine_id: "other-destination", destination_checkout: "/work/second" })).rejects.toMatchObject({ code: "move_in_progress" });
+  expect(calls).not.toContain("quiesce");
+  resume.resolve(); await expect(running).rejects.toThrow("lost launch");
+  expect(journal.get(first.id).phase).toBe("launching");
+  const reconstructed = new SessionMoves(new MoveJournal(dir), ports);
+  await expect(reconstructed.preview({ ...request, destination_machine_id: "third-destination" })).rejects.toMatchObject({ code: "move_in_progress" });
+  expect(calls.filter((call) => call === "launch")).toHaveLength(1);
+});
+
+it("rejects a late second preview's stale execution before source hold or launch after the first move binds", async () => {
+  const entered = Promise.withResolvers<void>(), finishPreview = Promise.withResolvers<void>();
+  let current = request.source_execution_id;
+  const { moves, calls, dir, ports } = setup({
+    preflight: async (plan) => { if (plan.request.source_execution_id !== current) throw new MoveRefused("source_changed", "Owned logical execution advanced"); },
+    bind: async () => { current = "destination-execution"; },
+  });
+  const first = await moves.preview(request);
+  const latePorts = { ...ports, preview: async (next: typeof request) => { entered.resolve(); await finishPreview.promise; return { ...structuredClone(plan), request: next }; } };
+  const late = new SessionMoves(new MoveJournal(dir), latePorts);
+  const pending = late.preview({ ...request, destination_machine_id: "other-destination", destination_checkout: "/work/second" }); await entered.promise;
+  expect((await moves.run(first.id, first.plan.fingerprint)).phase).toBe("complete");
+  finishPreview.resolve(); const second = await pending;
+  await expect(late.run(second.id, second.plan.fingerprint)).rejects.toMatchObject({ code: "source_changed" });
+  expect(calls.filter((call) => call === "quiesce")).toHaveLength(1);
+  expect(calls.filter((call) => call === "launch")).toHaveLength(1);
+});
+
+it("serializes same-operation refresh with run and cancel while its asynchronous preview is pending", async () => {
+  const { moves, ports } = setup(); const first = await moves.preview(request);
+  const entered = Promise.withResolvers<void>(), finishPreview = Promise.withResolvers<void>();
+  ports.preview = async () => { entered.resolve(); await finishPreview.promise; return structuredClone(plan); };
+  const refreshing = moves.preview(request, first.id); await entered.promise;
+  await expect(moves.run(first.id, first.plan.fingerprint)).rejects.toMatchObject({ code: "move_busy" });
+  expect(() => moves.cancel(first.id)).toThrow("finish");
+  finishPreview.resolve(); expect((await refreshing).phase).toBe("preview");
 });
