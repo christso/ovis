@@ -5,6 +5,7 @@
  * Register and fixed terms follow ../i18n.ja.ts; a key another feature also uses goes there.
  */
 export const SETTINGS_JA: Record<string, string> = {
+  "Unavailable": "確認できません",
   "Direct typing": "直接入力",
   "Terminal input mode": "端末入力モード",
   "Reset shortcuts": "ショートカットをリセット",
@@ -325,7 +326,6 @@ export const SETTINGS_JA: Record<string, string> = {
   "Through a proxy": "プロキシ経由",
   "Through Tailscale": "Tailscale経由",
   "Through Tailscale Funnel": "Tailscale Funnel経由",
-  "Unknown": "不明",
   "How this browser's request arrived, not how every device reaches the server.": "このブラウザーのリクエストが届いた経路で、すべてのデバイスの接続経路ではありません。",
   "Public internet": "公開インターネット",
   "Reachable": "接続可能",

@@ -3973,3 +3973,32 @@ visible. Association is explicit, and selectors include IDs to disambiguate equa
 sessions without proven IDs stay visible as unassociated; stale or disconnected bindings cannot open
 terminals from Table. Rename changes a label, never an identity. Work and session names live in the
 manager's registry; naming a session does not rename its native agent or move its files.
+
+## Graph view
+
+Graph is another view of the shared Table inventory. Logical work and sessions retain their IDs
+when execution changes machine. Repository and checkout links describe recorded associations;
+labels, similar paths and sidebar placement never establish a relationship. Missing delegation
+or dependency evidence remains absent, with a coverage note beside the graph.
+
+The design follows [Folio's graph](https://github.com/evergreen-it-dev/folio/tree/main/web/src/app/graph)
+in separating pure projection/filtering from rendering and keeping selection separate from an
+explicit Open action. Its canvas/d3-force renderer and model were evaluated under Folio's MIT
+license. The implementation here is independently written; no Folio source is copied. Ovis uses
+SVG targets with native keyboard access and a node inspector selector for phone and keyboard use.
+Deterministic columns and retained drag positions keep routine live updates still; there is no
+force animation, including under reduced motion. Pan, pinch/wheel zoom, fit and keyboard controls
+operate on a persistent viewport. Machine grouping is optional and does not establish links.
+
+[Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel) provides the project-scoped thread and
+worktree navigation reference. Graph differs by showing explicitly recorded relationships across
+machines, rather than placing logical work under a machine. Opening a terminal must use the shared
+inventory's current live-target resolver and the existing Ovis selection callback, with no Herdr
+focus or input operation.
+
+Graph presentation state has its own `ovis:graph:v1` browser key, owned by
+`src/features/graph/useGraphState.ts`: version, selection, filters, optional machine grouping,
+positions and viewport. No existing settings record changes and no HTTP/WS contract carries it.
+Older Ovis releases do not read or write this new key. Unknown versions or malformed stored data
+are left intact; this reader keeps in-memory defaults and refuses to overwrite those bytes.
+Graph-owned query fields share selection/filter/focus without altering Ovis's pane/view location.

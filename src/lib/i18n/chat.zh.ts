@@ -17,8 +17,6 @@ export const CHAT_ZH: Record<string, string> = {
   "locked — the token gate is asking again": "已锁定 — 令牌门再次要求验证",
   "Enlarge diagram": "放大图表",
   "Diagram": "图表",
-  "Zoom in": "放大",
-  "Zoom out": "缩小",
   "Fit to screen": "适应屏幕",
   "More than one could be picked": "可多选",
   "Code copied": "已复制代码",

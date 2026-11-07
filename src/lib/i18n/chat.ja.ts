@@ -17,8 +17,6 @@ export const CHAT_JA: Record<string, string> = {
   "locked — the token gate is asking again": "ロック中 — トークンゲートが再度確認しています",
   "Enlarge diagram": "図を拡大",
   "Diagram": "図",
-  "Zoom in": "拡大",
-  "Zoom out": "縮小",
   "Fit to screen": "画面に合わせる",
   "More than one could be picked": "複数選択可",
   "Code copied": "コードをコピーしました",
