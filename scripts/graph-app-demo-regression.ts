@@ -1,4 +1,4 @@
-/** Real Ovis App + real FlockStore/handler, using fictional roster/transport only. Not live dogfooding. */
+/** Real Ovis App + real FlockStore/handler, using fictional roster/proofs/transport only. Not native or live-user dogfooding. */
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,11 +17,16 @@ const testedSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" 
 const runs: readonly (readonly [number, "dark" | "light"])[] = videoDir ? [[1600, "dark"]] : [[1280, "dark"], [1280, "light"], [390, "dark"], [390, "light"]];
 const root = mkdtempSync(join(tmpdir(), "ovis-graph-app-")), app = join(root, "app");
 const original = structuredClone(fixture.machines[0]) as Machine;
-const chosen = original.snapshot!.panes.find((pane) => pane.agent)!;
+const chosen = original.snapshot!.panes.find((pane) => pane.agent === "codex")!;
 original.snapshot!.panes = [chosen]; original.snapshot!.herdr_lifetime = "graph-owned-local";
+// Explicit fictional proof stands in for Table's native reader; the ordinary roster below omits it.
+chosen.terminal_id = "graph-terminal-local";
+original.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: chosen.terminal_id, agent: chosen.agent!, native_session_id: "graph-native-local" }];
 chosen.agent_session = { agent: chosen.agent!, kind: "id", source: "fixture", value: "graph-native-local" }; chosen.agent_status = "working";
 const remote = structuredClone(original); remote.id = "graph-remote"; remote.name = "Graph remote"; remote.kind = "ssh";
-remote.snapshot!.herdr_lifetime = "graph-owned-remote"; remote.snapshot!.panes[0]!.agent_session!.value = "graph-native-remote";
+remote.snapshot!.herdr_lifetime = "graph-owned-remote";
+remote.snapshot!.panes[0]!.terminal_id = "graph-terminal-remote";
+remote.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: "graph-terminal-remote", agent: chosen.agent!, native_session_id: "graph-native-remote" }]; remote.snapshot!.panes[0]!.agent_session!.value = "graph-native-remote";
 const offline = structuredClone(remote); offline.id = "graph-offline"; offline.name = "Graph offline"; offline.state = "disconnected";
 const unknown = structuredClone(chosen); unknown.pane_id = "graph-unproven"; unknown.label = "Unproven garden"; unknown.agent_session = null;
 original.snapshot!.panes.push(unknown);
@@ -29,10 +34,11 @@ const pristine: Machine[] = [original, remote, offline, { ...offline, id: "graph
 let machines = structuredClone(pristine), store = new FlockStore(join(root, "initial")), future = false, flockReads = 0;
 let browser: Browser | undefined, server: ReturnType<typeof Bun.serve> | undefined;
 const harness = (machines: Machine[]) => `<script>(() => {
-  let fixture = ${JSON.stringify(machines)};
+  const raw = (values) => values.map(machine => ({...machine, snapshot:machine.snapshot ? {...machine.snapshot, flock_bindings:undefined} : null}));
+  let fixture = raw(${JSON.stringify(machines)});
   const demo = window.fetch, network = window.graphNetwork, sources = new Set();
   const controls = [];
-  window.graphFixture = { controls, setMachines(next) { fixture = next; for (const source of sources) source.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({type:'machines', machines:fixture})})); } };
+  window.graphFixture = { controls, setMachines(next) { fixture = raw(next); for (const source of sources) source.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({type:'machines', machines:fixture})})); } };
   window.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
     if (['/api/pane/focus', '/api/pane/input', '/api/pane/send', '/api/pane/keys'].includes(url.pathname)) controls.push(url.pathname);
@@ -62,7 +68,7 @@ try {
     if (!path.startsWith(prefix)) return new Response("not found", { status: 404 });
     const file = decodeURIComponent(path.slice(prefix.length)) || "index.html";
     if (file.split("/").includes("..") || file.includes("\\")) return new Response("bad path", { status: 400 });
-    if (file === "index.html") return new Response(html.replace("</body>", `${videoDir ? `<div style="position:fixed;right:12px;bottom:8px;z-index:9999;pointer-events:none;padding:8px;background:var(--bg-panel);color:var(--text);border:1px solid var(--border);font-size:12px">Fictional fixture walkthrough · Graph · ${testedSha.slice(0, 10)}</div>` : ""}</body>`).replace(/<script type="module"/, () => `<script>window.graphNetwork = window.fetch.bind(window);</script><script src="./demo-transport.js"></script>${harness(machines)}<script type="module"`), { headers: { "content-type": "text/html" } });
+    if (file === "index.html") return new Response(html.replace("</body>", `${videoDir ? `<div style="position:fixed;right:12px;bottom:8px;z-index:9999;pointer-events:none;padding:8px;background:var(--bg-panel);color:var(--text);border:1px solid var(--border);font-size:12px">Fictional roster/proofs · Graph · ${testedSha.slice(0, 10)}</div>` : ""}</body>`).replace(/<script type="module"/, () => `<script>window.graphNetwork = window.fetch.bind(window);</script><script src="./demo-transport.js"></script>${harness(machines)}<script type="module"`), { headers: { "content-type": "text/html" } });
     const body = Bun.file(join(app, file)); return await body.exists() ? new Response(body) : new Response("not found", { status: 404 });
   } });
   browser = await chromium.launch({ executablePath: chromePath(), headless: true, slowMo: videoDir ? 1300 : 0, args: ["--no-sandbox"] });
@@ -86,6 +92,7 @@ try {
     };
     const node = () => page.locator(`[data-graph-node="${sessionId}"]`);
     const inspect = async (id: string) => { await page.getByRole("combobox", { name: "Inspect node", exact: true }).selectOption(id); };
+    let stage = "initial";
     try {
       await page.goto(`${base}?pane=${encodeURIComponent(chosen.pane_id)}&view=terminal`);
       if (width === 390) await page.getByRole("button", { name: "Open workspace list", exact: true }).waitFor();
@@ -96,6 +103,15 @@ try {
       assert.equal(new URL(page.url()).searchParams.get("pane"), beforePane);
       await page.getByText(/Inventory is incomplete for:.*Graph awaiting inventory/).waitFor();
       await inspect(sessionId); const position = await node().getAttribute("transform");
+      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isEnabled(), true, "shared proof-backed source authorizes the live target");
+      const proofs = machines[0]!.snapshot!.flock_bindings!;
+      machines[0]!.snapshot!.flock_bindings = [];
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.waitForFunction(() => (document.querySelector('.graph-details button') as HTMLButtonElement)?.disabled === true);
+      machines[0]!.snapshot!.flock_bindings = proofs;
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.waitForFunction(() => (document.querySelector('.graph-details button') as HTMLButtonElement)?.disabled === false);
+
       await page.getByLabel("Search graph", { exact: true }).fill("Prune orchard");
       await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("working");
       await page.getByRole("combobox", { name: "Focus graph", exact: true }).selectOption(sessionId);
@@ -132,6 +148,18 @@ try {
         await page.getByRole("group", { name: "Pane view", exact: true }).getByRole("button", { name: "Terminal", exact: true }).click();
         await page.waitForURL((url) => url.searchParams.get("view") === "terminal" && url.searchParams.get("machine") === remote.id);
       }
+      stage = "back-cross"; await page.goBack(); await node().waitFor();
+      assert.equal(new URL(page.url()).searchParams.get("page"), "graph", "Back after opening another machine restores Graph");
+      assert.equal(await node().getAttribute("aria-pressed"), "true");
+      stage = "forward"; await page.goForward();
+      await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && !url.searchParams.has("page"));
+      await openGraph(); await inspect(sessionId);
+      await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
+      await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && !url.searchParams.has("page"));
+      await page.goBack(); await node().waitFor();
+      assert.equal(new URL(page.url()).searchParams.get("page"), "graph", "Back after opening the already selected target restores Graph");
+      stage = "forward"; await page.goForward();
+      await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && !url.searchParams.has("page"));
       const linked = await context.newPage();
       await linked.goto(share); await linked.locator(`[data-graph-node="${sessionId}"]`).waitFor();
       assert.equal(new URL(linked.url()).searchParams.get("page"), "graph", "a copied Graph link lands on Graph even after a different terminal was selected");
@@ -145,7 +173,8 @@ try {
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       await page.waitForFunction(() => (document.querySelector('.graph-details button') as HTMLButtonElement)?.disabled === true);
       assert.equal(await node().getAttribute("transform"), position, "disconnect leaves layout intact");
-      machines[1]!.state = "connected"; machines[1]!.snapshot!.panes[0]!.agent_session!.value = "reused-native";
+      machines[1]!.state = "connected"; machines[1]!.snapshot!.panes[0]!.terminal_id = "graph-reused-terminal";
+      machines[1]!.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: "graph-reused-terminal", agent: chosen.agent!, native_session_id: "reused-native" }];
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true, "reused native identity cannot navigate");
       const unproven = await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").evaluateAll((options) => options.find((option) => option.textContent?.includes("Unproven garden"))?.getAttribute("value"));
@@ -167,6 +196,15 @@ try {
       if (process.env.UI_EVIDENCE_DIR) { const path = join(process.env.UI_EVIDENCE_DIR, "graph-app"); mkdirSync(path, { recursive: true }); await page.screenshot({ path: join(path, `${width}-${theme}.png`) }); }
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Graph stays within viewport");
       console.log(`PASS real App Graph ${width} ${theme}: shared inventory, lazy load, current execution, state/history/deep link, disconnect/reuse, incomplete/future sources`);
+      machines = machines.map((machine) => ({ ...machine, state: "disconnected", snapshot: null }));
+      await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
+      await nav.getByRole("button", { name: "Workspace", exact: true }).click();
+      await page.waitForURL((url) => !url.searchParams.has("page"));
+      await openGraph();
+      await page.waitForURL((url) => url.searchParams.get("page") === "graph");
+      await page.reload(); await node().waitFor();
+      await inspect(sessionId);
+      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true, "Graph and its deep link remain available with every source incomplete");
       // Watch role may access neither the private registry nor the Graph chunk/metadata.
       await nav.getByRole("button", { name: "Workspace", exact: true }).click();
       const reads = flockReads, watch = await context.newPage();
@@ -179,11 +217,11 @@ try {
       assert.equal(await watch.locator(".graph-view").count(), 0); assert.equal(flockReads, reads); assert.deepEqual(watchAssets, []);
       await watch.close();
     } catch (error) {
-      console.error("Graph fixture failed", page.url(), errors, await page.locator("body").innerText());
+      console.error("Graph fixture failed", stage, page.url(), errors, await page.locator("body").innerText());
       throw error;
     } finally {
       const video = page.video(); await context.close();
-      if (videoDir && video) writeFileSync(join(videoDir, "graph-recording.json"), JSON.stringify({ testedSha, source: "real Ovis App + fictional roster + real isolated FlockStore/handler", video: await video.path(), width, theme }, null, 2));
+      if (videoDir && video) writeFileSync(join(videoDir, "graph-recording.json"), JSON.stringify({ testedSha, source: "real Ovis App + fictional roster/native ownership proofs + real isolated FlockStore/handler", video: await video.path(), width, theme }, null, 2));
     }
   }
 } finally { await browser?.close(); server?.stop(true); rmSync(root, { recursive: true, force: true }); }

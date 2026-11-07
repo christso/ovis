@@ -156,3 +156,13 @@ describe("the sidebar", () => {
     expect(linkSearch({ ...base, sidebar: null }, "?sidebar=hidden")).toBe("?ws=w2&pane=w2%3Ap1");
   });
 });
+
+
+describe("Graph page and pane location", () => {
+  it("round trips Graph separately from the pane lens and recognizes page changes as navigation", () => {
+    const graph = { ...readLink("?machine=garden&pane=w7%3Ap2&view=terminal"), page: "graph" as const };
+    expect(readLink(linkSearch(graph))).toMatchObject({ machine: "garden", pane: "w7:p2", view: "terminal", page: "graph" });
+    expect(isNavigation(graph, { ...graph, page: undefined })).toBe(true);
+    expect(isNavigation({ ...graph, page: undefined }, graph)).toBe(true);
+  });
+});

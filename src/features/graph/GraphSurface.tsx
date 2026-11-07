@@ -22,7 +22,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
   const svgRef = useRef<SVGSVGElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<{ id: string | null; start: Point; viewport: Viewport; point: Point; moved: boolean } | null>(null);
-  const pinch = useRef<{ distance: number; midpoint: Point } | null>(null);
+  const pinch = useRef<{ distance: number; midpoint: Point; viewport: Viewport } | null>(null);
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const localPoint = (event: { clientX: number; clientY: number }) => {
     const box = svgRef.current!.getBoundingClientRect();
@@ -36,7 +36,11 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
     const node = (event.target as Element).closest("[data-graph-node]");
     const id = node?.getAttribute("data-graph-node") ?? null;
     gesture.current = { id, start: point, viewport, point: id ? positions[id]! : point, moved: false };
-    if (pointers.current.size > 1) { gesture.current = null; pinch.current = null; }
+    if (pointers.current.size > 1) {
+      gesture.current = null;
+      const [a, b] = [...pointers.current.values()] as [Point, Point];
+      pinch.current = { distance: Math.hypot(a.x - b.x, a.y - b.y), midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, viewport };
+    }
   };
   const move = (event: PointerEvent<SVGSVGElement>) => {
     if (!pointers.current.has(event.pointerId)) return;
@@ -48,10 +52,9 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
       const distance = Math.hypot(a.x - b.x, a.y - b.y);
       const previous = pinch.current;
       if (previous && previous.distance > 0) {
-        const zoom = zoomAt(viewport, distance / previous.distance, previous.midpoint.x, previous.midpoint.y);
+        const zoom = zoomAt(previous.viewport, distance / previous.distance, previous.midpoint.x, previous.midpoint.y);
         onViewport({ ...zoom, x: zoom.x + midpoint.x - previous.midpoint.x, y: zoom.y + midpoint.y - previous.midpoint.y });
       }
-      pinch.current = { distance, midpoint };
       return;
     }
     const drag = gesture.current;
@@ -100,6 +103,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
         const Icon = node.status ? STATUS_ICON[node.status] : Circle;
         return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-status-${node.status ?? "unknown"}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}`}
           transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={nodeLabel(node)} aria-pressed={selected === node.id}
+          onClick={(event) => { if (event.detail === 0) onSelect(node.id); }}
           onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(node.id); } }}>
           <title>{nodeLabel(node)}</title>
           <rect x={-112} y={-30} width={224} height={60} rx={10} />
