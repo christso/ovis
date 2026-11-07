@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionMoveDestination, SessionMovePlan } from "../../shared/session-move.ts";
@@ -190,4 +190,18 @@ it("serializes same-operation refresh with run and cancel while its asynchronous
   await expect(moves.run(first.id, first.plan.fingerprint)).rejects.toMatchObject({ code: "move_busy" });
   expect(() => moves.cancel(first.id)).toThrow("finish");
   finishPreview.resolve(); expect((await refreshing).phase).toBe("preview");
+});
+
+it.skipIf(process.platform === "win32")("accepts a trusted state directory through a symlink but refuses linked transfer children", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ovis-move-linked-home-")); roots.push(dir);
+  const real = join(dir, "real-home"), home = join(dir, "home"); mkdirSync(real); symlinkSync(real, home);
+  const journal = new MoveJournal(join(home, "state"));
+  const record = { id: "owned-move", phase: "preview" as const, plan: structuredClone(plan), snapshot: null, destination: null, error: null };
+  journal.save(record);
+  expect(journal.get(record.id)).toEqual(record);
+  const path = join(real, "state", "session-moves.json");
+  const outside = join(dir, "unowned.json"); writeFileSync(outside, "preserve unrelated bytes");
+  rmSync(path); symlinkSync(outside, path);
+  expect(() => new MoveJournal(join(home, "state"))).toThrow("symbolic link");
+  expect(readFileSync(outside, "utf8")).toBe("preserve unrelated bytes");
 });
