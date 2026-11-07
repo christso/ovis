@@ -170,9 +170,14 @@ try {
       assert.equal(new URL(page.url()).searchParams.get("view"), new URL(share).searchParams.get("view"), "Graph location preserves the chosen pane lens");
       await page.getByLabel("Search graph", { exact: true }).fill("");
       // Current execution moves explicitly; previous execution remains live on an equal pane ID.
+      machines[1]!.snapshot!.flock_bindings![0]!.native_session_id = nativeSourceId;
+      machines[1]!.snapshot!.panes[0]!.agent_session!.value = nativeSourceId;
+      machines[1]!.snapshot!.flock_observations = structuredClone(original.snapshot!.flock_observations);
       store.change(store.read().revision, { type: "adopt", binding: flockBinding(machines[1]!, machines[1]!.snapshot!.panes[0]!)!, session_id: session.id }, machines);
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
       await page.locator(`[data-graph-node="execution:${store.read().sessions[0]!.current_execution_id}"]`).waitFor();
+      assert.equal(store.read().observations?.length, 3, "replaying the copied rollout on its destination does not import receipts twice");
+      assert.equal(await page.locator(".graph-edge-communication").count(), 1, "the logical connection survives a move without duplicate links");
       assert.equal(await node().getAttribute("transform"), position, "execution move preserves logical node layout");
       if (width >= 980) {
         const withFile = new URL(page.url()); withFile.searchParams.delete("page"); withFile.searchParams.set("file", "README.md");
@@ -277,7 +282,7 @@ try {
       const video = page.video(); await context.close();
       if (videoDir && video) {
         writeFileSync(join(videoDir, "source.diff"), sourceDiff);
-        writeFileSync(join(videoDir, "graph-recording.json"), JSON.stringify({ testedSha, diffSha256, sourceFingerprint, source: "real Ovis App + fictional roster/native ownership proofs + real isolated FlockStore/handler; uncommitted mobile polish", video: await video.path(), width, height, theme }, null, 2));
+        writeFileSync(join(videoDir, "graph-recording.json"), JSON.stringify({ testedSha, diffSha256, sourceFingerprint, source: "real Ovis App + fictional roster/native ownership proofs + real isolated FlockStore/handler", video: await video.path(), width, height, theme }, null, 2));
       }
     }
   }
