@@ -20,7 +20,10 @@ replicate a conversation and cannot recover an unexpectedly lost PC.
 ## Native support and limits
 
 The qualified format is Codex CLI **0.166.0**. Source and destination must use exactly
-that version. Linux has an installed-CLI, disposable-home round-trip test. The writer
+that version. The source must use the built-in OpenAI provider and the destination
+must already have an OpenAI account/API-key sign-in; custom named providers are refused
+because their configuration is not transferred. This verifies sign-in availability,
+not model access or a successful model turn. Linux has an installed-CLI, disposable-home round-trip test. The writer
 lock implementation also supports macOS, but a native macOS round trip has not been
 run. Windows transfers and other versions are refused by compatibility preflight.
 
@@ -36,7 +39,7 @@ stopped. Recovery must re-establish that ownership before continuing.
 
 Supported snapshots contain ordinary Git checkouts and native plain JSONL rollouts,
 including paginated/reverted history. Submodules, symbolic links, unresolved Git
-conflicts and Git content filters are refused. The destination checkout is new,
+conflicts, Git content filters and assume-unchanged/skip-worktree index flags are refused. The destination checkout is new,
 private and detached at the source HEAD. Its commits arrive in a self-contained Git
 bundle. Separate binary patches preserve the Git index and working tree. Only
 individually selected, non-ignored untracked files are included; excluded files must
@@ -56,7 +59,8 @@ records, hooks and Git remote configuration are never copied.
 
 The implementation was checked against the installed CLI's `resume --help`, generated
 app-server types and upstream `rust-v0.166.0` persistence sources. The native mechanism
-is `codex resume <thread UUID> --cd <checkout>`; the verification fixture uses the same
+is `codex resume <thread UUID> --cd <checkout>` (the explicit cwd override avoids the
+CLI selecting its historical checkout or asking an interactive cwd question); the verification fixture uses the same
 native app-server `thread/resume` operation without starting a model turn. Official
 [CLI reference](https://learn.chatgpt.com/docs/cli/reference) documents native resume.
 

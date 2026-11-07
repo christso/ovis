@@ -21,7 +21,7 @@ export interface MoveNodeRuntime {
   native(home: string, proxy: boolean): Promise<NodeNative>;
   create(cwd: string, home: string, label: string): Promise<{ pane_id: string; lifetime: string }>;
   find(label: string, cwd: string): Promise<{ pane_id: string; lifetime: string } | null>;
-  start(paneId: string, threadId: string): Promise<void>;
+  start(paneId: string, threadId: string, checkout: string): Promise<void>;
   paneSession(paneId: string, threadId: string, lifetime: string, home: string): Promise<boolean>;
 }
 export interface TransferBundle {
@@ -234,7 +234,7 @@ export class MoveNode {
       if (recovering && !existing) throw new MoveRefused("reconciliation_required", "Destination creation is uncertain; no second workspace was created");
       const opened = existing ?? await this.runtime.create(destination.checkout, destination.home, label);
       destination.pane_id = opened.pane_id; destination.lifetime = opened.lifetime; destination.phase = "starting"; this.save(id, receipt);
-      await this.runtime.start(opened.pane_id, destination.bundle.codex.thread_id);
+      await this.runtime.start(opened.pane_id, destination.bundle.codex.thread_id, destination.checkout);
       destination.phase = "started"; this.save(id, receipt); return { launched: true };
     }
     if (action === "verify") {

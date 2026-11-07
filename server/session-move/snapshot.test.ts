@@ -17,7 +17,7 @@ const REVERT = "019a5a00-0000-7000-8000-000000000002";
 const TAIL = "019a5a00-0000-7000-8000-000000000003";
 const name = (id: string) => `sessions/2026/11/07/rollout-2026-11-07T01-00-00-${id}.jsonl`;
 const line = (value: unknown): string => JSON.stringify(value) + "\n";
-const meta = (cwd: string, ordinal = 0, extra = {}) => ({ timestamp: "2026-11-07T01:00:00Z", ordinal, type: "session_meta", payload: { id: THREAD, session_id: THREAD, cwd, cli_version: "0.166.0", source: "cli", history_mode: "paginated", ...extra } });
+const meta = (cwd: string, ordinal = 0, extra = {}) => ({ timestamp: "2026-11-07T01:00:00Z", ordinal, type: "session_meta", payload: { id: THREAD, session_id: THREAD, cwd, cli_version: "0.166.0", source: "cli", model_provider: "openai", history_mode: "paginated", ...extra } });
 const put = (home: string, path: string, text: string): void => { directory(home, "sessions/2026/11/07"); writeFileSync(join(home, path), text); };
 function git(cwd: string, ...args: string[]): string {
   const result = Bun.spawnSync(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", ...args], { cwd, env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null" } });
@@ -133,4 +133,20 @@ it.skipIf(!["linux", "darwin"].includes(process.platform))("holds only its chose
   } finally { held.release(); }
   expect(() => held.assertHeld()).toThrow("re-established");
   const again = holdQuiescentCodex(home, THREAD); again.release();
+});
+
+for (const flag of ["--assume-unchanged", "--skip-worktree"]) it(`refuses tracked work hidden by ${flag} without changing the source index`, () => {
+  const root = fixture(), source = repo(root), staging = directory(root, "snapshot");
+  git(source, "update-index", flag, "file.txt");
+  writeFileSync(join(source, "file.txt"), "hidden owned working change\n");
+  const flags = git(source, "ls-files", "-v");
+  expect(() => snapshotCheckout(source, staging, [])).toThrow("index flags");
+  expect(git(source, "ls-files", "-v")).toBe(flags);
+  expect(readFileSync(join(source, "file.txt"), "utf8")).toBe("hidden owned working change\n");
+});
+
+it("refuses named providers whose configuration is not qualified for transfer", () => {
+  const root = fixture(), home = directory(root, "home"), cwd = directory(root, "checkout"), staging = directory(root, "snapshot");
+  put(home, name(THREAD), line(meta(cwd, 0, { model_provider: "owned_custom_provider" })));
+  expect(() => snapshotCodex(home, name(THREAD), THREAD, staging)).toThrow("OpenAI provider");
 });

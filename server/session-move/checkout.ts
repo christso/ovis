@@ -24,6 +24,8 @@ function git(cwd: string, args: string[], input?: Uint8Array): Buffer {
 function changes(root: string): { staged: Buffer; unstaged: Buffer; head: string; untracked: string[] } {
   const tree = git(root, ["ls-tree", "-rz", "HEAD"]).toString().split("\0").filter(Boolean);
   if (tree.some((line) => /^(?:120000|160000) /.test(line))) throw new MoveRefused("unsupported_checkout", "Committed symbolic links and submodules need a separate checkout transfer");
+  const flags = git(root, ["ls-files", "-v", "-z"]).toString().split("\0").filter(Boolean);
+  if (flags.some((entry) => !entry.startsWith("H "))) throw new MoveRefused("unsupported_checkout", "Clear assume-unchanged or skip-worktree index flags before moving this checkout");
   const modes = git(root, ["ls-files", "--stage", "-z"]).toString().split("\0").filter(Boolean);
   if (modes.some((line) => /^(?:120000|160000) /.test(line) || !/^\d+ [a-f0-9]+ 0\t/.test(line))) {
     throw new MoveRefused("unsupported_checkout", "Resolve conflicts, symbolic links and submodules before moving this checkout");
@@ -42,7 +44,7 @@ function changes(root: string): { staged: Buffer; unstaged: Buffer; head: string
   };
 }
 
-/** The source must already be held quiescent. No remote origin/config, hooks or credentials enter this snapshot. */
+/** Stable private checkout capture; final transfer recaptures under native writer ownership. No remote configuration or hooks are copied. */
 export function snapshotCheckout(root: string, staging: string, selectedUntracked: readonly string[]): CheckoutSnapshot {
   const before = changes(root);
   if (new Set(selectedUntracked).size !== selectedUntracked.length || selectedUntracked.some((name) => !before.untracked.includes(name))) throw new MoveRefused("untracked_scope", "Choose individual non-ignored untracked files from the preview");

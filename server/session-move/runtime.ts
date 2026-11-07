@@ -24,7 +24,7 @@ export function moveRuntime(snapshot: () => Promise<SessionSnapshot>, configured
       const client = await native(home, true);
       try {
         const account = await client.call("account/read", { refreshToken: false }) as { account?: unknown; requiresOpenaiAuth?: boolean };
-        return { version, platform: process.platform, native_resume: true, authenticated: account.account !== null && account.account !== undefined || account.requiresOpenaiAuth === false, home };
+        return { version, platform: process.platform, native_resume: true, authenticated: account.account !== null && account.account !== undefined, home };
       } finally { await client.close(); }
     },
     async observe(paneId, threadId, lifetime) {
@@ -60,8 +60,8 @@ export function moveRuntime(snapshot: () => Promise<SessionSnapshot>, configured
       const pane = current.panes.find((pane) => pane.workspace_id === workspaces[0]?.workspace_id && pane.cwd === cwd);
       return pane && current.herdr_lifetime ? { pane_id: pane.pane_id, lifetime: current.herdr_lifetime } : null;
     },
-    async start(paneId, threadId) {
-      const launched = await agentLaunch(paneId, { kind: "codex", args: ["resume", threadId] });
+    async start(paneId, threadId, checkout) {
+      const launched = await agentLaunch(paneId, { kind: "codex", args: ["resume", threadId, "--cd", checkout] });
       if (!launched.agent_started) throw new MoveRefused("destination_start_failed", "The destination could not start native Codex resume");
     },
     async paneSession(paneId, threadId, lifetime, home) {
