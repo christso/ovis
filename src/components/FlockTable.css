@@ -1,0 +1,72 @@
+.flock-views { display: flex; flex-wrap: wrap; flex: 0 0 auto; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-bottom: var(--hairline) solid var(--border); }
+.flock-views [aria-current="page"] { background: var(--bg-hover); color: var(--text); }
+.flock-table, .flock-agents { min-height: 0; overflow: auto; padding: var(--space-4); color: var(--text); }
+.flock-table { display: flex; flex-direction: column; gap: var(--space-3); }
+.flock-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-3); }
+.flock-advanced:not([hidden]) { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-3); }
+.flock-advanced .flock-note { flex-basis: 100%; }
+.flock-toolbar-actions, .flock-row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.flock-sort, .flock-cell-label, .flock-filter-toggle, .flock-checkout-name { display: none; }
+.flock-toolbar label, .flock-editor label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-sm); }
+.flock-toolbar .flock-check { flex-direction: row; align-items: center; min-height: var(--row-h); }
+.flock-scroll { overflow: auto; flex: 0 1 auto; min-height: 0; border: var(--hairline) solid var(--border); border-radius: var(--radius-md); }
+.flock-table table { border-collapse: collapse; width: 100%; min-width: 960px; font-size: var(--fs-sm); }
+.flock-table th, .flock-table td { text-align: start; padding: var(--space-3); border-bottom: var(--hairline) solid var(--border); max-width: 280px; overflow-wrap: anywhere; vertical-align: top; }
+.flock-table thead th { position: sticky; top: 0; background: var(--bg); z-index: 1; white-space: nowrap; }
+.flock-table th button, .flock-open { font: inherit; color: inherit; background: transparent; border: 0; text-align: start; padding: 0; cursor: pointer; }
+.flock-open { color: var(--accent); }
+.flock-open:disabled { color: var(--text-dim); cursor: default; }
+.flock-table tr[data-selected="true"] { background: var(--bg-hover); }
+.flock-table details { margin-top: var(--space-2); color: var(--text-dim); font-size: var(--fs-xs); min-width: 140px; }
+.flock-table summary { cursor: pointer; }
+.flock-table dl { margin: var(--space-2) 0; }
+.flock-table dd { margin: 0 0 var(--space-2); font-family: var(--font-mono); }
+.flock-note { margin: 0; color: var(--text-dim); font-size: var(--fs-sm); }
+.flock-editor { display: flex; flex-direction: column; gap: var(--space-2); border: var(--hairline) solid var(--border); border-radius: var(--radius-md); padding: var(--space-3); max-width: 640px; }
+.flock-editor p { margin: 0; }
+.flock-editor-actions { display: flex; gap: var(--space-2); }
+.flock-group { background: var(--bg-hover); }
+@media (max-width: 640px) {
+  .flock-table, .flock-agents { padding: var(--space-2); }
+  .flock-table { min-width: 0; }
+  .flock-toolbar { gap: var(--space-2); }
+  .flock-toolbar label { min-width: 0; max-width: 100%; }
+  .flock-toolbar > label { flex: 1; }
+  .flock-toolbar .flock-search { flex: 1; }
+  .flock-filter-toggle { display: block; width: 100%; text-align: start; }
+  .flock-advanced:not([hidden]) { width: 100%; gap: var(--space-2); }
+  .flock-advanced > label { flex: 1; }
+  .flock-toolbar .flock-check { flex: 0 1 auto; min-height: var(--touch-target); }
+  .flock-toolbar .input, .flock-editor .input { width: 100%; min-width: 0; max-width: 100%; min-height: var(--touch-target); font-size: var(--fs-input); }
+  .flock-table .btn { min-height: var(--touch-target); min-width: var(--touch-target); white-space: normal; }
+  .flock-toolbar-actions { width: 100%; }
+  .flock-toolbar-actions .btn { flex: 1; }
+  .flock-sort { display: flex; align-items: end; gap: var(--space-2); width: 100%; }
+  .flock-sort label { flex: 1; }
+  .flock-scroll { overflow: visible; flex: none; border: 0; border-radius: 0; }
+  .flock-table table, .flock-table tbody { display: block; min-width: 0; }
+  .flock-table thead { display: none; }
+  .flock-table tr[data-row-id] { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); grid-template-areas: "name status" "work work" "machine machine" "repository repository" "branch branch" "actions actions"; column-gap: var(--space-2); margin-bottom: var(--space-2); padding: var(--space-3); border: var(--hairline) solid var(--border); border-radius: var(--radius-md); }
+  .flock-table td { min-width: 0; max-width: none; padding: 0; border: 0; }
+  .flock-table .flock-name { grid-area: name; }
+  .flock-open { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; min-height: var(--touch-target); font-size: var(--fs-md); font-weight: 600; overflow-wrap: anywhere; }
+  .flock-table .flock-status { grid-area: status; max-width: 110px; align-self: start; padding-top: var(--space-3); font-size: var(--fs-xs); color: var(--text-dim); }
+  .flock-work { grid-area: work; }
+  .flock-machine { grid-area: machine; }
+  .flock-repository { grid-area: repository; }
+  .flock-branch { grid-area: branch; }
+  .flock-table .flock-work, .flock-table .flock-machine, .flock-table .flock-repository, .flock-table .flock-branch { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--fs-xs); line-height: var(--lh-base); }
+  .flock-cell-label { display: inline; flex: 0 0 auto; color: var(--text-dim); }
+  .flock-checkout-name { display: inline; }
+  .flock-repository-value { display: none; }
+  .flock-cell-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flock-table .flock-work { margin-bottom: var(--space-2); font-size: var(--fs-sm); }
+  .flock-table td[data-empty] { display: none; }
+  .flock-table .flock-actions { grid-area: actions; margin-top: var(--space-2); }
+  .flock-row-actions > * { min-width: 0; max-width: 100%; }
+  .flock-table details { min-width: 0; margin-top: 0; }
+  .flock-table summary { align-content: center; min-height: var(--touch-target); }
+  .flock-table dd { overflow-wrap: anywhere; }
+  .flock-table .flock-group { display: block; margin: var(--space-3) 0 var(--space-2); border-radius: var(--radius-md); }
+  .flock-editor-actions { flex-wrap: wrap; }
+}

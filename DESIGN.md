@@ -3942,3 +3942,45 @@ Other hosts keep opening in a new tab, and unsafe schemes stay blocked; the app'
 limited to its own host. This follows T3 Code's in-thread visual replies and full-screen page view,
 while keeping external page links in the browser as its [HTML renders guide](https://github.com/pingdotgg/t3code/blob/main/docs/user/html-renders.md)
 does. No code or visual assets are copied.
+
+### Table and logical sessions
+
+The fork's Workspace, Agents and Table selector changes presentation while preserving the selected
+machine and pane. Table is flat across the configured machines, with sortable columns, a text filter,
+a machine filter and optional machine grouping. Desktop keeps conventional columns; at phone widths
+(up to 640px), the same execution rows become cards with name/status first, then work and
+machine/checkout/branch. The checkout basename is a compact location cue; full checkout and
+repository paths remain in details. Association and extension actions stay in the same mounted row. A native
+details disclosure retains full names, paths and IDs; compact metadata can truncate without hiding
+the complete value. Phone sorting uses a labelled select and direction button sharing the desktop
+column state. Search and Refresh stay above the cards; a collapsed phone Filters and sort
+disclosure shows an active count and contains machine/group/sort/work controls and inventory
+notes. Desktop keeps these controls expanded. Empty phone metadata lines are omitted while
+details and desktop retain their values. Controls and disclosures have 44px tap targets, and
+cards scroll vertically with the page content. Existing Workspace and Agents lists keep their controls and terminal targeting.
+
+The phone hierarchy follows [Paseo’s mobile session list](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/agent-list.tsx),
+reviewed alongside its [official overview](https://github.com/getpaseo/paseo/blob/main/README.md):
+a session title leads, with compact project/branch/host context underneath. Ovis keeps explicit
+association actions visible and full metadata in native details because each row represents a
+physical execution. No external code or visual assets were copied.
+
+The design follows [Codex's threads and worktrees](https://openai.com/index/introducing-the-codex-app/):
+a named task survives its execution context, while a physical checkout stays separate. This fork adds
+a flat table because execution location must be a column rather than a compulsory parent. No pixels
+or code were copied. A row represents an execution, so two executions of one logical session remain
+visible. Association is explicit, and selectors include IDs to disambiguate equal names. Native
+sessions without proven IDs stay visible as unassociated; stale or disconnected bindings cannot open
+terminals from Table. Rename changes a label, never an identity. Work and session names live in the
+manager's registry; naming a session does not rename its native agent or move its files.
+
+Observed relationships appear read-only inside the same execution-details disclosure on desktop
+and phone, following this Table's existing Paseo-inspired compact metadata pattern. Native Codex
+successful coordination receipts and the custom Herdr daemon's attributed operation journal
+contribute directed delegation and communication edges to the shared registry. Herdr occupancy
+identities distinguish current agents from replacements even without a proven native session;
+only a separate native ownership proof associates them with a logical session. Only metadata is retained; requests, prose, raw Herdr hints and unsupported
+formats supply no relationship. Deduplication preserves counts across refreshes and restarts.
+Historical execution bindings resolve to stable logical sessions after a move, while unknown
+endpoints remain unavailable. These observations do not change agent behaviour, and there is no
+manual agent-link mutation UI or API. Source evidence and coverage limits are in `docs/flock.md`.

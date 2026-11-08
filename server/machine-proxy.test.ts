@@ -6,6 +6,7 @@ import type { MachineManager } from "./machines.ts";
 
 // A remote bridge that answers like the local conversation route: an ETag, then 304 while unchanged.
 const asked: (string | null)[] = [];
+const sessionAsked: string[] = [];
 const promptAsked: (string | null)[] = [];
 const PLAN_CARD = { id: "claude-plan:abc", agent: "claude", kind: "plan", title: "Plan", question: "Would you like to proceed?", options: [{ label: "Yes", description: null }], multi_select: false, custom_option_index: null };
 const historyAsked: (string | null)[] = [];
@@ -21,7 +22,10 @@ const remote = Bun.serve({
     if (path === "/api/pane/conversation/image") return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "content-type": "image/png" } });
     if (path === "/api/pane/conversation/tool-output") return new Response("complete remote output", { headers: { "content-type": "text/plain; charset=utf-8" } });
     if (path === "/api/fs/file") return new Response("%PDF-1.7", { headers: { "content-type": "application/pdf" } });
-    if (path === "/api/session") return Response.json({ snapshot: { workspaces: [], tabs: [], panes: [{ pane_id: "w1:p1", workspace_id: "w1", tab_id: "t1", agent: "claude", tokens: { quota: "off · private", eta: "soon" } }], agents: [] } });
+    if (path === "/api/session") {
+      sessionAsked.push(new URL(request.url).search);
+      return Response.json({ snapshot: { workspaces: [], tabs: [], panes: [{ pane_id: "w1:p1", workspace_id: "w1", tab_id: "t1", agent: "claude", tokens: { quota: "off · private", eta: "soon" } }], agents: [], ...(new URL(request.url).searchParams.get("flock") === "1" ? { flock_observations: [{ id: "private-coordination" }] } : {}) } });
+    }
     if (path === "/api/sessions/history") {
       historyAsked.push(request.headers.get("authorization"));
       return Response.json({ workspace_id: "w1", agent: "pi", cwd: "/work", sessions: [{ id: "s1", title: null, firstMessage: "a private prompt", startedAt: null, updatedAt: "2026-10-01T00:00:00.000Z", resume: null }] });
@@ -64,6 +68,22 @@ const remote = Bun.serve({
   },
 });
 afterAll(() => remote.stop());
+
+it("refuses coordination inventory for watchers before forwarding any privileged PC request", async () => {
+  const before = sessionAsked.length;
+  const url = "http://127.0.0.1/api/machines/pc1/session?flock=1";
+  for (const method of ["GET", "HEAD", "OPTIONS"]) {
+    const response = await handleMachineRequest(new Request(url, { method }), manager, undefined, undefined, true);
+    expect(response.status).toBe(403);
+  }
+  expect(sessionAsked.length).toBe(before);
+  const driving = await handleMachineRequest(new Request(url), manager);
+  expect(driving.status).toBe(200);
+  expect(await driving.text()).toContain("private-coordination");
+  const watching = await handleMachineRequest(new Request("http://127.0.0.1/api/machines/pc1/session"), manager, undefined, undefined, true);
+  expect(watching.status).toBe(200);
+  expect(await watching.text()).not.toContain("private-coordination");
+});
 
 const manager = {
   endpoint: () => ({ url: `http://127.0.0.1:${remote.port}`, token: "remote-token" }),

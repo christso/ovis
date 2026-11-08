@@ -1,4 +1,5 @@
 import type { AgentInfo, AgentTarget, PaneProcessInfo, PaneProcessInfoParams, PaneSendKeysParams, PaneSendTextParams } from "../../shared/herdr-api.generated.ts";
+import type { HerdrCoordinationPage } from "../../shared/flock.ts";
 
 /**
  * The herdr methods `herdrRpc` knows the shape of: each method's params and its raw answer
@@ -12,6 +13,8 @@ import type { AgentInfo, AgentTarget, PaneProcessInfo, PaneProcessInfoParams, Pa
  * (scripts/generate-protocol-types.ts ROOTS).
  */
 export interface HerdrMethods {
+  /** Optional custom-fork JSON extension; the frozen upstream schema is unchanged. */
+  "agent.coordination.list": { params: { cursor?: string; limit?: number }; result: HerdrCoordinationPage };
   /** `pane_id`, never `target`: given `target`, herdr silently answers for the focused pane. */
   "pane.process_info": { params: PaneProcessInfoParams & { pane_id: string }; result: { type?: "pane_process_info"; process_info?: PaneProcessInfo } };
   "agent.get": { params: AgentTarget; result: { type?: "agent_info"; agent: AgentInfo } };

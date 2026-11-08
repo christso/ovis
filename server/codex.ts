@@ -19,6 +19,8 @@ import { kiroCodexProcess, kiroNested, kiroWrapper } from "./kiro-terminal.ts";
 import { resolveAgent } from "./pane-context.ts";
 import { FOOTER } from "./codex-steering.ts";
 import { codexStartScreenUnused } from "./start-screen.ts";
+import { codexCoordinationObservations } from "./codex-relationships.ts";
+import type { FlockObservation } from "../shared/flock.ts";
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue => value !== null && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {};
@@ -3026,4 +3028,18 @@ export async function codexTranscriptPath(paneId: string, cwd: string, home = de
   if (codexProcesses.length === 0 || open.size > 0
     || codexProcesses.some(({ argv = [] }) => argv.some((arg) => arg === "--remote" || arg.startsWith("--remote=")))) return null;
   return loadedConversation((screen ?? await paneRead({ paneId, source: "recent", lines: 400, stripAnsi: true })).text, paths, home);
+}
+
+async function codexPaneSource(paneId: string, cwd: string, configured?: string, panes?: HerdrPane[]): Promise<{ id: string; path: string } | null> {
+  const { home, placed } = await paneCodexHomePlaced(paneId, configured);
+  const path = await codexTranscriptPath(paneId, cwd, home, panes, !placed);
+  if (!path || codexRolloutPath(path, home) === null) return null;
+  const id = rolloutHeader(path)?.id;
+  return typeof id === "string" && UUID.test(id) ? { id, path } : null;
+}
+
+/** Ownership and coordination use one proven rollout; a raw Herdr session hint never supplies either. */
+export async function codexPaneCoordination(paneId: string, cwd: string, configured?: string, panes?: HerdrPane[]): Promise<{ id: string; observations: FlockObservation[]; rolloutPath: string } | null> {
+  const source = await codexPaneSource(paneId, cwd, configured, panes);
+  return source ? { id: source.id, observations: await codexCoordinationObservations(source.path, source.id), rolloutPath: source.path } : null;
 }

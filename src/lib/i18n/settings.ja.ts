@@ -310,7 +310,6 @@ export const SETTINGS_JA: Record<string, string> = {
   "Pairing gate": "ペアリングゲート",
   "Not yet closed": "まだ閉じていません",
   "Closed": "閉じています",
-  "Unavailable": "確認できません",
   "No device has been paired yet, so no pairing code is asked for.": "まだペアリングしたデバイスがないため、ペアリングコードは求められません。",
   "A new browser needs a pairing code or the token.": "新しいブラウザーにはペアリングコードかトークンが必要です。",
   "The device list cannot be read, so no new device can pair. This PC, the token and Tailscale sign-in still work.": "デバイス一覧を読み込めないため、新しいデバイスはペアリングできません。このPC、トークン、Tailscaleのサインインは引き続き使えます。",

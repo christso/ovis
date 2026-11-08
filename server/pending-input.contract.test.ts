@@ -15,7 +15,6 @@ import * as agentLaunchModule from "./agent-launch.ts";
 import * as piModule from "./pi.ts";
 import * as codexModule from "./codex.ts";
 import { MachineManager } from "./machines.ts";
-import { descriptorPath } from "./bridge.ts";
 import { DeviceStore } from "./devices.ts";
 import { DEVICE_COOKIE } from "./auth.ts";
 
@@ -242,12 +241,11 @@ async function setup(label: string, agent = "claude", screen = "› Message\n", 
 
 describe("resumable pending dispositions", () => {
   it.each(["sent", "discarded", "consumed", "late"] as const)("recovers a relayed Codex %s receipt without typing again or sharing it with another device", async (outcome) => {
-    const f = await setup("remote-codex-resume", "codex", "› Message\n", { registerBridge: true, machines: false });
-    const descriptor = JSON.parse(readFileSync(descriptorPath(), "utf8")) as { token: string };
+    const f = await setup("remote-codex-resume", "codex", "› Message\n", { bridgeToken: "fixture-bridge-token", machines: false });
     const endpoint = MachineManager.prototype.endpoint;
     const remoteId = "receipt-test-remote";
     const remote = spyOn(MachineManager.prototype, "endpoint").mockImplementation(function (this: MachineManager, id: string) {
-      return id === remoteId ? { url: `http://127.0.0.1:${f.port}`, token: descriptor.token } : endpoint.call(this, id);
+      return id === remoteId ? { url: `http://127.0.0.1:${f.port}`, token: "fixture-bridge-token" } : endpoint.call(this, id);
     });
     const stateDir = join(root, `remote-receipt-central-${outcome}`);
     const devices = new DeviceStore(stateDir);
@@ -291,7 +289,7 @@ describe("resumable pending dispositions", () => {
       }
       const expected = outcome === "discarded" ? "discarded" : outcome === "consumed" ? "consumed" : "sent";
       if (outcome !== "late") await f.removed(row.id, expected, browser);
-      const bytes = f.bytes();
+      const bytes = f.bytes(), writes = herdrWrites.slice();
       await browser.disconnect();
       if (outcome !== "late") {
         // A guessed browser UUID cannot recover another authenticated device's receipts.
@@ -308,6 +306,7 @@ describe("resumable pending dispositions", () => {
       const replay = await f.removed(row.id, expected, resumed);
       expect(replay.removed).toContainEqual({ id: row.id, outcome: expected, resumed: true });
       expect(f.bytes()).toBe(bytes);
+      expect(herdrWrites).toEqual(writes);
     } finally {
       keyReplyHold = null; release.resolve();
       for (const socket of sockets) socket.close();
