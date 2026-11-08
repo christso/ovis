@@ -110,7 +110,7 @@ export function flockRelationships(registry: FlockRegistry): FlockRelationship[]
     return value;
   };
   const herdrEndpoint = (value: HerdrCoordinationEndpoint) => {
-    const key = `herdr:${flockHerdrEndpointKey(value)}`;
+    const key = JSON.stringify(["herdr", flockHerdrEndpointKey(value), value.agent, value.name, value.pane_id]);
     let resolved = endpoints.get(key);
     if (!resolved) { resolved = flockHerdrRelationshipEndpoint(registry, value); endpoints.set(key, resolved); }
     return resolved;

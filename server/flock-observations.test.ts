@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { FlockStore, handleFlockRequest } from "./flock.ts";
 import { flockCurrentHerdrEndpoint, flockHerdrRelationshipEndpoint, flockHerdrTarget, flockRelationships, flockRowRelationshipIds } from "../shared/flock-relationships.ts";
 import { flockInventory, flockTarget } from "../shared/flock-inventory.ts";
-import type { HerdrCoordinationEndpoint, HerdrCoordinationPage } from "../shared/flock.ts";
+import type { FlockRegistry, HerdrCoordinationEndpoint, HerdrCoordinationPage } from "../shared/flock.ts";
 import type { Machine } from "../shared/machines.ts";
 
 const sourceId = "11111111-1111-4111-8111-111111111111", targetId = "22222222-2222-4222-8222-222222222222";
@@ -93,6 +93,21 @@ it("retains daemon-owned Herdr relationships after both agents close without nat
     expect(flockRelationships(new FlockStore(root).read())).toHaveLength(2);
     expect(flockRelationships(store.read()).find((item) => item.source.id.startsWith("herdr:"))?.count).toBe(1);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("preserves receipt endpoint names and panes across a rename without changing relationship identity", () => {
+  const endpoint = (id: string): HerdrCoordinationEndpoint => ({ server_id: "server", boot_id: "boot", terminal_id: id, agent_instance_id: id, agent: "claude", pane_id: `w1:p${id}`, name: id });
+  const before = { ...endpoint("worker"), name: "Before rename" };
+  const after = { ...before, name: "After rename", pane_id: "w2:p1" };
+  const registry: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [], observations: [
+    { source: "herdr", id: "before", kind: "communication", source_endpoint: endpoint("first"), target_endpoint: before, occurred_at: event.occurred_at, machine_id: "local" },
+    { source: "herdr", id: "after", kind: "communication", source_endpoint: endpoint("second"), target_endpoint: after, occurred_at: event.occurred_at, machine_id: "local" },
+  ] };
+  const relationships = flockRelationships(registry);
+  expect(relationships.map((relationship) => relationship.target.label)).toEqual(["Before rename", "After rename"]);
+  expect(relationships.map((relationship) => relationship.target.herdr?.pane_id)).toEqual([before.pane_id, after.pane_id]);
+  expect(relationships[0]!.target.id).toBe(relationships[1]!.target.id);
+  expect(relationships.map((relationship) => relationship.count)).toEqual([1, 1]);
 });
 
 it("associates a current Herdr occupancy only with separately proven native ownership and retains it through a move", () => {
