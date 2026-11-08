@@ -14,6 +14,9 @@
  * defaults; route CSP, framing, MIME, caching and compression policies still win.
  */
 
+/** Planned Codex moves: control-only /api/session-moves; node route is bridge-credential-only. */
+export type { SessionMoveRequest, SessionMovePlan, SessionMoveRecord, SessionMoveState, SessionMoveDestination, SessionMoveSnapshot } from "./session-move.ts";
+
 export type {
   AgentInfo,
   AgentSessionInfo,
