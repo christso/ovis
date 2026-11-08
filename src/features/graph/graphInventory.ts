@@ -8,7 +8,8 @@ import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 const executionId = (row: FlockRow) => {
   if (row.execution) return `execution:${row.execution.id}`;
   const binding = row.binding;
-  return `observed:${JSON.stringify([...(binding ? [row.id, binding.machine_id, binding.herdr_lifetime, binding.pane_id, binding.agent, binding.native_session_id] : [row.id, null]), row.herdr_endpoint ? flockHerdrEndpointKey(row.herdr_endpoint) : null])}`;
+  if (binding) return `observed:${JSON.stringify([row.id, binding.machine_id, binding.herdr_lifetime, binding.pane_id, binding.agent, binding.native_session_id])}`;
+  return `observed:${JSON.stringify([row.id, null, row.herdr_endpoint ? flockHerdrEndpointKey(row.herdr_endpoint) : null])}`;
 };
 const freshness = (row: FlockRow): GraphNode["freshness"] => flockTarget(row) ? "live" : row.availability;
 function endpointRowIndex(registry: FlockRegistry, rows: readonly FlockRow[]): Map<string, FlockRow[]> {
@@ -73,7 +74,7 @@ export function graphTarget(registry: FlockRegistry | null, rows: readonly Flock
   if (!registry) return null;
   if (id.startsWith("native:") || id.startsWith("herdr:")) {
     const endpoint = flockRelationships(registry).flatMap((relation) => [relation.source, relation.target]).find((endpoint) => endpoint.id === id);
-    const matches = endpoint ? endpointRowIndex(registry, rows).get(endpoint.id) ?? [] : [];
+    const matches = endpoint ? rows.filter((row) => flockRowRelationshipIds(registry, row).includes(endpoint.id)) : [];
     return endpoint && matches.length === 1 ? flockTarget(matches[0]!) : null;
   }
   const session = registry.sessions.find((session) => `session:${session.id}` === id);

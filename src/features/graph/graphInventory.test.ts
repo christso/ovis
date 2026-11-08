@@ -23,6 +23,24 @@ function source() {
 }
 
 describe("shared inventory to Graph", () => {
+  it("keeps a proven native execution selected across optional coordination loss and recovery", () => {
+    const { machines, pane } = source();
+    const machine = machines[0]!;
+    const registry: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
+    const current = () => flockInventory(registry, [machine]);
+    const selected = graphInventory(registry, current()).nodes.find((node) => node.kind === "execution")!;
+    const endpoint = { server_id: "server", boot_id: "boot", terminal_id: pane.terminal_id, agent_instance_id: "occupancy", agent: pane.agent!, pane_id: pane.pane_id, name: "Native worker" };
+    const page = { version: 1 as const, server_id: "server", boot_id: "boot", agents: [endpoint], receipts: [], cursor: null };
+    for (const coordination of [page, undefined, page]) {
+      machine.snapshot!.flock_coordination = coordination;
+      const rows = current();
+      expect(graphInventory(registry, rows).nodes.find((node) => node.kind === "execution")?.id).toBe(selected.id);
+      expect(graphTarget(registry, rows, selected.id)).toEqual({ machine_id: machine.id, pane_id: pane.pane_id });
+    }
+    machine.snapshot!.flock_bindings![0]!.native_session_id = "replacement-native";
+    expect(graphTarget(registry, current(), selected.id)).toBeNull();
+  });
+
   it("shows Herdr delegation and messages to a live agent without treating its occupancy as a native session", () => {
     const { registry, machines, pane } = source();
     const machine = machines[0]!;

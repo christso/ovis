@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
 import roster from "../site/demo/fixtures/machines.json";
 import type { HerdrCoordinationEndpoint } from "../shared/flock.ts";
+import { flockHerdrEndpointKey } from "../shared/flock-relationships.ts";
 import type { Machine } from "../shared/machines.ts";
 import { handleFlockRequest } from "../server/flock.ts";
 import { moveFlowFixture } from "../server/session-move/flow.fixture.ts";
@@ -16,6 +17,7 @@ import { chromePath } from "./chrome-path.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ovis-flock-integration-")), app = join(root, "app");
 const evidence = process.env["UI_EVIDENCE_DIR"];
+const videoDirectory = process.env["FLOCK_GRAPH_VIDEO_DIR"];
 const cases = [[1280, "dark"], [390, "dark"], [320, "light"]] as const;
 const results: unknown[] = [];
 let browser: Browser | undefined;
@@ -73,6 +75,7 @@ try {
     const logicalId = `session:${session.id}`;
     const parent: HerdrCoordinationEndpoint = { server_id: "fixture-source-server", boot_id: "fixture-source-boot", terminal_id: "owned-terminal-source", agent_instance_id: "fixture-source-occupancy", agent: "codex", pane_id: "owned:p0", name: "Coordinator" };
     const worker: HerdrCoordinationEndpoint = { ...parent, terminal_id: "owned-worker-terminal", agent_instance_id: "fixture-worker-occupancy", agent: "claude", pane_id: "owned:p1", name: "Review worker" };
+    let workerOccupancy = worker.agent_instance_id;
     const destination: HerdrCoordinationEndpoint = { ...parent, server_id: "fixture-destination-server", boot_id: "fixture-destination-boot", terminal_id: "owned-terminal-destination", agent_instance_id: "fixture-destination-occupancy" };
     const receipts = ["delegation", "communication", "communication"].map((kind, index) => ({ id: `fixture-operation-${index}`, kind: kind as "delegation" | "communication", source: parent, target: worker, occurred_at: new Date(Date.now() - 60_000 * (3 - index)).toISOString() }));
     const base = structuredClone(roster.machines[0]!) as Machine;
@@ -80,7 +83,7 @@ try {
     const machines = (): Machine[] => [base, ...flow.machines().map((machine) => {
       const raw = machine.snapshot!, pane = { ...template, ...raw.panes[0]!, tab_id: "owned-tab" };
       const source = machine.id === "owned-source";
-      const agents = source ? [...(pane.agent ? [parent] : []), worker] : pane.agent ? [destination] : [];
+      const agents = source ? [...(pane.agent ? [parent] : []), { ...worker, agent_instance_id: workerOccupancy }] : pane.agent ? [destination] : [];
       const panes = source ? [pane, { ...pane, pane_id: worker.pane_id, terminal_id: worker.terminal_id, agent: worker.agent, agent_status: "idle" as const, agent_session: null, label: worker.name }] : [pane];
       return { ...machine, snapshot: { ...base.snapshot!, ...raw,
         workspaces: [{ ...base.snapshot!.workspaces[0]!, ...raw.workspaces[0] }], tabs: [{ ...base.snapshot!.tabs[0]!, workspace_id: "owned-workspace", tab_id: "owned-tab" }], panes,
@@ -88,9 +91,11 @@ try {
       } };
     })];
     const mobile = width < 700, viewport = { width, height: 844 };
-    const context = await browser.newContext({ viewport, locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const context = await browser.newContext({ viewport, locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(mobile ? { isMobile: true, hasTouch: true } : {}), ...(videoDirectory ? { recordVideo: { dir: videoDirectory, size: viewport } } : {}) });
     await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme })), theme);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
+    const video = page.video();
+    let caseResult: Record<string, unknown> | undefined;
     const errors: string[] = [], moveActions: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
@@ -118,6 +123,23 @@ try {
       assert.equal(await page.locator(".graph-edge-communication").count(), 1);
       assert.equal(flow.flock.read().observations?.length, 3, "the Flock handler imports the receipt fixtures through the production store");
       assert.ok((flow.flock.read().herdr_associations ?? []).some((item) => item.endpoint.agent_instance_id === parent.agent_instance_id && item.native_session_id === sourceExecution.native_session_id), "fresh source proof associates Herdr occupancy with the logical session");
+
+      stage = "Graph runtime targets";
+      const workerId = `herdr:${flockHerdrEndpointKey(worker)}`;
+      await inspect(page, workerId, mobile);
+      const openWorkspace = page.getByRole("button", { name: "Open in Workspace", exact: true });
+      assert.equal(await openWorkspace.isDisabled(), false, "Graph can open an exactly proven Herdr-only agent");
+      await openWorkspace.click();
+      await page.waitForURL((url) => url.searchParams.get("machine") === "owned-source" && url.searchParams.get("pane") === worker.pane_id && !url.searchParams.has("page"));
+      await changeView(page, "Graph", mobile);
+      await inspect(page, workerId, mobile);
+      workerOccupancy = "fixture-worker-replacement";
+      await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === true);
+      assert.equal(await openWorkspace.isDisabled(), true, "a historic relationship cannot open the replacement occupant");
+      assert.equal(page.url().includes("page=graph"), true);
+      workerOccupancy = worker.agent_instance_id;
+      await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === false);
+      await inspect(page, logicalId, mobile);
       const position = await node.getAttribute("transform");
       const steady = await page.evaluate(async (id) => {
         const selected = document.querySelector(`[data-graph-node="${id}"]`)!, svg = document.querySelector(".graph-surface")!, group = svg.querySelector(":scope > g")!;
@@ -191,12 +213,16 @@ try {
         mkdirSync(join(evidence, "flock-integration"), { recursive: true });
         await page.screenshot({ path: join(evidence, "flock-integration", `${width}-${theme}-after-move.png`) });
       }
-      results.push({ width, theme, steady, move: flow.counts(), receipts: flow.flock.read().observations?.length, pageErrors: errors });
+      caseResult = { width, theme, steady, move: flow.counts(), receipts: flow.flock.read().observations?.length, pageErrors: errors };
+      results.push(caseResult);
       console.log(`PASS integrated Graph → Table Move → Graph ${width} ${theme}: real HTTP/Git transfer, fixture Herdr/native receipts, preserved logical identity and links`);
     } catch (error) {
       console.error("Integrated Flock proof failed", { width, theme, stage, url: page.url(), errors }, await page.locator("body").innerText());
       throw error;
-    } finally { await context.close(); server.stop(true); await flow.close(); }
+    } finally {
+      await context.close(); server.stop(true); await flow.close();
+      if (caseResult && video) caseResult.video = await video.path();
+    }
   }
   if (evidence) {
     const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
