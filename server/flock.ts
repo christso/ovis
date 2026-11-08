@@ -8,13 +8,7 @@ import { flockBinding, flockCheckout, sameFlockBinding } from "../shared/flock-i
 import { isJsonObject, jsonResponse } from "./http.ts";
 import { readStateDocument, writeStateDocument } from "./state-document.ts";
 import { sameOrigin } from "./machine-security.ts";
-import { flockCoordinationValue, flockCurrentHerdrEndpoint, flockHerdrEndpointKey, flockHerdrEndpointValue, flockObservationValue, flockReceiptKey } from "../shared/flock-relationships.ts";
-
-/** Whitelist persisted receipt fields; native arguments and message text never enter the registry. */
-function endpointMetadata(endpoint: HerdrCoordinationEndpoint): HerdrCoordinationEndpoint {
-  return { server_id: endpoint.server_id, boot_id: endpoint.boot_id, terminal_id: endpoint.terminal_id, agent_instance_id: endpoint.agent_instance_id,
-    agent: endpoint.agent, pane_id: endpoint.pane_id, name: endpoint.name };
-}
+import { flockCoordinationValue, flockCurrentHerdrEndpoint, flockHerdrEndpointKey, flockHerdrEndpointMetadata, flockHerdrEndpointValue, flockObservationValue, flockReceiptKey } from "../shared/flock-relationships.ts";
 
 export class FlockError extends Error {
   constructor(readonly code: "flock_conflict" | "flock_unreadable" | "invalid_flock", message: string) { super(message); }
@@ -40,7 +34,7 @@ export class FlockStore {
       const associate = (endpoint: HerdrCoordinationEndpoint, native: string | null) => {
         const key = JSON.stringify([flockHerdrEndpointKey(endpoint), machine.id, native]);
         if (associations.has(key)) return;
-        (next.herdr_associations ??= []).push({ endpoint: endpointMetadata(endpoint), machine_id: machine.id, native_session_id: native });
+        (next.herdr_associations ??= []).push({ endpoint: flockHerdrEndpointMetadata(endpoint), machine_id: machine.id, native_session_id: native });
         associations.add(key); changed = true;
       };
       if (flockCoordinationValue(coordination)) {
@@ -55,9 +49,8 @@ export class FlockStore {
           if (!flockObservationValue(event) || event.source_endpoint.server_id !== coordination.server_id) continue;
           const key = flockReceiptKey(event);
           if (seen.has(key)) continue;
-          // Closed endpoints still belong to the journal's server, but never acquire native identity.
           for (const endpoint of [event.source_endpoint, event.target_endpoint]) if (endpoint.server_id === coordination.server_id && flockHerdrEndpointValue(endpoint)) associate(endpoint, null);
-          (next.observations ??= []).push({ ...event, source_endpoint: endpointMetadata(event.source_endpoint), target_endpoint: endpointMetadata(event.target_endpoint), machine_id: machine.id });
+          (next.observations ??= []).push({ ...event, source_endpoint: flockHerdrEndpointMetadata(event.source_endpoint), target_endpoint: flockHerdrEndpointMetadata(event.target_endpoint), machine_id: machine.id });
           seen.add(key); changed = true;
         }
       }

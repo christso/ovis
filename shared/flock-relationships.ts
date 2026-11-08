@@ -13,6 +13,10 @@ export function flockHerdrEndpointValue(value: unknown): value is HerdrCoordinat
   return object(value) && [value.server_id, value.boot_id, value.terminal_id, value.agent_instance_id, value.pane_id].every((item) => text(item))
     && text(value.agent, 100) && (value.name === null || text(value.name, 200));
 }
+export function flockHerdrEndpointMetadata(endpoint: HerdrCoordinationEndpoint): HerdrCoordinationEndpoint {
+  return { server_id: endpoint.server_id, boot_id: endpoint.boot_id, terminal_id: endpoint.terminal_id, agent_instance_id: endpoint.agent_instance_id,
+    agent: endpoint.agent, pane_id: endpoint.pane_id, name: endpoint.name };
+}
 /** Names and pane movement do not change an occupancy's identity. */
 export function flockHerdrEndpointKey(endpoint: HerdrCoordinationEndpoint): string {
   return JSON.stringify([endpoint.server_id, endpoint.boot_id, endpoint.terminal_id, endpoint.agent_instance_id]);
