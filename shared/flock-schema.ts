@@ -1,6 +1,6 @@
 import type { FlockBinding, FlockCommand, FlockRegistry } from "./flock.ts";
 import { sameFlockBinding } from "./flock-inventory.ts";
-import { flockObservationKey, flockObservationValue } from "./flock-relationships.ts";
+import { flockHerdrEndpointKey, flockHerdrEndpointValue, flockObservationKey, flockObservationValue } from "./flock-relationships.ts";
 
 const isJsonObject = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 4096 && !value.includes("\u0000");
@@ -15,6 +15,16 @@ export function flockRegistryValue(raw: unknown): raw is FlockRegistry {
   if (!isJsonObject(raw) || raw["version"] !== 1 || !Number.isSafeInteger(raw["revision"]) || (raw["revision"] as number) < 0) return false;
   const { works, sessions, checkouts, executions } = raw;
   if (![works, sessions, checkouts, executions].every(Array.isArray)) return false;
+  if (raw.herdr_associations !== undefined) {
+    if (!Array.isArray(raw.herdr_associations)) return false;
+    const seen = new Set<string>();
+    for (const association of raw.herdr_associations) {
+      if (!isJsonObject(association) || !flockHerdrEndpointValue(association.endpoint) || !text(association.machine_id) || !nullableText(association.native_session_id)) return false;
+      const key = JSON.stringify([flockHerdrEndpointKey(association.endpoint), association.machine_id, association.native_session_id]);
+      if (seen.has(key)) return false;
+      seen.add(key);
+    }
+  }
   if (raw.observations !== undefined) {
     if (!Array.isArray(raw.observations)) return false;
     const seen = new Set<string>();

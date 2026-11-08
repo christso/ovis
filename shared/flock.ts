@@ -9,9 +9,17 @@ export interface FlockCheckout { id: string; machine_id: string; path: string; r
 export interface FlockBinding { machine_id: string; herdr_lifetime: string; pane_id: string; agent: string; native_session_id: string }
 export interface FlockExecution extends FlockBinding { id: string; session_id: string; checkout_id: string | null; created_at: string }
 /** Metadata from successful native tool receipts; never a browser-supplied relationship. */
-export interface FlockObservation { id: string; kind: "delegation" | "communication"; source_native_session_id: string; target_native_session_id: string; occurred_at: string; source: "codex" }
-export interface FlockStoredObservation extends FlockObservation { machine_id: string }
-export interface FlockRegistry { version: 1; revision: number; works: FlockWork[]; sessions: FlockSession[]; checkouts: FlockCheckout[]; executions: FlockExecution[]; observations?: FlockStoredObservation[] }
+export interface FlockCodexObservation { id: string; kind: "delegation" | "communication"; source_native_session_id: string; target_native_session_id: string; occurred_at: string; source: "codex" }
+/** Daemon-owned occupancy, independent of display name, pane location and native-session hints. */
+export interface HerdrCoordinationEndpoint { server_id: string; boot_id: string; terminal_id: string; agent_instance_id: string; agent: string; pane_id: string; name: string | null }
+export interface HerdrCoordinationReceipt { id: string; kind: "delegation" | "communication"; source: HerdrCoordinationEndpoint; target: HerdrCoordinationEndpoint; occurred_at: string }
+export interface HerdrCoordinationPage { version: 1; server_id: string; boot_id: string; agents: HerdrCoordinationEndpoint[]; receipts: HerdrCoordinationReceipt[]; cursor: string | null }
+export interface FlockHerdrObservation { id: string; kind: "delegation" | "communication"; source_endpoint: HerdrCoordinationEndpoint; target_endpoint: HerdrCoordinationEndpoint; occurred_at: string; source: "herdr" }
+export type FlockObservation = FlockCodexObservation | FlockHerdrObservation;
+export type FlockStoredObservation = FlockObservation & { machine_id: string };
+/** Only a current bridge proof may associate an occupancy with a native session. Null records machine provenance alone. */
+export interface FlockHerdrAssociation { endpoint: HerdrCoordinationEndpoint; machine_id: string; native_session_id: string | null }
+export interface FlockRegistry { version: 1; revision: number; works: FlockWork[]; sessions: FlockSession[]; checkouts: FlockCheckout[]; executions: FlockExecution[]; observations?: FlockStoredObservation[]; herdr_associations?: FlockHerdrAssociation[] }
 /** Optional verified inventory is response-only; never part of the persistent registry. */
 export interface FlockRead extends FlockRegistry { sources?: Machine[] }
 

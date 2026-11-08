@@ -5,10 +5,13 @@ import { codexPaneCoordination } from "./codex.ts";
 import { FlockError } from "./flock.ts";
 import { discard, readCappedJson, REMOTE_LIMITS } from "./remote-json.ts";
 import { retainCodexCoordinationScans } from "./codex-relationships.ts";
+import { herdrCoordinationSnapshot } from "./herdr-coordination.ts";
+import { flockHerdrEndpointKey } from "../shared/flock-relationships.ts";
 
 /** Proof is bridge-owned and ephemeral. Unsupported readers never promote a raw native-session hint. */
 export async function verifyFlockSnapshot(readSnapshot: () => Promise<SessionSnapshot>, codexHome?: string): Promise<SessionSnapshot> {
   const snapshot = await readSnapshot();
+  const coordinationBefore = await herdrCoordinationSnapshot();
   const flock_bindings: NonNullable<SessionSnapshot["flock_bindings"]> = [];
   const observations = new Map<string, NonNullable<SessionSnapshot["flock_observations"]>>();
   const paths = new Map<string, string>();
@@ -24,13 +27,29 @@ export async function verifyFlockSnapshot(readSnapshot: () => Promise<SessionSna
     } catch { /* uncertain ownership remains visible but unsupported */ }
   }
   const current = await readSnapshot();
-  const proven = current.herdr_lifetime !== snapshot.herdr_lifetime ? [] : flock_bindings.filter((proof) => {
+  const coordination = coordinationBefore ? await herdrCoordinationSnapshot() : undefined;
+  const daemonChanged = coordinationBefore && coordination && (coordinationBefore.server_id !== coordination.server_id || coordinationBefore.boot_id !== coordination.boot_id);
+  const proven = current.herdr_lifetime !== snapshot.herdr_lifetime || daemonChanged ? [] : flock_bindings.filter((proof) => {
     const before = snapshot.panes.find((pane) => pane.pane_id === proof.pane_id);
     const after = current.panes.find((pane) => pane.pane_id === proof.pane_id);
-    return after && after.terminal_id === proof.terminal_id && after.agent === proof.agent && !after.restore_error && after.cwd === before?.cwd;
+    const previousOccupant = coordinationBefore?.agents.filter((endpoint) => endpoint.pane_id === proof.pane_id && endpoint.terminal_id === proof.terminal_id && endpoint.agent === proof.agent);
+    const currentOccupant = coordination?.agents.filter((endpoint) => endpoint.pane_id === proof.pane_id && endpoint.terminal_id === proof.terminal_id && endpoint.agent === proof.agent);
+    const sameOccupant = !coordinationBefore || !coordination || (previousOccupant?.length === 1 && currentOccupant?.length === 1
+      && flockHerdrEndpointKey(previousOccupant[0]!) === flockHerdrEndpointKey(currentOccupant[0]!));
+    return sameOccupant && after && after.terminal_id === proof.terminal_id && after.agent === proof.agent && !after.restore_error && after.cwd === before?.cwd;
   });
   retainCodexCoordinationScans(new Set(proven.flatMap((proof) => paths.get(proof.pane_id) ?? [])));
-  return { ...current, flock_bindings: proven, flock_observations: proven.flatMap((proof) => observations.get(proof.pane_id) ?? []) };
+  const sameDaemon = coordinationBefore && coordination && current.herdr_lifetime === snapshot.herdr_lifetime
+    && coordination.server_id === coordinationBefore.server_id && coordination.boot_id === coordinationBefore.boot_id;
+  const agents = sameDaemon ? coordination.agents.filter((endpoint) => {
+    const beforeEndpoint = coordinationBefore.agents.find((item) => flockHerdrEndpointKey(item) === flockHerdrEndpointKey(endpoint));
+    const before = snapshot.panes.find((pane) => pane.pane_id === beforeEndpoint?.pane_id);
+    const after = current.panes.find((pane) => pane.pane_id === endpoint.pane_id);
+    return beforeEndpoint && before && after && before.terminal_id === endpoint.terminal_id && after.terminal_id === endpoint.terminal_id
+      && before.agent === endpoint.agent && after.agent === endpoint.agent && !before.restore_error && !after.restore_error;
+  }) : [];
+  return { ...current, flock_bindings: proven, flock_observations: proven.flatMap((proof) => observations.get(proof.pane_id) ?? []),
+    flock_coordination: sameDaemon ? { ...coordination, agents } : undefined };
 }
 
 /** Adoption checks fresh native ownership as well as the pane incarnation. Older peers fail closed. */

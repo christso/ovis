@@ -3,7 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FlockStore, handleFlockRequest } from "./flock.ts";
-import { flockRelationships } from "../shared/flock-relationships.ts";
+import { flockCurrentHerdrEndpoint, flockHerdrRelationshipEndpoint, flockHerdrTarget, flockRelationships, flockRowRelationshipIds } from "../shared/flock-relationships.ts";
+import { flockInventory, flockTarget } from "../shared/flock-inventory.ts";
+import type { HerdrCoordinationEndpoint, HerdrCoordinationPage } from "../shared/flock.ts";
 import type { Machine } from "../shared/machines.ts";
 
 const sourceId = "11111111-1111-4111-8111-111111111111", targetId = "22222222-2222-4222-8222-222222222222";
@@ -72,4 +74,76 @@ it("records a native receipt once when the same rollout is replayed on another m
     const oldData = { ...store.read(), observations: [{ ...event, machine_id: "local" }, { ...event, machine_id: "destination" }] };
     expect(flockRelationships(oldData).reduce((count, relation) => count + relation.count, 0)).toBe(1);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("retains daemon-owned Herdr relationships after both agents close without native-ID guesses", () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-herdr-observations-"));
+  const endpoint = (id: string, agent: string) => ({ server_id: "server", boot_id: "boot", terminal_id: `terminal-${id}`, agent_instance_id: id, agent, pane_id: `w1:p${id}`, name: id });
+  const receipt = { id: "operation", kind: "communication", source: endpoint("1", "claude"), target: endpoint("2", "codex"), occurred_at: event.occurred_at };
+  const source = machine();
+  // The bridge's coordination inventory is independent of live native ownership and panes.
+  Object.assign(source.snapshot!, { flock_coordination: { version: 1, server_id: "server", boot_id: "boot", agents: [], receipts: [receipt], cursor: null } });
+  try {
+    const store = new FlockStore(root);
+    store.observe([source]);
+    const relation = flockRelationships(store.read()).find((item) => item.source.id.startsWith("herdr:"));
+    expect(relation).toMatchObject({ kind: "communication", count: 1, source: { label: "1", agent: "claude" }, target: { label: "2", agent: "codex" } });
+    expect(relation?.source.id.startsWith("herdr:")).toBe(true);
+    store.observe([source]);
+    expect(flockRelationships(new FlockStore(root).read())).toHaveLength(2);
+    expect(flockRelationships(store.read()).find((item) => item.source.id.startsWith("herdr:"))?.count).toBe(1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("associates a current Herdr occupancy only with separately proven native ownership and retains it through a move", () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-herdr-native-alias-"));
+  const endpoint: HerdrCoordinationEndpoint = { server_id: "server", boot_id: "boot", terminal_id: "t", agent_instance_id: "source-instance", agent: "codex", pane_id: "p", name: "Coordinator" };
+  const target = { ...endpoint, terminal_id: "other-terminal", agent_instance_id: "worker-instance", agent: "claude", pane_id: "other-pane", name: "Worker" };
+  const source = machine();
+  source.snapshot!.panes = [{ pane_id: "p", terminal_id: "t", agent: "codex", workspace_id: "w1", tab_id: "w1:t1", focused: false, revision: 0, agent_status: "idle", cwd: "/fixture" }];
+  source.snapshot!.flock_coordination = { version: 1, server_id: "server", boot_id: "boot", agents: [endpoint], receipts: [{ id: "herdr-send", kind: "communication", source: endpoint, target, occurred_at: event.occurred_at }], cursor: null };
+  try {
+    const store = new FlockStore(root);
+    let registry = store.observe([source]);
+    const row = flockInventory(registry, [source])[0]!;
+    expect(flockRowRelationshipIds(registry, row)).toContain(flockHerdrRelationshipEndpoint(registry, endpoint).id);
+    registry = store.change(registry.revision, { type: "adopt", name: "Stable coordinator", binding: row.binding! }, [source]);
+    const logical = registry.sessions[0]!.id;
+    expect(flockHerdrRelationshipEndpoint(registry, endpoint).id).toBe(`session:${logical}`);
+    const destination = structuredClone(source); destination.id = "destination";
+    delete destination.snapshot!.flock_coordination;
+    const binding = { ...row.binding!, machine_id: destination.id };
+    registry = store.change(registry.revision, { type: "adopt", session_id: logical, binding }, [destination]);
+    source.snapshot!.panes = []; source.snapshot!.flock_coordination.agents = [];
+    store.observe([source]);
+    expect(flockHerdrRelationshipEndpoint(new FlockStore(root).read(), endpoint).id).toBe(`session:${logical}`);
+    // Conflicting native claims do not silently retarget a historical occupancy.
+    registry = store.read();
+    registry.herdr_associations!.push({ endpoint, machine_id: "local", native_session_id: targetId });
+    expect(flockHerdrRelationshipEndpoint(registry, endpoint).id.startsWith("herdr:")).toBe(true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("targets only one exact current Herdr occupancy and never promotes it to native adoption", () => {
+  const source = machine();
+  const endpoint: HerdrCoordinationEndpoint = { server_id: "server", boot_id: "boot", terminal_id: "t", agent_instance_id: "instance", agent: "claude", pane_id: "p", name: "Worker" };
+  source.snapshot!.panes = [{ pane_id: "p", terminal_id: "t", agent: "claude", workspace_id: "w1", tab_id: "w1:t1", focused: false, revision: 0, agent_status: "idle" }];
+  source.snapshot!.flock_bindings = [];
+  const page: HerdrCoordinationPage = { version: 1, server_id: "server", boot_id: "boot", agents: [endpoint], receipts: [], cursor: null };
+  source.snapshot!.flock_coordination = page;
+  expect(flockCurrentHerdrEndpoint(source, source.snapshot!.panes[0]!)).toEqual(endpoint);
+  expect(flockHerdrTarget(endpoint, [source])).toEqual({ machine_id: "local", pane_id: "p" });
+  const registry = { version: 1 as const, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
+  const row = flockInventory(registry, [source])[0]!;
+  expect(row.binding).toBeNull();
+  expect(row.availability).toBe("unsupported");
+  expect(flockTarget(row)).toEqual({ machine_id: "local", pane_id: "p" });
+  expect(flockRowRelationshipIds(registry, row)[0]?.startsWith("herdr:")).toBe(true);
+  page.agents = [{ ...endpoint, agent_instance_id: "replacement" }];
+  expect(flockHerdrTarget(endpoint, [source])).toBeNull();
+  page.agents = [endpoint];
+  const duplicate = structuredClone(source); duplicate.id = "duplicate";
+  expect(flockHerdrTarget(endpoint, [source, duplicate])).toBeNull();
+  source.state = "disconnected";
+  expect(flockHerdrTarget(endpoint, [source])).toBeNull();
 });

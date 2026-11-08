@@ -5,7 +5,7 @@ import type { Machine, PaneTarget } from "../../shared/machines.ts";
 import { ApiError } from "../lib/api.ts";
 import { flockColumn, flockTableRows, type FlockColumn } from "../lib/flockTable.ts";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
-import { flockRelationshipEndpoint, flockRelationships, type FlockRelationship } from "../../shared/flock-relationships.ts";
+import { flockRowRelationshipIds, flockRelationships, type FlockRelationship } from "../../shared/flock-relationships.ts";
 import { useT } from "../lib/i18n.ts";
 import type { Translate } from "../lib/i18n.ts";
 import "./FlockTable.css";
@@ -111,7 +111,7 @@ export function FlockTable(props: FlockTableProps) {
       <div className="flock-toolbar-actions"><button type="button" className="btn" disabled={!props.registry || pending} onClick={() => edit("work")}>{t("New work")}</button>
       <button type="button" className="btn" disabled={!props.registry?.works.length || pending} onClick={() => edit("rename-work")}>{t("Rename work")}</button>
       </div>
-      <p className="flock-note">{t("Each row is an execution. Unavailable or unproven sources cannot open a terminal here.")}</p>
+      <p className="flock-note">{t("Opening requires a verified live agent. Association and moving require native session identity.")}</p>
       {incompleteSources.length > 0 && <p className="flock-note">{t("Inventory is incomplete for: {machines}.", { machines: incompleteSources.map((machine) => machine.name).join(", ") })}</p>}
       </div>
     </div>
@@ -133,9 +133,8 @@ export function FlockTable(props: FlockTableProps) {
           {grouped && <tr role="row" className="flock-group"><th role="rowheader" colSpan={7} scope="rowgroup">{group.name || t("Unavailable")}</th></tr>}
           {group.rows.map((row) => {
             const target = flockTarget(row);
-            const native = row.execution ?? row.binding;
-            const relationshipId = row.session ? `session:${row.session.id}` : props.registry && native?.agent === "codex" ? flockRelationshipEndpoint(props.registry, row.machine_id, native.native_session_id).id : null;
-            const related = relationshipId ? relationshipsByEndpoint.get(relationshipId) ?? [] : [];
+            const relationshipIds = props.registry ? flockRowRelationshipIds(props.registry, row, props.machines) : [];
+            const related = [...new Map(relationshipIds.flatMap((id) => relationshipsByEndpoint.get(id) ?? []).map((relation) => [relation.id, relation])).values()];
             const selected = target && target.machine_id === props.selected?.machine_id && target.pane_id === props.selected?.pane_id;
             return <tr role="row" key={row.id} data-row-id={row.id} data-selected={selected ? "true" : undefined}>
               <td role="cell" className="flock-name"><button type="button" className="flock-open" aria-current={selected ? "true" : undefined} disabled={!target} onClick={() => { if (target) props.onOpenTarget(target); }}>{row.name}</button></td>
@@ -155,7 +154,7 @@ export function FlockTable(props: FlockTableProps) {
                 {row.binding && <><dt>{t("Native session")}</dt><dd>{row.binding.native_session_id}</dd><dt>{t("Pane")}</dt><dd>{row.binding.pane_id}</dd></>}
                 {row.checkout && <><dt>{t("Checkout")}</dt><dd>{row.checkout.path}</dd></>}
                 <dt>{t("Observed relationships")}</dt><dd>{related.length ? <ul>{related.map((relation) => {
-                  const outgoing = relation.source.id === relationshipId;
+                  const outgoing = relationshipIds.includes(relation.source.id);
                   const neighbour = outgoing ? relation.target : relation.source;
                   return <li key={relation.id}>{relation.kind === "delegation" ? t("Delegation") : t("Communication")} {outgoing ? "→" : "←"} <span title={neighbour.native_session_id}>{neighbour.label}</span> · {t("{count} recorded events", { count: relation.count })}<br /><span>{t("Last activity")}: <time dateTime={relation.last_at}>{new Date(relation.last_at).toLocaleString()}</time></span></li>;
                 })}</ul> : t("No observed relationships")}</dd>

@@ -69,24 +69,38 @@ and idempotence. No terminal lifecycle operation is performed by the registry it
 
 Table's execution details show read-only delegation and communication relationships. The manager
 collects successful native coordination receipts alongside verified source inventory and retains
-only session IDs, event IDs, relationship kinds and occurrence times in the optional `observations`
+only endpoint identities, labels, event IDs, relationship kinds and occurrence times in the optional `observations`
 array of `flock.json`. Repeated polling does not add events or increase message counts. Historical
 execution bindings resolve endpoints to logical sessions, preserving links through a planned move.
 Native receipt identity is independent of its capture machine, so replay after copying a rollout
 does not count another message. The first capture's machine provenance is retained. Older stored
 duplicate captures remain readable and are counted once in both views.
-An endpoint without an unambiguous logical association remains an observed native session, with
-no assumed live terminal target or root-agent status.
+An endpoint without an unambiguous logical association remains an observed native session or
+Herdr occupancy, with no assumed live terminal target or root-agent status.
 
 Capture currently supports Codex's durable completed `SubAgentActivity` receipts with an own-thread
 ID, native target ID and a successful `started` or `interacted` activity. The source reader follows
 the same verified rollout as native ownership, checks the source identity and reads complete records
 within a bounded budget. Unsupported/legacy formats and earlier transcript segments may have no
-coverage. Plain Herdr CLI start/prompt operations do not publish caller identity in this protocol
-and cannot be attributed. Other CLIs, prose mentions and unsuccessful requests create no links.
-Older bridges that do not publish coordination observations contribute no automatic agent links.
+coverage. The custom Herdr fork additionally records successful attributed CLI start/prompt
+operations in its private daemon journal. Ovis reads its optional `agent.coordination.list`
+extension in bounded pages and retains closed-agent history. The daemon's server, boot, terminal
+and occupancy identities distinguish agents even when names or pane IDs are reused. A pane move
+does not create a new agent relationship. This capture works across the CLI kinds Herdr recognizes;
+it does not depend on parsing shell commands or message text. Stock Herdr has no such extension,
+so its ordinary CLI commands remain unattributed. Missing support disables only that capture.
+Prose mentions, failed operations and old bridges without either producer supply no links.
+
+Current Herdr occupancy is a terminal-location proof, not a native-session ownership proof. Only
+an independently verified native binding can add an optional `herdr_associations` entry joining
+that occupancy to a logical session. These associations remain after closure or a planned move;
+conflicting native identities leave the endpoint unassociated. Native adoption and Move retain
+their existing ownership requirements. Source reads that fail or change daemon/terminal/occupancy
+drop current-location proof. Private coordination inventory is never added to ordinary session
+responses, and unavailable inventory cannot make a historical endpoint targetable.
 The inspector does not expose message contents. Its counts describe recorded receipts, not delivery
-acknowledgements or a complete communication history.
+acknowledgements or a complete communication history. A recorded launch is directed from the
+caller to the created agent. A message establishes communication without changing their parentage.
 
 There is no manual agent-link editor or browser relationship mutation command. Existing work
 membership and execution/session association remain identity operations. Observations are passive:

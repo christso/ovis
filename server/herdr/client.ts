@@ -732,6 +732,11 @@ export async function agentGet(paneId: string, socketPath?: string): Promise<Age
   return (await herdrRpc("agent.get", { target: paneId }, socketPath)).agent;
 }
 
+/** Optional fork-only metadata read. Missing support never changes ordinary agent commands. */
+export async function agentCoordinationList(cursor: string | undefined, socketPath?: string) {
+  return herdrRpc("agent.coordination.list", { ...(cursor ? { cursor } : {}), limit: 500 }, socketPath);
+}
+
 export async function paneSendText(paneId: string, text: string, socketPath?: string, guard?: () => boolean): Promise<void> {
   await herdrRpc("pane.send_text", { pane_id: paneId, text }, socketPath, undefined, guard);
 }

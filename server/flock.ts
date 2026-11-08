@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import type { FlockCommand, FlockRegistry } from "../shared/flock.ts";
+import type { FlockCommand, FlockRegistry, HerdrCoordinationEndpoint } from "../shared/flock.ts";
 import { flockCommandValue, flockRegistryValue } from "../shared/flock-schema.ts";
 import type { Machine } from "../shared/machines.ts";
 import type { SessionSnapshot } from "../shared/protocol.ts";
@@ -8,7 +8,13 @@ import { flockBinding, flockCheckout, sameFlockBinding } from "../shared/flock-i
 import { isJsonObject, jsonResponse } from "./http.ts";
 import { readStateDocument, writeStateDocument } from "./state-document.ts";
 import { sameOrigin } from "./machine-security.ts";
-import { flockObservationValue, flockReceiptKey } from "../shared/flock-relationships.ts";
+import { flockCoordinationValue, flockCurrentHerdrEndpoint, flockHerdrEndpointKey, flockHerdrEndpointValue, flockObservationValue, flockReceiptKey } from "../shared/flock-relationships.ts";
+
+/** Whitelist persisted receipt fields; native arguments and message text never enter the registry. */
+function endpointMetadata(endpoint: HerdrCoordinationEndpoint): HerdrCoordinationEndpoint {
+  return { server_id: endpoint.server_id, boot_id: endpoint.boot_id, terminal_id: endpoint.terminal_id, agent_instance_id: endpoint.agent_instance_id,
+    agent: endpoint.agent, pane_id: endpoint.pane_id, name: endpoint.name };
+}
 
 export class FlockError extends Error {
   constructor(readonly code: "flock_conflict" | "flock_unreadable" | "invalid_flock", message: string) { super(message); }
@@ -26,11 +32,37 @@ export class FlockStore {
   observe(sources: readonly Machine[]): FlockRegistry {
     const next = this.read();
     const seen = new Set((next.observations ?? []).map(flockReceiptKey));
+    const associations = new Set((next.herdr_associations ?? []).map((item) => JSON.stringify([flockHerdrEndpointKey(item.endpoint), item.machine_id, item.native_session_id])));
     let changed = false;
     for (const machine of sources) {
       if (machine.state !== "connected" || !machine.snapshot?.herdr_lifetime) continue;
+      const coordination = machine.snapshot.flock_coordination;
+      const associate = (endpoint: HerdrCoordinationEndpoint, native: string | null) => {
+        const key = JSON.stringify([flockHerdrEndpointKey(endpoint), machine.id, native]);
+        if (associations.has(key)) return;
+        (next.herdr_associations ??= []).push({ endpoint: endpointMetadata(endpoint), machine_id: machine.id, native_session_id: native });
+        associations.add(key); changed = true;
+      };
+      if (flockCoordinationValue(coordination)) {
+        for (const pane of machine.snapshot.panes) {
+          const endpoint = flockCurrentHerdrEndpoint(machine, pane);
+          if (!endpoint) continue;
+          const native = flockBinding(machine, pane);
+          associate(endpoint, native?.native_session_id ?? null);
+        }
+        for (const receipt of coordination.receipts) {
+          const event = { id: receipt.id, kind: receipt.kind, source: "herdr" as const, source_endpoint: receipt.source, target_endpoint: receipt.target, occurred_at: receipt.occurred_at };
+          if (!flockObservationValue(event) || event.source_endpoint.server_id !== coordination.server_id) continue;
+          const key = flockReceiptKey(event);
+          if (seen.has(key)) continue;
+          // Closed endpoints still belong to the journal's server, but never acquire native identity.
+          for (const endpoint of [event.source_endpoint, event.target_endpoint]) if (endpoint.server_id === coordination.server_id && flockHerdrEndpointValue(endpoint)) associate(endpoint, null);
+          (next.observations ??= []).push({ ...event, source_endpoint: endpointMetadata(event.source_endpoint), target_endpoint: endpointMetadata(event.target_endpoint), machine_id: machine.id });
+          seen.add(key); changed = true;
+        }
+      }
       for (const event of machine.snapshot.flock_observations ?? []) {
-        if (!flockObservationValue(event) || !machine.snapshot.flock_bindings?.some((binding) => binding.agent === "codex" && binding.native_session_id.toLowerCase() === event.source_native_session_id.toLowerCase())) continue;
+        if (!flockObservationValue(event) || event.source !== "codex" || !machine.snapshot.flock_bindings?.some((binding) => binding.agent === "codex" && binding.native_session_id.toLowerCase() === event.source_native_session_id.toLowerCase())) continue;
         const stored = { id: event.id, kind: event.kind, source_native_session_id: event.source_native_session_id,
           target_native_session_id: event.target_native_session_id, occurred_at: event.occurred_at, source: event.source, machine_id: machine.id };
         const key = flockReceiptKey(stored);
@@ -104,7 +136,10 @@ export async function handleFlockRequest(request: Request, store: FlockStore, ma
           }
         }
         catch { /* unavailable proof cannot authorize an inventory row */ }
-        return { ...machine, snapshot: machine.snapshot ? { ...machine.snapshot, flock_bindings: readSource ? [] : machine.snapshot.flock_bindings } : null };
+        return { ...machine, snapshot: machine.snapshot ? { ...machine.snapshot,
+          flock_bindings: readSource ? [] : machine.snapshot.flock_bindings,
+          flock_observations: readSource ? [] : machine.snapshot.flock_observations,
+          flock_coordination: readSource ? undefined : machine.snapshot.flock_coordination } : null };
       }));
       return reply({ ...store.observe(sources), sources: sources.map((source) => ({ ...source, snapshot: source.snapshot ? presentSnapshot(source.snapshot) : null })) });
     }

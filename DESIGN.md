@@ -3976,8 +3976,10 @@ manager's registry; naming a session does not rename its native agent or move it
 
 Observed relationships appear read-only inside the same execution-details disclosure on desktop
 and phone, following this Table's existing Paseo-inspired compact metadata pattern. Native Codex
-successful coordination receipts contribute directed delegation and communication edges to the
-shared registry. Only metadata is retained; requests, prose, raw Herdr hints and unsupported
+successful coordination receipts and the custom Herdr daemon's attributed operation journal
+contribute directed delegation and communication edges to the shared registry. Herdr occupancy
+identities distinguish current agents from replacements even without a proven native session;
+only a separate native ownership proof associates them with a logical session. Only metadata is retained; requests, prose, raw Herdr hints and unsupported
 formats supply no relationship. Deduplication preserves counts across refreshes and restarts.
 Historical execution bindings resolve to stable logical sessions after a move, while unknown
 endpoints remain unavailable. These observations do not change agent behaviour, and there is no

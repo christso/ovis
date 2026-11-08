@@ -1,4 +1,4 @@
-import { afterEach, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,13 +10,16 @@ import { FlockStore, handleFlockRequest } from "./flock.ts";
 import * as codex from "./codex.ts";
 import { snapshotWithoutHiddenTokens } from "./herdr-sidebar.ts";
 import { readFlockSource, verifyFlockSnapshot } from "./flock-source.ts";
-import type { FlockObservation } from "../shared/flock.ts";
+import type { FlockObservation, HerdrCoordinationEndpoint, HerdrCoordinationPage } from "../shared/flock.ts";
 import { codexCoordinationObservations } from "./codex-relationships.ts";
+import * as herdrCoordination from "./herdr-coordination.ts";
 
 const roots: string[] = [];
+let coordinationReader: ReturnType<typeof spyOn>;
+beforeEach(() => { coordinationReader = spyOn(herdrCoordination, "herdrCoordinationSnapshot").mockResolvedValue(undefined); });
 const own = "11111111-1111-4111-8111-111111111111", target = "22222222-2222-4222-8222-222222222222";
 const observation: FlockObservation = { id: "observed-send", kind: "communication", source_native_session_id: own, target_native_session_id: target, occurred_at: "2026-11-08T00:00:00Z", source: "codex" };
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { coordinationReader.mockRestore(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const snapshot = (native: string): SessionSnapshot => ({ agents: [], layouts: [], protocol: 1, version: "fixture", tabs: [], workspaces: [], herdr_lifetime: "remote-herdr",
   flock_bindings: [{ pane_id: "w1:p1", terminal_id: "terminal", agent: "codex", native_session_id: native }],
   panes: [{ pane_id: "w1:p1", workspace_id: "w1", tab_id: "w1:t1", terminal_id: "terminal", revision: 0, focused: false, agent: "codex", agent_status: "idle", cwd: "/fixture/repo", agent_session: { agent: "codex", kind: "id", source: "fixture", value: native } }] });
@@ -31,6 +34,75 @@ it("discards incoming proof metadata for an agent without a verified reader", as
   expect(verified.flock_observations).toEqual([]);
   expect(source.flock_bindings).toHaveLength(1);
   expect(source.flock_observations).toHaveLength(1);
+});
+
+const occupancy: HerdrCoordinationEndpoint = { server_id: "server", boot_id: "boot", terminal_id: "terminal", agent_instance_id: "instance", agent: "claude", pane_id: "w1:p1", name: "Coordinator" };
+const coordinationPage = (): HerdrCoordinationPage => ({ version: 1, server_id: "server", boot_id: "boot", agents: [occupancy], cursor: null,
+  receipts: [{ id: "closed-source-send", kind: "communication", source: occupancy, target: { ...occupancy, terminal_id: "closed-terminal", agent_instance_id: "closed-instance", pane_id: "w2:p1", name: "Closed worker" }, occurred_at: observation.occurred_at }] });
+
+it("preserves the daemon's closed-agent history while discarding injected coordination metadata", async () => {
+  const source = snapshot("hint"); source.panes = [];
+  source.flock_coordination = { ...coordinationPage(), server_id: "injected" };
+  const page = coordinationPage(); page.agents = [];
+  coordinationReader.mockResolvedValue(page);
+  const result = await verifyFlockSnapshot(async () => source);
+  expect(result.flock_coordination?.receipts).toEqual(page.receipts);
+  expect(result.flock_coordination?.server_id).toBe("server");
+  expect(result.flock_coordination?.agents).toEqual([]);
+});
+
+it("drops current occupancy when an agent is replaced during the source read", async () => {
+  const source = snapshot("hint"); source.panes[0]!.agent = "claude";
+  let reads = 0;
+  coordinationReader.mockImplementation(async () => {
+    reads += 1;
+    return reads === 1 ? coordinationPage() : { ...coordinationPage(), agents: [{ ...occupancy, agent_instance_id: "replacement" }] };
+  });
+  const result = await verifyFlockSnapshot(async () => source);
+  expect(result.flock_coordination?.agents).toEqual([]);
+  expect(result.flock_coordination?.receipts).toHaveLength(1);
+});
+
+it("drops native proof when the same CLI replaces its occupant without changing pane, terminal or cwd", async () => {
+  const source = snapshot("hint");
+  const oldEndpoint = { ...occupancy, agent: "codex" };
+  let reads = 0;
+  coordinationReader.mockImplementation(async () => {
+    reads += 1;
+    return { ...coordinationPage(), agents: [{ ...oldEndpoint, agent_instance_id: reads === 1 ? "old" : "replacement" }] };
+  });
+  const nativeReader = spyOn(codex, "codexPaneCoordination").mockResolvedValue({ id: own, observations: [observation], rolloutPath: "/fixture/rollout" });
+  try {
+    const result = await verifyFlockSnapshot(async () => source);
+    expect(result.flock_bindings).toEqual([]);
+    expect(result.flock_observations).toEqual([]);
+    expect(result.flock_coordination?.agents).toEqual([]);
+  } finally { nativeReader.mockRestore(); }
+});
+
+it("does not expose a cached occupancy or native proof after the daemon changes", async () => {
+  const source = snapshot("hint"); source.flock_coordination = coordinationPage();
+  let reads = 0;
+  coordinationReader.mockImplementation(async () => {
+    reads += 1;
+    return reads === 1 ? coordinationPage() : { ...coordinationPage(), boot_id: "replacement", agents: [] };
+  });
+  const nativeReader = spyOn(codex, "codexPaneCoordination").mockResolvedValue({ id: own, observations: [observation], rolloutPath: "/fixture/rollout" });
+  try {
+    const result = await verifyFlockSnapshot(async () => source);
+    expect(result.flock_coordination).toBeUndefined();
+    expect(result.flock_bindings).toEqual([]);
+  } finally { nativeReader.mockRestore(); }
+});
+
+it("clears cached coordination and native proofs when a manager cannot freshly read a source", async () => {
+  const source = machine(); source.snapshot!.flock_coordination = coordinationPage();
+  const root = mkdtempSync(join(tmpdir(), "ovis-flock-failed-source-")); roots.push(root);
+  const response = await handleFlockRequest(new Request("http://localhost/api/flock?sources=1"), new FlockStore(root), [source], async () => { throw new Error("fixture unavailable"); });
+  const body = await response.json();
+  expect(body.sources[0].snapshot.flock_coordination).toBeUndefined();
+  expect(body.sources[0].snapshot.flock_bindings).toEqual([]);
+  expect(body.sources[0].snapshot.flock_observations).toEqual([]);
 });
 
 for (const replacement of ["lifetime", "terminal", "cwd", "agent"] as const) it(`drops native proof if ${replacement} changes while ownership is being read`, async () => {

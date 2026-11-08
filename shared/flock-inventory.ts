@@ -1,4 +1,5 @@
-import type { FlockBinding, FlockCheckout, FlockExecution, FlockRegistry, FlockSession, FlockWork } from "./flock.ts";
+import type { FlockBinding, FlockCheckout, FlockExecution, FlockRegistry, FlockSession, FlockWork, HerdrCoordinationEndpoint } from "./flock.ts";
+import { flockCurrentHerdrEndpoint } from "./flock-relationships.ts";
 import type { Machine, PaneTarget } from "./machines.ts";
 import type { HerdrPane } from "./protocol.ts";
 
@@ -15,6 +16,7 @@ export interface FlockRow {
   name: string;
   availability: "live" | "disconnected" | "unavailable" | "unsupported";
   status: string;
+  herdr_endpoint?: HerdrCoordinationEndpoint | null;
 }
 
 export function flockBinding(machine: Machine, pane: HerdrPane): FlockBinding | null {
@@ -54,7 +56,8 @@ export function flockInventory(registry: FlockRegistry, machines: readonly Machi
     rows.push({ id: execution.id, session, work: registry.works.find((item) => item.id === session.work_id) ?? null, execution,
       checkout: registry.checkouts.find((item) => item.id === execution.checkout_id) ?? null, binding: execution,
       machine_id: execution.machine_id, machine_name: machine?.name ?? execution.machine_id, pane: matches ? pane : null,
-      name: session.name, availability, status: availability === "live" ? pane!.agent_status : availability });
+      name: session.name, availability, status: availability === "live" ? pane!.agent_status : availability,
+      herdr_endpoint: matches && pane && machine ? flockCurrentHerdrEndpoint(machine, pane) : null });
   }
   for (const machine of machines) {
     for (const pane of machine.snapshot?.panes ?? []) {
@@ -64,7 +67,8 @@ export function flockInventory(registry: FlockRegistry, machines: readonly Machi
       const checkout = flockCheckout(machine, pane);
       rows.push({ id: `pane:${JSON.stringify([machine.id, machine.snapshot?.herdr_lifetime ?? null, pane.pane_id])}`, session: null, work: null, execution: null,
         checkout: checkout ? { ...checkout, id: `pane:${JSON.stringify([machine.id, pane.pane_id])}` } : null, binding,
-        machine_id: machine.id, machine_name: machine.name, pane, name: paneName(pane), availability, status: availability === "live" ? pane.agent_status : availability });
+        machine_id: machine.id, machine_name: machine.name, pane, name: paneName(pane), availability, status: availability === "live" ? pane.agent_status : availability,
+        herdr_endpoint: flockCurrentHerdrEndpoint(machine, pane) });
     }
   }
   for (const session of registry.sessions) {
@@ -76,5 +80,13 @@ export function flockInventory(registry: FlockRegistry, machines: readonly Machi
 }
 
 export function flockTarget(row: FlockRow): PaneTarget | null {
-  return row.availability === "live" && row.binding !== null ? { machine_id: row.binding.machine_id, pane_id: row.binding.pane_id } : null;
+  return row.availability === "live" && row.binding !== null ? { machine_id: row.binding.machine_id, pane_id: row.binding.pane_id } : flockHerdrRowTarget(row);
+}
+
+/** A native session is needed for adoption/moving; opening a current Herdr occupant needs only its exact location proof. */
+export function flockHerdrRowTarget(row: FlockRow): PaneTarget | null {
+  const endpoint = row.herdr_endpoint, pane = row.pane;
+  if ((row.availability !== "live" && row.availability !== "unsupported") || !endpoint || !pane || pane.restore_error || !row.machine_id) return null;
+  return endpoint.terminal_id === pane.terminal_id && endpoint.pane_id === pane.pane_id && endpoint.agent === pane.agent
+    ? { machine_id: row.machine_id, pane_id: pane.pane_id } : null;
 }

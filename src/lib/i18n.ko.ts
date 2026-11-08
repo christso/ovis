@@ -43,6 +43,7 @@ const BASE: Record<string, string> = {
   "Checkout": "체크아웃",
   "Current": "현재",
   "Each row is an execution. Unavailable or unproven sources cannot open a terminal here.": "각 행은 실행입니다. 사용할 수 없거나 확인되지 않은 소스는 여기서 터미널을 열 수 없습니다.",
+  "Opening requires a verified live agent. Association and moving require native session identity.": "열려면 확인된 실행 중 에이전트가 필요합니다. 연결 및 이동에는 네이티브 세션 ID가 필요합니다.",
   "Edit association": "연결 편집",
   "Execution": "실행",
   "Filters and sort": "필터 및 정렬",
