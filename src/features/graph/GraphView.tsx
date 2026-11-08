@@ -44,7 +44,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const appearance = useMemo(() => graphAppearance(data), [data]);
   const repositories = [...new Map(data.nodes.filter((node) => node.kind === "repository").map((node) => [appearance.get(node.id)!.repository, node])).values()];
   const selected = data.nodes.find((node) => node.id === state.selected);
-  const focusNodes = data.nodes.filter((node) => ["repository", "session", "work"].includes(node.kind) || node.id === state.filters.focus);
+  const focusNodes = data.nodes.filter((node) => ["repository", "session", "work", "tab"].includes(node.kind) || node.id === state.filters.focus);
   const machines = [...new Set(data.nodes.flatMap((node) => node.machineId ? [node.machineId] : []))].sort();
   const fit = () => {
     const surface = host.current?.querySelector("svg.graph-surface");

@@ -3978,6 +3978,16 @@ Visible labels stay at 12 screen pixels across zoom levels. Ordinary labels shor
 zoom and avoid overlapping already placed labels; selection and direct neighbours take priority.
 Complete names remain available through SVG titles, accessible names and the inspector.
 
+Explicit native tab names precede pane labels, while registered logical aliases retain their
+identity. Tabs with no recognized agent appear as terminal-tab nodes, using native names and
+reported checkout membership. Active-agent tabs retain their existing execution/session nodes.
+This follows Ovis's native tab strip and Zed's project/thread distinction. Opening a terminal-tab
+node requires the same connected machine, daemon lifetime and exact pane/terminal set; an old
+selection cannot open a replacement terminal or a subsequently started agent. No agent status,
+delegation or native session identity is inferred from a terminal tab.
+Label collision handling gives explicitly named tabs priority over generic repository and
+checkout labels, while selection and direct neighbours remain first.
+
 Dragging fixes one node temporarily and reheats the connected simulation. Release, pointer
 cancellation, lost capture, pinch takeover and unmount release fixed coordinates. The simulation
 cools and stops when idle. Identical roster polls, status changes and event-count changes neither

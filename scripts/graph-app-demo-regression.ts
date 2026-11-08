@@ -37,6 +37,12 @@ remote.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: "grap
 const offline = structuredClone(remote); offline.id = "graph-offline"; offline.name = "Graph offline"; offline.state = "disconnected";
 const unknown = structuredClone(chosen); unknown.pane_id = "graph-unproven"; unknown.label = "Unproven garden"; unknown.agent_session = null;
 original.snapshot!.panes.push(unknown);
+const researchTab = { ...original.snapshot!.tabs.find((tab) => tab.tab_id === chosen.tab_id)!, tab_id: "graph-research-tab", label: "research" };
+unknown.tab_id = researchTab.tab_id;
+original.snapshot!.tabs.push(researchTab);
+const idlePane = { ...chosen, pane_id: "graph-idle-pane", tab_id: "graph-idle-tab", terminal_id: "graph-idle-terminal", agent: null, agent_status: "idle", agent_session: null };
+original.snapshot!.panes.push(idlePane);
+original.snapshot!.tabs.push({ ...researchTab, tab_id: idlePane.tab_id, label: "ai-research" });
 const pristine: Machine[] = [original, remote, offline, { ...offline, id: "graph-empty", name: "Graph awaiting inventory", state: "connecting", snapshot: null }];
 let machines = structuredClone(pristine), store = new FlockStore(join(root, "initial")), future = false, flockReads = 0;
 let browser: Browser | undefined, server: ReturnType<typeof Bun.serve> | undefined;
@@ -111,6 +117,16 @@ try {
       const beforePane = new URL(page.url()).searchParams.get("pane");
       await openFlock(page);
       await node().waitFor();
+      const researchNode = page.locator('[data-graph-node][aria-label^="research · codex"]');
+      await researchNode.waitFor();
+      await page.getByRole("button", { name: "Fit graph", exact: true }).click();
+      assert.equal(await researchNode.locator(".graph-node-label").textContent(), "research · codex", "an explicit tab name remains visible before generic context labels");
+      const idleTab = page.locator('[data-graph-node][aria-label^="ai-research ·"]');
+      await idleTab.waitFor();
+      await idleTab.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
+      await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
+      await page.waitForURL((url) => url.searchParams.get("pane") === idlePane.pane_id && !url.searchParams.has("page"));
+      await openFlock(page); await node().waitFor();
       assert.equal(await page.getByRole("group", { name: "Flock view", exact: true }).count(), 0, "Flock opens the graph directly without a mode selector");
       assert.equal(await page.getByRole("banner").count(), 1, "Flock keeps one global app banner");
       assert.equal(await page.locator(".app-header .context-title-text").innerText(), "Flock", "the global header names the active graph");
@@ -254,7 +270,7 @@ try {
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true, "reused native identity cannot navigate");
       await options(true);
-      const unproven = await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").evaluateAll((options) => options.find((option) => option.textContent?.includes("Unproven garden"))?.getAttribute("value"));
+      const unproven = await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").evaluateAll((options) => options.find((option) => option.textContent?.includes("research · codex"))?.getAttribute("value"));
       assert.ok(unproven); await inspect(unproven);
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true);
       await page.getByText("Identity unavailable", { exact: true }).last().waitFor();

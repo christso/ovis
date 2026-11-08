@@ -1,13 +1,14 @@
 import type { KnownStatus } from "../../lib/status.ts";
 
-export type GraphKind = "repository" | "checkout" | "work" | "session" | "execution";
+export type GraphKind = "repository" | "checkout" | "work" | "session" | "execution" | "tab";
 export type GraphStatus = KnownStatus;
-export type GraphRelation = "execution-in-checkout" | "checkout-in-repository" | "delegation" | "communication" | "session-execution" | "work-session";
+export type GraphRelation = "execution-in-checkout" | "tab-in-checkout" | "checkout-in-repository" | "delegation" | "communication" | "session-execution" | "work-session";
 
 export interface GraphNode {
   id: string;
   kind: GraphKind;
   label: string;
+  namedTab?: boolean;
   status?: GraphStatus;
   machineId?: string;
   freshness?: "live" | "stale" | "disconnected" | "unavailable" | "unsupported";
@@ -28,7 +29,7 @@ export interface GraphEdge {
 export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[] }
 export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean; communication?: "recent" | "all" | "none" }
 
-const RELATIONS = new Set<GraphRelation>(["execution-in-checkout", "checkout-in-repository", "delegation", "communication", "session-execution", "work-session"]);
+const RELATIONS = new Set<GraphRelation>(["execution-in-checkout", "tab-in-checkout", "checkout-in-repository", "delegation", "communication", "session-execution", "work-session"]);
 
 /** Filters match work first; established outgoing containment links retain its context. */
 export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.now()) {

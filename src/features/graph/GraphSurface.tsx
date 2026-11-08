@@ -48,9 +48,10 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
   const priority = (node: GraphNode) => {
     if (node.id === highlighted) return 0;
     if (neighbours.has(node.id)) return 1;
-    if (node.kind === "repository") return 2;
-    if (node.kind === "execution") return 3;
-    return 4;
+    if (node.namedTab) return 2;
+    if (node.kind === "repository") return 3;
+    if (node.kind === "execution" || node.kind === "tab") return 4;
+    return 5;
   };
   for (const node of [...nodes].sort((a, b) => priority(a) - priority(b) || a.id.localeCompare(b.id))) {
     const point = positions[node.id], prominent = neighbours.has(node.id) || node.kind === "repository";
