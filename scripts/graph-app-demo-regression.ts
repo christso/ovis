@@ -117,7 +117,10 @@ try {
       const beforePane = new URL(page.url()).searchParams.get("pane");
       await openFlock(page);
       await node().waitFor();
-      await page.locator('[data-graph-node][aria-label^="research · codex"]').waitFor();
+      const researchNode = page.locator('[data-graph-node][aria-label^="research · codex"]');
+      await researchNode.waitFor();
+      await page.getByRole("button", { name: "Fit graph", exact: true }).click();
+      assert.equal(await researchNode.locator(".graph-node-label").textContent(), "research · codex", "an explicit tab name remains visible before generic context labels");
       const idleTab = page.locator('[data-graph-node][aria-label^="ai-research ·"]');
       await idleTab.waitFor();
       await idleTab.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));

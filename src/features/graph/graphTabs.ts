@@ -13,7 +13,7 @@ export function graphTerminalTabs(machines: readonly Machine[], labels: Readonly
     const id = `tab:${JSON.stringify([machine.id, snapshot.herdr_lifetime ?? null, tab.tab_id, panes.map((pane) => [pane.pane_id, pane.terminal_id])])}`;
     const names = graphTabNames(machine, tab, labels, t);
     const live = machine.state === "connected" && !!snapshot.herdr_lifetime && panes.every((pane) => !!pane.terminal_id && !pane.restore_error);
-    const node: GraphNode = { id, kind: "tab", label: names.custom || names.automatic || names.numbered, machineId: machine.id, status: live ? knownStatus(tab.agent_status) : "unknown", freshness: live ? "live" : machine.state !== "connected" ? "disconnected" : "unavailable" };
+    const node: GraphNode = { id, kind: "tab", label: names.custom || names.automatic || names.numbered, namedTab: !!names.custom, machineId: machine.id, status: live ? knownStatus(tab.agent_status) : "unknown", freshness: live ? "live" : machine.state !== "connected" ? "disconnected" : "unavailable" };
     const target: PaneTarget | null = live ? { machine_id: machine.id, pane_id: panes[0]!.pane_id } : null;
     return [{ node, target, checkouts: panes.flatMap((pane) => { const checkout = flockCheckout(machine, pane); return checkout ? [{ ...checkout, id: `${id}:${pane.pane_id}` }] : []; }) }];
   }));

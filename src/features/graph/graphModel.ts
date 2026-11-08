@@ -8,6 +8,7 @@ export interface GraphNode {
   id: string;
   kind: GraphKind;
   label: string;
+  namedTab?: boolean;
   status?: GraphStatus;
   machineId?: string;
   freshness?: "live" | "stale" | "disconnected" | "unavailable" | "unsupported";

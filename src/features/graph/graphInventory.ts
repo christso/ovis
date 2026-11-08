@@ -4,7 +4,7 @@ import type { Machine, PaneTarget } from "../../../shared/machines.ts";
 import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
 import { knownStatus } from "../../lib/status.ts";
 import { flockHerdrEndpointKey, flockRelationships, flockRowRelationshipIds } from "../../../shared/flock-relationships.ts";
-import { graphExecutionName } from "./graphNames.ts";
+import { graphExecutionLabel, graphExecutionName } from "./graphNames.ts";
 import { graphTerminalTabs } from "./graphTabs.ts";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
@@ -59,7 +59,7 @@ export function graphInventory(registry: FlockRegistry | null, rows: readonly Fl
   for (const row of rows) {
     if (!row.execution && row.session) continue;
     const id = executionId(row);
-    nodes.set(id, { id, kind: "execution", label: graphExecutionName(row, machines, labels, t), machineId: row.machine_id, status: flockTarget(row) ? knownStatus(row.pane?.agent_status ?? row.status) : "unknown", freshness: freshness(row),
+    nodes.set(id, { id, kind: "execution", ...graphExecutionLabel(row, machines, labels, t), machineId: row.machine_id, status: flockTarget(row) ? knownStatus(row.pane?.agent_status ?? row.status) : "unknown", freshness: freshness(row),
       detail: row.execution ? `${row.execution.agent} · ${row.execution.native_session_id}` : row.pane?.agent ?? "" });
     if (row.session) addEdge(id, `session:${row.session.id}`, "session-execution", `execution.session_id: ${row.session.id}`);
     if (row.checkout) addEdge(id, checkoutIds.get(row.checkout.id)!, "execution-in-checkout", row.execution ? `execution.checkout_id: ${row.execution.checkout_id}` : `inventory.checkout: ${row.checkout.path}`);

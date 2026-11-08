@@ -3985,6 +3985,8 @@ This follows Ovis's native tab strip and Zed's project/thread distinction. Openi
 node requires the same connected machine, daemon lifetime and exact pane/terminal set; an old
 selection cannot open a replacement terminal or a subsequently started agent. No agent status,
 delegation or native session identity is inferred from a terminal tab.
+Label collision handling gives explicitly named tabs priority over generic repository and
+checkout labels, while selection and direct neighbours remain first.
 
 Dragging fixes one node temporarily and reheats the connected simulation. Release, pointer
 cancellation, lost capture, pinch takeover and unmount release fixed coordinates. The simulation
