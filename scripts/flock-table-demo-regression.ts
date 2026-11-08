@@ -9,6 +9,7 @@ import type { Machine } from "../shared/machines.ts";
 import { FlockStore, handleFlockRequest } from "../server/flock.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
+import { changeFlockMode, openNativeAgent } from "./flock-navigation.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ovis-flock-browser-"));
 const app = join(root, "app");
@@ -95,14 +96,7 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     try {
       await page.goto(`http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/?pane=${encodeURIComponent(chosen.pane_id)}`);
-      const nav = page.getByRole("navigation", { name: "Views" });
-      const openTable = async () => {
-        if (width < 640 && await page.getByRole("button", { name: "Open workspace list", exact: true }).isVisible()) {
-          const sidebar = page.locator("#workspace-drawer");
-          if (!(await sidebar.getAttribute("class"))?.includes("is-open")) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
-        }
-        await nav.getByRole("button", { name: "Table", exact: true }).click();
-      };
+      const openTable = () => changeFlockMode(page, "Table");
       await openTable();
       const table = page.getByRole("region", { name: "Table", exact: true });
       await table.locator(".flock-open:enabled").first().waitFor();
@@ -116,8 +110,8 @@ try {
       }
       await table.getByText(/Inventory is incomplete for:.*Fixture awaiting inventory/).waitFor();
       const before = new URL(page.url()).searchParams.get("pane");
-      await nav.getByRole("button", { name: "Agents", exact: true }).click();
-      await nav.getByRole("button", { name: "Workspace", exact: true }).click();
+      await openNativeAgent(page, "local", chosen.pane_id);
+      await page.waitForURL((url) => !url.searchParams.has("page"));
       assert.equal(new URL(page.url()).searchParams.get("pane"), before, "view switches preserve terminal selection");
       await openTable();
       if (width < 640) await filters.tap();
@@ -211,7 +205,7 @@ try {
       }
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "table scroll stays inside its own region");
       await registered.locator(".flock-open").click();
-      await page.waitForFunction(() => document.querySelector(".flock-views [aria-current=page]")?.textContent === "Workspace");
+      await page.waitForURL((url) => !url.searchParams.has("page"));
       await page.waitForURL((url) => url.searchParams.get("pane") === execution.pane_id);
       if (execution.machine_id !== "local") assert.equal(new URL(page.url()).searchParams.get("machine"), execution.machine_id);
       await openTable();
@@ -220,7 +214,7 @@ try {
       assert.equal(remoteExecution.pane_id, execution.pane_id, "fixture reuses a pane ID across machines");
       await table.locator(`tr[data-row-id="${remoteExecution.id}"] .flock-open`).click();
       await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && url.searchParams.get("pane") === remoteExecution.pane_id);
-      await page.waitForFunction(() => document.querySelector(".flock-views [aria-current=page]")?.textContent === "Workspace");
+      await page.waitForURL((url) => !url.searchParams.has("page"));
       store = new FlockStore(stateDir);
       await page.reload();
       await openTable();

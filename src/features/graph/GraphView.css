@@ -31,7 +31,7 @@
 .graph-status-blocked .graph-status-icon { color: var(--status-blocked); }
 .graph-status-done .graph-status-icon { color: var(--status-done); }
 .graph-stale rect { stroke-dasharray: 4 3; }
-.graph-tools { position: absolute; display: flex; gap: 4px; left: 12px; bottom: 12px; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); }
+.graph-tools { position: absolute; display: flex; gap: 4px; left: 12px; bottom: 12px; max-width: calc(100% - 24px); flex-wrap: wrap; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); }
 .graph-tools button { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--text); border: 0; border-radius: 5px; background: var(--bg-panel); }
 .graph-tools button:hover { background: var(--bg-hover); }
 .graph-details { width: 260px; flex-shrink: 0; overflow: auto; padding: 16px; border-left: 1px solid var(--border); background: var(--bg-panel); font-size: 13px; }
@@ -73,3 +73,5 @@
   .graph-tools { left: 8px; bottom: 8px; }
   .graph-tools button { width: 44px; height: 44px; }
 }
+
+.graph-tools button.graph-reset { display: flex; align-items: center; justify-content: center; gap: 4px; width: auto; padding: 0 8px; font: inherit; font-size: 12px; }
