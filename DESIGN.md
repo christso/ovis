@@ -4076,11 +4076,21 @@ place. Pointer leave restores the selected neighbourhood. Tap or keyboard select
 Escape or an empty-canvas tap clears it, while pan, node drag and pinch leave selection intact.
 Highlighting changes neither positions nor the viewport and adds no force animation.
 
-Graph also projects Table's automatically observed native coordination records. Delegation and
+Graph also projects Table's automatically observed Herdr and native coordination records. Delegation and
 communication use distinct directed edges; inspector counts/timestamps come from deduplicated
 successful receipts. Unbound native endpoints remain unavailable until current source proofs
 establish a terminal target. Historical execution bindings resolve to logical identities across
 machine moves. Communication defaults to the last24hours, with all/hidden options retained in
 Graph state and shared URLs. These edges never act as containment or imply reporting/dependency.
-No manual agent-link control exists. Current Codex receipt coverage and plain-Herdr limitations are
-shown in Details and documented in `docs/flock.md`. No Folio source code was copied.
+Herdr records identify a particular agent occupying a terminal, independently of its name or pane
+location. A verified current occupancy can open that exact agent, including agents without native
+session adoption support. Replacement agents receive distinct identities, so a historical link
+cannot open a replacement. Only separate native ownership proof associates an occupancy with a
+logical session; historical associations keep those links through an intentional move.
+The inspector identifies whether Herdr or Codex supplied the recorded events. Older Herdr servers
+remain usable without claiming relationship coverage. No manual agent-link control exists.
+Source requirements are documented in `docs/flock.md`. No Folio source code was copied.
+
+Graph builds on the Move integration and shares the same Table action surface in the application.
+Switching from Graph to Table exposes the existing transfer dialog; returning to Graph retains its
+logical selection, viewport and relationship history after the new execution has been verified.

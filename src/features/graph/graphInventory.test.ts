@@ -23,6 +23,43 @@ function source() {
 }
 
 describe("shared inventory to Graph", () => {
+  it("shows Herdr delegation and messages to a live agent without treating its occupancy as a native session", () => {
+    const { registry, machines, pane } = source();
+    const machine = machines[0]!;
+    const childPane = { ...pane, pane_id: "w2:p1", terminal_id: "child-terminal", agent: "claude", label: "Review worker" };
+    machine.snapshot!.panes.push(childPane);
+    const parent = { server_id: "server-one", boot_id: "boot-one", terminal_id: pane.terminal_id, agent_instance_id: "parent-occupancy", agent: "codex", pane_id: pane.pane_id, name: "Coordinator" };
+    const child = { ...parent, terminal_id: childPane.terminal_id, agent_instance_id: "child-occupancy", agent: "claude", pane_id: childPane.pane_id, name: "Review worker" };
+    Object.assign(machine.snapshot!, { flock_coordination: { version: 1, server_id: parent.server_id, boot_id: parent.boot_id, agents: [parent, child], receipts: [], cursor: null } });
+    Object.assign(registry, {
+      herdr_associations: [{ endpoint: parent, machine_id: machine.id, native_session_id: "native-garden" }, { endpoint: structuredClone(child), machine_id: machine.id, native_session_id: null }],
+      observations: ["delegation", "communication", "communication"].map((kind, index) => ({ source: "herdr", id: `herdr-operation-${index}`, kind, source_endpoint: parent, target_endpoint: structuredClone(child), occurred_at: "2026-11-08T00:00:00Z", machine_id: machine.id })),
+    });
+    const rows = flockInventory(registry, machines), data = graphInventory(registry, rows);
+    const delegation = data.edges.find((edge) => edge.kind === "delegation")!;
+    const communication = data.edges.find((edge) => edge.kind === "communication")!;
+    expect(delegation.source).toBe("session:session");
+    expect(communication.source).toBe(delegation.source);
+    expect(communication.target).toBe(delegation.target);
+    expect(communication.eventCount).toBe(2);
+    expect(delegation.evidence).toBe("herdr.delegation");
+    const worker = data.nodes.find((node) => node.id === delegation.target)!;
+    expect(worker.label).toBe("Review worker");
+    expect(worker.freshness).toBe("live");
+    expect(graphTarget(registry, rows, worker.id)).toEqual({ machine_id: machine.id, pane_id: childPane.pane_id });
+    expect(rows.find((row) => row.pane?.terminal_id === childPane.terminal_id)?.binding).toBeNull();
+    const execution = data.nodes.find((node) => node.kind === "execution" && node.label === "Review worker")!;
+    expect(graphTarget(registry, rows, execution.id)).toEqual({ machine_id: machine.id, pane_id: childPane.pane_id });
+
+    child.agent_instance_id = "replacement-occupancy";
+    const replaced = flockInventory(registry, machines);
+    expect(graphTarget(registry, replaced, worker.id)).toBeNull();
+    expect(graphTarget(registry, replaced, execution.id)).toBeNull();
+    expect(graphInventory(registry, replaced).nodes.find((node) => node.id === worker.id)?.freshness).toBe("unavailable");
+    child.agent_instance_id = "child-occupancy";
+    machine.state = "disconnected";
+    expect(graphTarget(registry, flockInventory(registry, machines), worker.id)).toBeNull();
+  });
   it("projects observed coordination onto logical sessions and keeps unbound native children unavailable", () => {
     const { registry, machines } = source();
     const own = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222";

@@ -28,7 +28,7 @@ const BASE: Record<string, string> = {
   "Last 24 hours": "최근 24시간",
   "All recorded activity": "기록된 모든 활동",
   "Hidden": "숨김",
-  "Automatic links use supported Codex success receipts. Plain Herdr commands are not observed.": "자동 링크는 지원되는 Codex 성공 기록을 사용합니다. 일반 Herdr 명령은 관측되지 않습니다.",
+  "Automatic links use recorded Herdr operations and supported Codex success receipts. Older servers may have no relationship history.": "자동 링크는 기록된 Herdr 작업과 지원되는 Codex 성공 기록을 사용합니다. 이전 서버에는 관계 기록이 없을 수 있습니다.",
   "Observed relationships": "관측된 관계",
   "Delegation": "위임",
   "Communication": "통신",

@@ -22,6 +22,7 @@ export interface GraphEdge {
   evidence: string;
   eventCount?: number;
   lastObservedAt?: string;
+  sources?: readonly ("codex" | "herdr")[];
 }
 export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[] }
 export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean; communication?: "recent" | "all" | "none" }

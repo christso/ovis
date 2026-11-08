@@ -32,7 +32,7 @@ const BASE: Record<string, string> = {
   "Last 24 hours": "过去 24 小时",
   "All recorded activity": "所有已记录活动",
   "Hidden": "隐藏",
-  "Automatic links use supported Codex success receipts. Plain Herdr commands are not observed.": "自动连接基于受支持的 Codex 成功记录。普通 Herdr 命令不会被观测。",
+  "Automatic links use recorded Herdr operations and supported Codex success receipts. Older servers may have no relationship history.": "自动链接使用已记录的 Herdr 操作和受支持的 Codex 成功记录。旧服务器可能没有关系历史。",
   "Observed relationships": "已观测的关系",
   "Delegation": "委派",
   "Communication": "通信",

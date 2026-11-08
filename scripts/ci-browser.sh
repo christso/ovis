@@ -164,6 +164,7 @@ run_script scripts/command-outcome-demo-regression.ts
 run_script scripts/chat-outcome-note-browser-qa.ts
 run_script scripts/graph-browser-regression.ts
 run_script scripts/graph-app-demo-regression.ts
+run_script scripts/flock-herdr-graph-regression.ts
 run_script scripts/sidebar-activity-demo-regression.ts
 run_script scripts/sidebar-filter-demo-regression.ts
 run_script scripts/sidebar-declutter-demo-regression.ts

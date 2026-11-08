@@ -125,12 +125,12 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           <ul className="graph-relations">{view.edges.filter((edge) => edge.evidence.trim() && (edge.source === selected.id || edge.target === selected.id)).map((edge) => {
             const neighbour = data.nodes.find((node) => node.id === (edge.source === selected.id ? edge.target : edge.source));
             if (!neighbour) return null;
-            return <li key={edge.id}>{graphRelationLabel(t, edge.kind)} {edge.source === selected.id ? "→" : "←"}<button type="button" className="btn btn-ghost" onClick={() => setState((previous) => ({ ...previous, selected: neighbour.id }))}>{neighbour.label}</button><small>{edge.eventCount ? <>{t("{count} recorded events", { count: edge.eventCount })} · {t("Last activity")}: <time dateTime={edge.lastObservedAt}>{new Date(edge.lastObservedAt!).toLocaleString()}</time> · Codex</> : edge.evidence}</small></li>;
+            return <li key={edge.id}>{graphRelationLabel(t, edge.kind)} {edge.source === selected.id ? "→" : "←"}<button type="button" className="btn btn-ghost" onClick={() => setState((previous) => ({ ...previous, selected: neighbour.id }))}>{neighbour.label}</button><small>{edge.eventCount ? <>{t("{count} recorded events", { count: edge.eventCount })} · {t("Last activity")}: <time dateTime={edge.lastObservedAt}>{new Date(edge.lastObservedAt!).toLocaleString()}</time> · {edge.sources?.map((source) => source === "herdr" ? "Herdr" : "Codex").join(" · ") ?? edge.evidence}</> : edge.evidence}</small></li>;
           })}</ul>
         </>}
         <p className="graph-help">{t("Drag to pan or move nodes. Pinch or scroll to zoom. Use arrow keys to pan, +/− to zoom and 0 to fit.")}</p>
         <p className="graph-help">{t("Links show recorded relationships only. Delegation and dependencies are absent when the source does not report them.")}</p>
-        <p className="graph-help">{t("Automatic links use supported Codex success receipts. Plain Herdr commands are not observed.")}</p>
+        <p className="graph-help">{t("Automatic links use recorded Herdr operations and supported Codex success receipts. Older servers may have no relationship history.")}</p>
         <p className="graph-help" aria-live="polite">{t("{nodes} nodes · {edges} links", { nodes: view.nodes.length, edges: view.edges.length })}</p>
         </div>
       </aside>
