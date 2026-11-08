@@ -44,7 +44,6 @@ const BASE: Record<string, string> = {
   "Blocked": "入力待ち",
   "Checkout": "チェックアウト",
   "Current": "現在",
-  "Each row is an execution. Unavailable or unproven sources cannot open a terminal here.": "各行は実行を表します。利用不能または未確認の接続元のターミナルはここでは開けません。",
   "Opening requires a verified live agent. Association and moving require native session identity.": "開くには確認済みの実行中エージェントが必要です。関連付けと移動にはネイティブセッションの識別情報が必要です。",
   "Edit association": "関連付けを編集",
   "Execution": "実行",

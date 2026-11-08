@@ -46,7 +46,6 @@ const BASE: Record<string, string> = {
   "Blocked": "等待输入",
   "Checkout": "检出目录",
   "Current": "当前",
-  "Each row is an execution. Unavailable or unproven sources cannot open a terminal here.": "每行代表一次执行。无法在此打开不可用或身份未确认的来源的终端。",
   "Opening requires a verified live agent. Association and moving require native session identity.": "打开需要经过验证的运行中代理。关联和迁移需要原生会话身份。",
   "Edit association": "编辑关联",
   "Execution": "执行",
