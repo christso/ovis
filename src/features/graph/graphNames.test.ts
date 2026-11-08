@@ -5,7 +5,7 @@ import fixture from "../../../site/demo/fixtures/machines.json";
 import { tabLabelKey } from "../../lib/tabLabels.ts";
 import { graphExecutionName } from "./graphNames.ts";
 import { graphAppearance } from "./graphAppearance.ts";
-import { graphInventory } from "./graphInventory.ts";
+import { graphInventory, graphTarget } from "./graphInventory.ts";
 
 function roster() {
   const machine = structuredClone(fixture.machines[0]) as Machine;
@@ -20,6 +20,40 @@ test("generic agent titles use the native custom tab name and launcher", () => {
   expect(graphExecutionName(row, [machine], {})).toBe("Irrigation review · Codex");
   row.session = { id: "logical", name: "Explicit logical alias", work_id: null, current_execution_id: null };
   expect(graphExecutionName(row, [machine], {})).toBe("Explicit logical alias · Codex");
+});
+test("an explicit native tab name takes precedence over a different pane label", () => {
+  const { machine, pane, row, tab } = roster();
+  tab.label = "research"; pane.label = "Earlier eval task";
+  expect(graphExecutionName(row, [machine], {})).toBe("research · Codex");
+});
+test("native tabs without a recognized agent remain visible and open only their current terminal", () => {
+  const { machine, pane, tab, registry } = roster();
+  tab.label = "research";
+  const shell: typeof pane = { ...pane, pane_id: "shell-pane", tab_id: "shell-tab", terminal_id: "shell-terminal", agent: null, agent_session: null };
+  machine.snapshot!.panes.push(shell);
+  machine.snapshot!.panes.push({ ...shell, pane_id: "shell-second", terminal_id: "second-terminal" });
+  machine.snapshot!.tabs.push({ ...tab, tab_id: shell.tab_id, label: "ai-research" });
+  machine.snapshot!.herdr_lifetime = "native-tab-lifetime";
+  expect(graphInventory(null, [], [machine]).nodes).toHaveLength(0);
+  const rows = () => flockInventory(registry, [machine]);
+  const graph = () => graphInventory(registry, rows(), [machine]);
+  const idle = graph().nodes.find((node) => node.label === "ai-research");
+  expect(idle).toBeDefined();
+  expect(idle!.kind).toBe("tab");
+  expect(graph().edges.filter((edge) => edge.source === idle!.id && edge.kind === "tab-in-checkout")).toHaveLength(1);
+  expect(graph().nodes.some((node) => node.label === "research · Codex")).toBe(true);
+  expect(graphTarget(registry, rows(), idle!.id, [machine])).toEqual({ machine_id: machine.id, pane_id: shell.pane_id });
+  tab.label = "Renamed research";
+  machine.snapshot!.tabs.reverse();
+  machine.snapshot!.panes.reverse();
+  expect(graph().nodes.find((node) => node.label === "ai-research")!.id).toBe(idle!.id);
+  machine.state = "disconnected";
+  expect(graphTarget(registry, rows(), idle!.id, [machine])).toBeNull();
+  machine.state = "connected"; shell.terminal_id = "replacement-terminal";
+  expect(graphTarget(registry, rows(), idle!.id, [machine])).toBeNull();
+  expect(graph().nodes.find((node) => node.label === "ai-research")!.id).not.toBe(idle!.id);
+  shell.agent = "codex";
+  expect(graph().nodes.some((node) => node.kind === "tab" && node.label === "ai-research")).toBe(false);
 });
 test("numbered tabs keep native workspace context and localized tab wording", () => {
   const { machine, row, pane, tab } = roster();

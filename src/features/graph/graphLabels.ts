@@ -11,6 +11,7 @@ export function graphKindLabel(t: Translate, kind: GraphKind): string {
     case "work": return t("Work");
     case "session": return t("Session");
     case "execution": return t("Execution");
+    case "tab": return t("Tab");
   }
 }
 export function graphFreshnessLabel(t: Translate, freshness: GraphNode["freshness"]): string {
@@ -26,6 +27,7 @@ export function graphFreshnessLabel(t: Translate, freshness: GraphNode["freshnes
 export function graphRelationLabel(t: Translate, kind: GraphRelation): string {
   switch (kind) {
     case "execution-in-checkout": return t("Executes in checkout");
+    case "tab-in-checkout": return t("Tab in checkout");
     case "checkout-in-repository": return t("Checkout of repository");
     case "delegation": return t("Recorded delegation");
     case "communication": return t("Communication");

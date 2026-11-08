@@ -17,7 +17,7 @@ export default function GraphPanel({ registry, rows, machines, error, refresh, o
   const labels = useSyncExternalStore(subscribeTabLabels, shownTabLabels);
   const data = useMemo(() => graphInventory(registry, rows, machines, labels, t), [registry, rows, machines, labels, t]);
   const incomplete = machines.filter((machine) => machine.state !== "connected" || machine.snapshot === null);
-  const target = (id: string) => error ? null : graphTarget(registry, rows, id);
+  const target = (id: string) => error ? null : graphTarget(registry, rows, id, machines);
   return <div className="graph-panel">
     <div className="graph-source-note">
       <button type="button" className="btn btn-ghost" onClick={() => void refresh()}>{t("Refresh")}</button>
