@@ -679,7 +679,89 @@ async function checkTouchTablet(browser: Browser, origin: string, first: string)
   } finally { await context.close(); }
 }
 
+/** Exercise native submission too: Playwright's keyboard.press sends desktop key code 13. */
+export async function checkTabRenameKeyboard(browser: Browser, origin: string): Promise<void> {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ovis-tab-rename-")));
+  const created = await workspaceCreate({ cwd: root, label: "ovis-test-tab-rename" });
+  const tabId = created.root_pane.tab_id;
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: "en-US" });
+  await context.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", defaultView: "terminal", alertsOn: false })));
+  try {
+    const page = await context.newPage();
+    page.setDefaultTimeout(10_000);
+    await openApp(page, origin, created.root_pane.pane_id);
+    const requests: unknown[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/tab/rename")) requests.push(request.postDataJSON());
+    });
+    const name = page.getByRole("textbox", { name: "Tab name", exact: true });
+    const open = async (): Promise<void> => {
+      await page.locator(".tab-strip-menu:visible").tap();
+      const sheet = page.getByRole("dialog");
+      await sheetsSettled(page);
+      await sheet.getByRole("button", { name: "Rename tab", exact: true }).tap();
+      await name.waitFor();
+    };
+    const cdp = await context.newCDPSession(page);
+    // Chromium delivers the Enter character as a native form action even when keydown is 229.
+    const enter = async (keyCode: number): Promise<void> => {
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode, text: "\r", unmodifiedText: "\r" });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
+    };
+    const label = async (): Promise<string | undefined> => (await sessionSnapshot()).tabs.find((tab) => tab.tab_id === tabId)?.label;
+    await open();
+    await name.fill("  motion-designer  ");
+    await enter(229);
+    await until(async () => await label() === "motion-designer", "the Android-style Enter renames the native tab without a Save button");
+    await page.getByRole("tab", { name: "motion-designer", exact: true }).waitFor();
+    assert.deepEqual(requests, [{ tab_id: tabId, label: "motion-designer" }], "the keyboard action sends one trimmed tab rename");
+
+    await open();
+    assert.equal(await name.getAttribute("enterkeyhint"), "done");
+    assert.equal(await name.locator("..").getByRole("button").count(), 0, "renaming keeps only the inline field");
+    await name.fill("unfinished");
+    await cdp.send("Input.imeSetComposition", { text: "候補", selectionStart: 2, selectionEnd: 2 });
+    await enter(229);
+    assert.equal(await name.count(), 1, "an Enter while composition is active keeps the editor open");
+    assert.equal(await label(), "motion-designer", "unfinished composition never renames the tab");
+    assert.equal(requests.length, 1);
+    // Commit through Chromium's input pipeline, then accept the keyboard's native submit action.
+    await cdp.send("Input.insertText", { text: "完成" });
+    const committed = await name.inputValue();
+    await enter(229);
+    await until(async () => await label() === committed, "the rename uses the committed composition value");
+    await page.getByRole("tab", { name: committed, exact: true }).waitFor();
+    assert.deepEqual(requests.at(-1), { tab_id: tabId, label: committed });
+    assert.equal(requests.length, 2, "composition followed by submit produces one rename");
+
+    await open();
+    await name.fill("   ");
+    await enter(13);
+    await page.locator(".tab-strip-error").getByText("A tab needs a name.", { exact: true }).waitFor();
+    assert.equal(requests.length, 2, "an empty name never reaches herdr");
+    await name.fill("cancelled");
+    await page.keyboard.press("Escape");
+    await name.waitFor({ state: "detached" });
+    assert.equal(await label(), committed, "Escape cancels without renaming");
+
+    await open();
+    await name.fill("desktop-enter");
+    await page.keyboard.press("Enter");
+    await until(async () => await label() === "desktop-enter", "ordinary Enter still saves through the form");
+    await page.getByRole("tab", { name: "desktop-enter", exact: true }).waitFor();
+    assert.equal(requests.length, 3, "ordinary Enter also sends one rename");
+    assert.equal(await page.getByRole("tab", { name: "desktop-enter", exact: true }).evaluate((node) => node === document.activeElement), true, "the renamed tab takes focus back");
+    await cdp.detach();
+    console.log("PASS native tab rename by Enter 229 and Enter 13, committed IME text, composition protection, empty names, Escape and focus return without a Save button");
+  } finally {
+    await context.close();
+    await workspaceClose(created.workspace.workspace_id);
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 export async function checkTabMenu(browser: Browser, origin: string): Promise<void> {
+  await checkTabRenameKeyboard(browser, origin);
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ovis-tab-menu-")));
   let workspaceId: string | null = null;
   try {

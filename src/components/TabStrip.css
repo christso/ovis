@@ -81,6 +81,11 @@
 }
 
 /* the name being typed, in the tab's own place */
+.tab-strip-rename-form {
+  display: flex;
+  margin: 0;
+}
+
 .tab-strip-rename {
   align-self: center;
   width: auto;

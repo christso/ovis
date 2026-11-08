@@ -86,6 +86,7 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
   const strip = useRef<HTMLDivElement>(null);
   const [picker, setPicker] = useState<{ anchor: HTMLElement; tab: HerdrTab; point?: { x: number; y: number }; previousFocus: HTMLElement | null; touch: boolean; workspaces?: true } | null>(null);
   const [editing, setEditing] = useState<{ tabId: string; value: string } | null>(null);
+  const renameComposing = useRef(false);
   // the name just sent, shown until herdr's snapshot carries it
   const [sent, setSent] = useState<{ tabId: string; label: string } | null>(null);
   const [confirm, setConfirm] = useState<{ tab: HerdrTab; title: string; body: string } | null>(null);
@@ -250,6 +251,7 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
 
   const beginRename = (tab: HerdrTab): void => {
     setError(null);
+    renameComposing.current = false;
     setEditing({ tabId: tab.tab_id, value: sent?.tabId === tab.tab_id ? sent.label : customTabLabel(tab, tabs.findIndex((candidate) => candidate.tab_id === tab.tab_id) + 1) ?? "" });
   };
   // The request is one-shot (the app clears it once handled), so the effect depends on it alone: a
@@ -279,8 +281,8 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
   };
 
   // an empty name is not sent: herdr would keep it, and its own tab row would show nothing
-  const saveRename = (tab: HerdrTab): void => {
-    const label = editing?.value.trim() ?? "";
+  const saveRename = (tab: HerdrTab, value: string): void => {
+    const label = value.trim();
     if (label === "") { setError(t("A tab needs a name.")); return; }
     refocus.current = tab.tab_id;
     setEditing(null);
@@ -441,25 +443,36 @@ export function TabStrip({ snapshot, workspace, selectedPane, onSelectPane, onNe
           return (
             <div className={`tab-strip-item${active ? " is-active" : ""}${own.length > 1 ? " has-panes" : ""}${editing?.tabId === tab.tab_id ? " is-editing" : ""}${reorder.drag?.tabId === tab.tab_id ? " is-dragging" : ""}${reorder.drag?.boundary === index ? " is-drop-before" : ""}${reorder.drag?.boundary === tabs.length && index === tabs.length - 1 ? " is-drop-after" : ""}`} key={tab.tab_id}>
               {editing?.tabId === tab.tab_id ? (
-                <input
-                  className="input tab-strip-rename"
-                  aria-label={t("Tab name")}
-                  autoFocus
-                  size={Math.max(8, editing.value.length + 1)}
-                  maxLength={MAX_LABEL_CHARS}
-                  placeholder={name}
-                  value={editing.value}
-                  onFocus={(event) => event.currentTarget.select()}
-                  onChange={(event) => setEditing({ tabId: tab.tab_id, value: event.target.value })}
-                  onBlur={() => setEditing(null)}
-                  onKeyDown={(event) => {
-                    event.stopPropagation();
-                    // an IME's Enter and Escape are the composition's, not the field's
-                    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
-                    if (event.key === "Enter") saveRename(tab);
-                    if (event.key === "Escape") { refocus.current = tab.tab_id; setEditing(null); }
-                  }}
-                />
+                <form className="tab-strip-rename-form" onSubmit={(event) => {
+                  event.preventDefault();
+                  if (renameComposing.current) return;
+                  // Read the committed input, including a final IME update before React renders it.
+                  const value = new FormData(event.currentTarget).get("label");
+                  if (typeof value === "string") saveRename(tab, value);
+                }}>
+                  <input
+                    className="input tab-strip-rename"
+                    name="label"
+                    aria-label={t("Tab name")}
+                    enterKeyHint="done"
+                    autoFocus
+                    size={Math.max(8, editing.value.length + 1)}
+                    maxLength={MAX_LABEL_CHARS}
+                    placeholder={name}
+                    value={editing.value}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) => setEditing({ tabId: tab.tab_id, value: event.target.value })}
+                    onCompositionStart={() => { renameComposing.current = true; }}
+                    onCompositionEnd={() => { renameComposing.current = false; }}
+                    onBlur={() => setEditing(null)}
+                    onKeyDown={(event) => {
+                      event.stopPropagation();
+                      // An IME's Escape dismisses its candidate, not the name field.
+                      if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+                      if (event.key === "Escape") { refocus.current = tab.tab_id; setEditing(null); }
+                    }}
+                  />
+                </form>
               ) : (
                 <button
                   type="button"
