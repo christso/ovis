@@ -77,6 +77,7 @@ describe("Graph location and viewport", () => {
   });
   it("bounds stored values and ignores malformed positions and unknown versions", () => {
     expect(sanitizeGraphState({ version: 99, selected: "future" })).toBeNull();
+    expect(sanitizeGraphState({ version: 1, layout: "future" })).toBeNull();
     const state = sanitizeGraphState({ version: 1, viewport: { x: 0, y: 0, k: 999 }, positions: { bad: { x: Infinity, y: 2 }, fine: { x: 5, y: 7 } } })!;
     expect(state.viewport.k).toBe(4);
     expect(state.positions).toEqual({ fine: { x: 5, y: 7 } });

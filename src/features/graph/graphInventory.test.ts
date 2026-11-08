@@ -23,6 +23,17 @@ function source() {
 }
 
 describe("shared inventory to Graph", () => {
+  it("keeps known repository names and colour identity across unavailable checkout observations", () => {
+    const { registry, machines } = source();
+    const checkout = registry.checkouts[0]!;
+    registry.checkouts = [checkout, { ...checkout, id: "historical-checkout", path: "/fictional/old-checkout" }];
+    machines[0]!.snapshot!.workspaces[0]!.worktree = { checkout_path: checkout.path, repo_root: checkout.repository!, repo_name: "Orchard", repo_key: "orchard", is_linked_worktree: true };
+    for (const checkouts of [registry.checkouts, [...registry.checkouts].reverse()]) {
+      const repository = graphInventory({ ...registry, checkouts }, [], machines).nodes.find((node) => node.kind === "repository")!;
+      expect(repository.label).toBe("Orchard");
+      expect(repository.repositoryKey).toBe("Orchard");
+    }
+  });
   it("keeps a proven native execution selected across optional coordination loss and recovery", () => {
     const { machines, pane } = source();
     const machine = machines[0]!;
@@ -62,11 +73,11 @@ describe("shared inventory to Graph", () => {
     expect(communication.eventCount).toBe(2);
     expect(delegation.evidence).toBe("herdr.delegation");
     const worker = data.nodes.find((node) => node.id === delegation.target)!;
-    expect(worker.label).toBe("Review worker");
+    expect(worker.label).toBe("Review worker · claude");
     expect(worker.freshness).toBe("live");
     expect(graphTarget(registry, rows, worker.id)).toEqual({ machine_id: machine.id, pane_id: childPane.pane_id });
     expect(rows.find((row) => row.pane?.terminal_id === childPane.terminal_id)?.binding).toBeNull();
-    const execution = data.nodes.find((node) => node.kind === "execution" && node.label === "Review worker")!;
+    const execution = data.nodes.find((node) => node.kind === "execution" && node.label === "Review worker · claude")!;
     expect(graphTarget(registry, rows, execution.id)).toEqual({ machine_id: machine.id, pane_id: childPane.pane_id });
 
     child.agent_instance_id = "replacement-occupancy";

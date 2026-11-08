@@ -12,6 +12,7 @@ export interface GraphNode {
   machineId?: string;
   freshness?: "live" | "stale" | "disconnected" | "unavailable" | "unsupported";
   detail?: string;
+  repositoryKey?: string;
 }
 export interface GraphEdge {
   id: string;

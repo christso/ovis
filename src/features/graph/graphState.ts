@@ -4,6 +4,7 @@ import type { Positions, Viewport } from "./graphLayout.ts";
 
 export interface GraphState {
   version: 1;
+  layout?: "force";
   selected: string;
   filters: GraphFilters;
   groupMachine: boolean;
@@ -12,7 +13,7 @@ export interface GraphState {
 }
 export const GRAPH_STORAGE_KEY = "ovis:graph:v1";
 export const DEFAULT_GRAPH_STATE: GraphState = {
-  version: 1, selected: "", filters: { search: "", status: "", machine: "", focus: "", showCompleted: false, communication: "recent" },
+  version: 1, layout: "force", selected: "", filters: { search: "", status: "", machine: "", focus: "", showCompleted: false, communication: "recent" },
   groupMachine: false, positions: {}, viewport: { x: 160, y: 100, k: 1 },
 };
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -22,7 +23,7 @@ const finite = (value: unknown, fallback: number, max = 1e6) => typeof value ===
 /** A new isolated key; future versions are refused by readers and writers, never overwritten. */
 export function sanitizeGraphState(raw: unknown): GraphState | null {
   const value = record(raw);
-  if (value.version !== 1) return null;
+  if (value.version !== 1 || (value.layout !== undefined && value.layout !== "force")) return null;
   const filters = record(value.filters), viewport = record(value.viewport);
   const positions: Positions = Object.create(null);
   for (const [id, rawPoint] of Object.entries(record(value.positions)).slice(0, 10000)) {
@@ -32,7 +33,7 @@ export function sanitizeGraphState(raw: unknown): GraphState | null {
     }
   }
   return {
-    version: 1, selected: str(value.selected), groupMachine: value.groupMachine === true, positions,
+    version: 1, layout: "force", selected: str(value.selected), groupMachine: value.groupMachine === true, positions,
     filters: { search: str(filters.search), machine: str(filters.machine), focus: str(filters.focus), status: GRAPH_STATUSES.some((status) => status === str(filters.status)) ? str(filters.status) : "", showCompleted: filters.showCompleted === true, communication: filters.communication === "all" || filters.communication === "none" ? filters.communication : "recent" },
     viewport: { x: finite(viewport.x, 160), y: finite(viewport.y, 100), k: Math.max(0.08, finite(viewport.k, 1, 4)) },
   };

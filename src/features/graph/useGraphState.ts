@@ -5,7 +5,9 @@ function loadState(): { state: GraphState; saved: boolean } {
   let state = DEFAULT_GRAPH_STATE;
   let saved = false;
   try {
-    const stored = sanitizeGraphState(JSON.parse(localStorage.getItem(GRAPH_STORAGE_KEY) ?? "null"));
+    const raw = JSON.parse(localStorage.getItem(GRAPH_STORAGE_KEY) ?? "null");
+    const stored = sanitizeGraphState(raw);
+    if (stored && raw.layout !== "force") { stored.positions = {}; stored.viewport = DEFAULT_GRAPH_STATE.viewport; }
     if (stored) {
       state = stored;
       saved = Object.keys(stored.positions).length > 0 || stored.viewport.x !== DEFAULT_GRAPH_STATE.viewport.x || stored.viewport.y !== DEFAULT_GRAPH_STATE.viewport.y || stored.viewport.k !== DEFAULT_GRAPH_STATE.viewport.k;

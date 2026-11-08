@@ -3943,170 +3943,78 @@ limited to its own host. This follows T3 Code's in-thread visual replies and ful
 while keeping external page links in the browser as its [HTML renders guide](https://github.com/pingdotgg/t3code/blob/main/docs/user/html-renders.md)
 does. No code or visual assets are copied.
 
-### Table and logical sessions
+## Flock graph
 
-The fork's Workspace, Agents and Table selector changes presentation while preserving the selected
-machine and pane. Table is flat across the configured machines, with sortable columns, a text filter,
-a machine filter and optional machine grouping. Desktop keeps conventional columns; at phone widths
-(up to 640px), the same execution rows become cards with name/status first, then work and
-machine/checkout/branch. The checkout basename is a compact location cue; full checkout and
-repository paths remain in details. Association and extension actions stay in the same mounted row. A native
-details disclosure retains full names, paths and IDs; compact metadata can truncate without hiding
-the complete value. Phone sorting uses a labelled select and direction button sharing the desktop
-column state. Search and Refresh stay above the cards; a collapsed phone Filters and sort
-disclosure shows an active count and contains machine/group/sort/work controls and inventory
-notes. Desktop keeps these controls expanded. Empty phone metadata lines are omitted while
-details and desktop retain their values. Controls and disclosures have 44px tap targets, and
-cards scroll vertically with the page content. Existing Workspace and Agents lists keep their controls and terminal targeting.
+Flock opens the graph directly from Ovis's sidebar. The native Agents section remains the single
+agent list with its existing filters and pane selection. There is no Table or Table/Graph mode
+selector. Legacy `page=table` links open Graph while retaining their pane, machine and terminal
+lens. Picking a native workspace or agent returns to Workspace. Open in Workspace selects the
+currently verified target without changing Herdr's focus or sending terminal input. Browser
+Back/Forward restores the graph selection, filters and terminal location. Watch-only devices
+receive neither private Flock inventory nor the lazy graph rendering chunk.
 
-The phone hierarchy follows [Paseo’s mobile session list](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/agent-list.tsx),
-reviewed alongside its [official overview](https://github.com/getpaseo/paseo/blob/main/README.md):
-a session title leads, with compact project/branch/host context underneath. Ovis keeps explicit
-association actions visible and full metadata in native details because each row represents a
-physical execution. No external code or visual assets were copied.
+The visual reference is [Folio's graph](https://github.com/evergreen-it-dev/folio/tree/2dd626383e6e2462a642a3d99e6c97d3aa3f9894/web/src/app/graph):
+circular nodes, degree-based size, repository colours and connected motion. Ovis uses SVG instead
+of Folio's canvas so each node remains a native keyboard target with a complete accessible name,
+plus an inspector selector for phone and keyboard users. The implementation is independently
+written; no Folio code or assets are copied. The containment and thread distinction also follows
+[Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel): physical checkout metadata and logical
+session identity remain separate.
 
-The design follows [Codex's threads and worktrees](https://openai.com/index/introducing-the-codex-app/):
-a named task survives its execution context, while a physical checkout stays separate. This fork adds
-a flat table because execution location must be a column rather than a compulsory parent. No pixels
-or code were copied. A row represents an execution, so two executions of one logical session remain
-visible. Association is explicit, and selectors include IDs to disambiguate equal names. Native
-sessions without proven IDs stay visible as unassociated; stale or disconnected bindings cannot open
-terminals from Table. Rename changes a label, never an identity. Work and session names live in the
-manager's registry; naming a session does not rename its native agent or move its files.
+D3 force links pull connected nodes, repulsion separates clusters and collision keeps circles
+apart. Radius grows with distinct visible neighbours; parallel edges and recorded event counts
+cannot inflate it. Repository colour follows actual checkout/execution/session membership,
+never communication or delegation. Known native `repo_name` metadata supplies a common colour
+across machines with different root paths; recorded roots supply the fallback identity. Unknown
+repository membership stays neutral. Colour grouping does not merge identities. Status uses its
+own small icon, and stale sources have a dashed outline. A compact legend names the repositories.
 
-Observed relationships appear read-only inside the same execution-details disclosure on desktop
-and phone, following this Table's existing Paseo-inspired compact metadata pattern. Native Codex
-successful coordination receipts and the custom Herdr daemon's attributed operation journal
-contribute directed delegation and communication edges to the shared registry. Herdr occupancy
-identities distinguish current agents from replacements even without a proven native session;
-only a separate native ownership proof associates them with a logical session. Only metadata is retained; requests, prose, raw Herdr hints and unsupported
-formats supply no relationship. Deduplication preserves counts across refreshes and restarts.
-Historical execution bindings resolve to stable logical sessions after a move, while unknown
-endpoints remain unavailable. These observations do not change agent behaviour, and there is no
-manual agent-link mutation UI or API. Source evidence and coverage limits are in `docs/flock.md`.
+Physical checkouts share a node only when machine, concrete path and recorded repository match.
+Branch labels do not establish physical identity. Sessions, work items and executions retain their
+own IDs, including equal names. Live execution and observed endpoint labels reuse native custom
+tab labels, existing automatic tab labels and `display_agent` launcher metadata. Explicit logical
+aliases remain authoritative. Reading labels never scans a transcript or writes native names.
+Visible labels stay at 12 screen pixels across zoom levels. Ordinary labels shorten at distant
+zoom and avoid overlapping already placed labels; selection and direct neighbours take priority.
+Complete names remain available through SVG titles, accessible names and the inspector.
 
-### Planned Codex session moves
+Dragging fixes one node temporarily and reheats the connected simulation. Release, pointer
+cancellation, lost capture, pinch takeover and unmount release fixed coordinates. The simulation
+cools and stops when idle. Identical roster polls, status changes and event-count changes neither
+restart nor reseed it. Real topology changes start from the visible coordinates, including while
+a drag is in progress. Reduced motion calculates the same physics in bounded synchronous steps
+instead of animating it. Pan, pointer-centred wheel zoom, touch pan/pinch and keyboard navigation
+retain the viewport until explicit Fit or Reset. Reset rebuilds and settles a natural layout,
+then refits while retaining selection, filters and optional machine grouping.
 
-Table keeps the action beside the current registered execution. A single dialog
-shows destination, explicit untracked scope, preview, progress and recovery. This
-follows the Codex app's session-picker/resume model: a conversation is selected
-explicitly and native history remains native. Ovis adds the transfer preview because
-it must carry checkout work across configured PCs. No external application code or
-pixels were copied.
+Graph state uses `ovis:graph:v1`: selection, filters, grouping, settled positions and viewport.
+The force-layout marker migrates old column positions once while keeping selection and filters.
+Unknown future versions and unparseable JSON are never overwritten. Simulation frames remain
+local to the renderer; only settled layouts and completed gestures are persisted. Shareable query
+fields leave Ovis's pane/view location intact. A saved viewport wins over automatic framing;
+a default empty frame receives its initial Fit when inventory first arrives.
 
-Preview precedes native exit so the bridge can resolve the actual process and custom
-Codex home. The user finishes and exits Codex, then confirms it; Ovis refuses any
-remaining native writer lock. Recovery reopens the same operation, shows retained
-source data and checks an uncertain destination instead of offering a second launch.
-The moved-session link requires fresh proof of machine, daemon lifetime, pane and
-native identity before it becomes available. All dialog text is translated and uses
-existing dialog/button tokens on desktop and phone.
+Phone controls follow [Paseo's compact workspace header](https://github.com/getpaseo/paseo/blob/main/packages/app/src/screens/workspace/compact-workspace-header/index.tsx)
+and [filter trigger](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/hosts/host-filter.tsx).
+Search and the graph stay visible while secondary filters and inspector details open on demand.
+Touch hit targets remain at least 44 CSS pixels independently of visual radius and zoom. Full
+paths and long names wrap in the inspector. No Paseo code or pixels are copied.
 
-The phone transfer surface follows Paseo's compact sheet pattern: a stable header
-and action footer around a scrollable body, constrained to the keyboard-visible
-frame. The references are its [mobile/session overview](https://github.com/getpaseo/paseo/blob/main/README.md),
-[adaptive sheet](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/adaptive-modal-sheet.tsx)
-and [safe-area/keyboard layout](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/adaptive-modal-sheet-layout.ts).
-Ovis retains its existing web sheet, touch and safe-area tokens; no source or pixels
-were copied. Unlike a session picker, transfer keeps the native-exit checkbox and
-individual file scope explicit, with the primary action on its own full-width row.
+## Recorded relationships and retained migration contracts
 
-Long session names and transfer paths wrap inside the surface, including the
-pending-move action behind it. The sheet's height also respects its containing
-visible frame: a full-layout-viewport `dvh` limit alone can put the header above an
-open phone keyboard. File rows and disclosures keep 44px touch targets, and the
-header/footer do not shrink when the body scrolls. If the body shrinks around a
-focused checkout field, the dialog scrolls that field fully into its own body; the
-footer cannot cover the field or its caret. Desktop controls retain their
-existing arrangement. Phone evidence uses fictional transfer/proof fixtures;
-keyboard-sized geometry is simulated in Chromium, without an actual-device Safari
-or native-transfer claim.
-## Flock navigation
+The graph consumes the shared registry and automatic Herdr/native receipts. Directed delegation
+and communication remain separate from containment; counts and timestamps describe recorded
+successful operations, not a complete delivery history. Communication defaults to the last
+24 hours with all/hidden alternatives. A current verified Herdr occupancy can open its exact
+agent even without native adoption support. Replacement agents get distinct identities;
+historical endpoints cannot authorize a replacement. Logical-session Open resolves only its
+current execution. A previous live execution is never substituted for a missing current one.
+Source contracts and coverage limits are in `docs/flock.md`.
 
-Flock sits beside the native Agents section in Ovis's sidebar. The existing Agents list stays
-responsible for live pane navigation; Flock opens the shared inventory with a local Table/Graph
-switch. The sidebar follows Ovis's own section spacing and
-[Warp's vertical tabs](https://docs.warp.dev/terminal/windows/vertical-tabs/) pattern of keeping
-workstream context visible while the main view changes. No external code is copied.
-Flock remembers the last Table/Graph mode for the app session, starting with Table. Existing
-Table and Graph links and browser history retain the selected pane and its lens. Picking a native
-workspace or agent returns to that workspace without changing Herdr's focus or sending input.
-Watch-only devices have no Flock entry.
-
-Graph's visible Reset control uses the existing layout reset: it restores all default node
-positions and fits the filtered graph while retaining selection, filters and machine grouping.
-The reset positions and viewport remain in Graph's existing browser state across reloads.
-
-## Graph view
-
-Graph is another view of the shared Table inventory. Logical work and sessions retain their IDs
-when execution changes machine. Repository and checkout links describe recorded associations;
-labels, similar paths and sidebar placement never establish a relationship. Missing delegation
-or dependency evidence remains absent, with a coverage note beside the graph.
-
-The design follows [Folio's graph](https://github.com/evergreen-it-dev/folio/tree/main/web/src/app/graph)
-in separating pure projection/filtering from rendering and keeping selection separate from an
-explicit Open action. Its canvas/d3-force renderer and model were evaluated under Folio's MIT
-license. The implementation here is independently written; no Folio source is copied. Ovis uses
-SVG targets with native keyboard access and a node inspector selector for phone and keyboard use.
-Deterministic columns and retained drag positions keep routine live updates still; there is no
-force animation, including under reduced motion. Pan, pinch/wheel zoom, fit and keyboard controls
-operate on a persistent viewport. Machine grouping is optional and does not establish links.
-
-[Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel) provides the project-scoped thread and
-worktree navigation reference. Graph differs by showing explicitly recorded relationships across
-machines, rather than placing logical work under a machine. Opening a terminal must use the shared
-inventory's current live-target resolver and the existing Ovis selection callback, with no Herdr
-focus or input operation.
-
-Graph presentation state has its own `ovis:graph:v1` browser key, owned by
-`src/features/graph/useGraphState.ts`: version, selection, filters, optional machine grouping,
-positions and viewport. No existing settings record changes and no HTTP/WS contract carries it.
-Older Ovis releases do not read or write this new key. Unknown versions and unparseable JSON records
-are left intact; supported fields are sanitized before use. This reader refuses to overwrite
-records whose version or JSON it cannot read.
-Graph-owned query fields share selection/filter/focus without altering Ovis's pane/view location.
-
-
-Graph loads lazily after the device role is known; watch-only devices load neither its private
-registry nor its rendering chunk. The `page=graph` location composes with Ovis's existing
-`view=chat|terminal` pane lens and its machine/pane location. Graph and Table share App's one
-inventory hook. Logical-session Open resolves only `current_execution_id` through `flockTarget`;
-a previous live execution is not a substitute. Repository nodes represent recorded machine-local
-metadata and are scoped by machine plus recorded root, never unified by similar paths.
-
-
-Observed execution nodes include the exact shared binding identity, so reusing a pane for a
-new native session cannot redirect an old Graph selection or link. The address bar owns page
-and terminal history together: Open pushes one Workspace target, and Back/Forward restores the
-Graph page with its filters and selection. Native ownership comes from Table's ephemeral verified
-sources, never from raw Herdr session hints or Graph-side discovery.
-
-Phone Graph follows [Paseo's official mobile/session interface](https://github.com/getpaseo/paseo/blob/main/README.md), specifically its [compact workspace header](https://github.com/getpaseo/paseo/blob/main/packages/app/src/screens/workspace/compact-workspace-header/index.tsx) and [accessible filter trigger](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/hosts/host-filter.tsx): primary content and actions remain visible, secondary choices open on demand. Search stays beside a collapsed Graph filters trigger whose badge counts active advanced choices. Desktop controls remain expanded. The phone inspector keeps the selected name, status and Open action visible, with paths, relationship evidence and help behind Details. Expanded controls/details use the Graph's normal vertical scroll rather than a clipped controls scrollbox.
-
-A fresh phone view starts at readable node scale centered on the requested or first session; it changes no filters or layout positions. Existing supported saved positions or non-default viewport values always win, including a custom viewport before any positions exist. An empty record with only the default viewport is not a completed frame: if inventory arrives after a reload, it still receives initial framing. Fit graph and the 0 shortcut still show the full filtered overview, and the inspector selector reaches every filtered node. Disclosure state is transient and does not change the stored record or shareable location. No Paseo code or pixels were copied.
-
-Selection and mouse hover follow Folio's direct-neighbour highlighting: the selected/hovered node,
-its immediate neighbours and incident edges stay prominent while other nodes and links dim in
-place. Pointer leave restores the selected neighbourhood. Tap or keyboard selection persists;
-Escape or an empty-canvas tap clears it, while pan, node drag and pinch leave selection intact.
-Highlighting changes neither positions nor the viewport and adds no force animation.
-
-Graph also projects Table's automatically observed Herdr and native coordination records. Delegation and
-communication use distinct directed edges; inspector counts/timestamps come from deduplicated
-successful receipts. Unbound native endpoints remain unavailable until current source proofs
-establish a terminal target. Historical execution bindings resolve to logical identities across
-machine moves. Communication defaults to the last24hours, with all/hidden options retained in
-Graph state and shared URLs. These edges never act as containment or imply reporting/dependency.
-Herdr records identify a particular agent occupying a terminal, independently of its name or pane
-location. A verified current occupancy can open that exact agent, including agents without native
-session adoption support. Replacement agents receive distinct identities, so a historical link
-cannot open a replacement. Only separate native ownership proof associates an occupancy with a
-logical session; historical associations keep those links through an intentional move.
-The inspector identifies whether Herdr or Codex supplied the recorded events. Older Herdr servers
-remain usable without claiming relationship coverage. No manual agent-link control exists.
-Source requirements are documented in `docs/flock.md`. No Folio source code was copied.
-
-Graph builds on the Move integration and shares the same Table action surface in the application.
-Switching from Graph to Table exposes the existing transfer dialog; returning to Graph retains its
-logical selection, viewport and relationship history after the new execution has been verified.
+The graph exposes only Open in Workspace. The former association, work-renaming and Move controls
+are retired from product navigation. The registry, persisted associations, native ownership
+checks and migration APIs remain unchanged. Existing in-progress moves and recovery receipts
+remain readable through those APIs. The retained migration dialog is exercised independently by
+owned fictional fixtures, including phone geometry and recovery; it is not another product list.
+Native Codex move qualification remains the separately verified 0.166.0 contract. This redesign
+adds no support claims for another native CLI version.

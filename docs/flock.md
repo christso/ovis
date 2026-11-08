@@ -1,35 +1,36 @@
 # Work and session registry
 
-Table is a flat view of agent executions across the configured PCs. Workspace and Agents keep
-Herdr's existing navigation. Switching views preserves the selected machine/pane. The Workspace
-selector is in the sidebar, including the phone drawer; Table and Agents keep a selector above their
-content. Opening a live Table row selects that exact target using the existing browser selection
-flow, without focusing Herdr.
+Flock opens a force-directed graph of recorded repositories, worktrees, sessions and agent tabs.
+Ovis's native Agents section remains the single agent list and keeps its existing filters. The
+old Table view and association/work-renaming/Move controls are retired from navigation; the
+registry, existing associations and migration APIs remain intact. Legacy `page=table` links open
+Graph. Open in Workspace resolves the selected node's verified current target without focusing
+Herdr or sending input.
 
-Use **New work** to create a named work item. **Associate session** explicitly creates a logical
-session for an agent execution, or records that execution against a session you choose by ID.
-Equal names, paths and branches never merge records. **Edit association** renames the logical
-session or changes its work item. **Rename work** changes a work item's label. Neither changes
-the native agent session, files, pane name or execution history.
+Repository colours follow reported physical membership. Native repository names keep colours
+consistent across machines; unknown membership stays neutral. Names use existing native tab
+labels and launcher metadata without reading transcripts or inferring session identity. Dragging
+moves linked neighbours; the simulation stops when settled. Fit/Reset are intentional framing
+actions, and polling does not move an idle graph.
 
 Each logical session has its own ID and a current execution ID. An execution records the machine,
 Herdr lifetime, pane, agent kind and native session ID. A later execution can belong to the same
-logical session on another machine; its earlier executions remain separate rows. This records an
+logical session on another machine; its earlier executions remain separate nodes. This records an
 association only. It does not transfer or restore anything.
 
 A registered execution is live only when its entire binding matches the connected machine's roster.
 Disconnected, missing and replaced sources remain visible without a terminal target. An unadopted
 pane whose bridge cannot prove its Herdr lifetime or whose agent reports a path instead of an ID
-shows **Identity unavailable**. Its usual Workspace/Agents controls remain available. Table cannot
-adopt that pane or use it as a move source. Rows include execution/native IDs and the checkout path
-under **Execution details**. Repository and branch metadata are shown only when known; an em dash
-means unknown. Live branch labels reuse the sidebar's Git inventory reader. A recorded checkout is
-physical metadata at adoption, not a globally inferred repository identity or a promise that it
-still exists on disk. Repeated adoptions record independent checkout observations.
+shows **Identity unavailable**. Native Workspace/Agents controls remain available. Graph opening
+requires either exact current Herdr occupancy or independently verified native ownership.
+Repository and branch metadata appear only when known. Live branch labels reuse the sidebar's
+Git reader. A recorded checkout is physical metadata, not an inferred global repository identity
+or a promise that it still exists on disk. Graph coalesces observations of the same concrete
+machine/path/repository while keeping execution and session IDs separate.
 
 The manager serving the configured roster owns `flock.json` in its Ovis state directory. The writer
 is `server/flock.ts`; the shared contract and pure roster projection live in `shared/flock.ts` and
-`shared/flock-inventory.ts`. Table and future Graph/Move consumers share this inventory. The document
+`shared/flock-inventory.ts`. Graph and the retained migration APIs share this inventory. The document
 is new in this feature, with no previous shape to migrate:
 
 ```ts
@@ -67,14 +68,14 @@ and idempotence. No terminal lifecycle operation is performed by the registry it
 
 ## Observed agent relationships
 
-Table's execution details show read-only delegation and communication relationships. The manager
+Graph's inspector shows read-only delegation and communication relationships. The manager
 collects successful native coordination receipts alongside verified source inventory and retains
 only endpoint identities, labels, event IDs, relationship kinds and occurrence times in the optional `observations`
 array of `flock.json`. Repeated polling does not add events or increase message counts. Historical
 execution bindings resolve endpoints to logical sessions, preserving links through a planned move.
 Native receipt identity is independent of its capture machine, so replay after copying a rollout
 does not count another message. The first capture's machine provenance is retained. Older stored
-duplicate captures remain readable and are counted once in both views.
+duplicate captures remain readable and are counted once in the graph.
 An endpoint without an unambiguous logical association remains an observed native session or
 Herdr occupancy, with no assumed live terminal target or root-agent status.
 
@@ -104,8 +105,7 @@ caller to the created agent. A message establishes communication without changin
 
 There is no manual agent-link editor or browser relationship mutation command. Existing work
 membership and execution/session association remain identity operations. Observations are passive:
-they do not alter prompts, send messages, assign work, grant control or block execution. Table and
-Graph consume the same recorded relationships.
+they do not alter prompts, send messages, assign work, grant control or block execution. Graph consumes these recorded relationships.
 
 The native format is pinned to [Codex0.166's activity item](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/protocol/src/items.rs)
 and [successful message dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs).

@@ -1,4 +1,4 @@
 ### Changed
-- Flock now opens from the sidebar beside Agents, with Table and Graph modes and a visible Reset
-  control for graph layouts. Native workspace and agent selection returns to the workspace;
-  reopening Flock remembers its last mode for the app session.
+- Flock opens its graph directly beside the native Agents section. The global header follows the
+  graph context, and native workspace or agent selection returns to Workspace. Reset restores a
+  natural graph layout while retaining filters and selection.

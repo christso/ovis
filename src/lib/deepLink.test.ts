@@ -159,6 +159,9 @@ describe("the sidebar", () => {
 
 
 describe("Graph page and pane location", () => {
+  it("maps retired Table links to Graph while retaining pane and lens", () => {
+    expect(readLink("?page=table&machine=garden&pane=w7%3Ap2&view=terminal")).toMatchObject({ page: "graph", machine: "garden", pane: "w7:p2", view: "terminal" });
+  });
   it("keeps legacy Agents links on the native workspace and retains their target", () => {
     const link = readLink("?page=agents&machine=garden&pane=w7%3Ap2&view=terminal");
     expect(link.page).toBeUndefined();

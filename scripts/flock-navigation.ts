@@ -16,12 +16,6 @@ export async function openFlock(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Flock", exact: true }).click();
 }
 
-export async function changeFlockMode(page: Page, name: "Table" | "Graph"): Promise<void> {
-  const target = page.getByRole("group", { name: "Flock view", exact: true }).getByRole("button", { name, exact: true });
-  if (!await target.isVisible()) await openFlock(page);
-  await target.click();
-}
-
 /** Exercise Ovis's own pane selection, including its folded phone Agents list. */
 export async function openNativeAgent(page: Page, machine: string, pane: string): Promise<void> {
   const section = page.getByRole("region", { name: "Agents", exact: true });

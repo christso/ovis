@@ -10,9 +10,8 @@ import type { Machine } from "../shared/machines.ts";
 import type { SessionMoveRecord, SessionMoveRequest } from "../shared/session-move.ts";
 import type { SessionMoveState } from "../src/lib/sessionMoves.ts";
 import { FlockStore, handleFlockRequest } from "../server/flock.ts";
-import { buildDemoApp } from "./demo-build.ts";
+import { buildSessionMoveFixture } from "./session-move-fixture-build.ts";
 import { chromePath } from "./chrome-path.ts";
-import { changeFlockMode } from "./flock-navigation.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ovis-move-browser-"));
 const app = join(root, "app");
@@ -55,34 +54,6 @@ let exitRefreshNeeded = false;
 let previewRevision = 0;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let browser: Browser | undefined;
-const harness = `<script>(() => {
-  const fixture = ${JSON.stringify(machines)};
-  const demo = window.fetch;
-  const network = window.moveFixtureNetwork;
-  window.fetch = async (input, init) => {
-    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
-    if (['/api/flock', '/api/session-moves', '/api/machines', '/api/session'].includes(url.pathname)) return network(input, init);
-    return demo(input, init);
-  };
-  const DemoSource = window.EventSource;
-  window.EventSource = function(url, options) {
-    if (!String(url).includes('/api/machines/events')) return new DemoSource(url, options);
-    const source = new EventTarget(); source.readyState = 1;
-    let pending = false, last = '';
-    const emit = async () => {
-      if (pending || source.readyState !== 1) return;
-      pending = true;
-      try {
-        const answer = await network('/api/machines'); const value = await answer.json(); const data = JSON.stringify({ type: 'machines', machines: value.machines });
-        if (source.readyState === 1 && data !== last) { last = data; source.dispatchEvent(new MessageEvent('message', { data })); }
-      } finally { pending = false; }
-    };
-    const timer = setInterval(emit, 500);
-    source.close = () => { source.readyState = 2; clearInterval(timer); };
-    queueMicrotask(emit);
-    return source;
-  };
-})();</script>`;
 const respond = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
 async function auditMobile(): Promise<void> {
   assert.ok(browser && server);
@@ -134,7 +105,7 @@ async function auditMobile(): Promise<void> {
     };
     try {
       await page.goto(`http://127.0.0.1:${server!.port}/herdr-web-ui/demo/app/?pane=${encodeURIComponent(chosen.pane_id)}`);
-      await changeFlockMode(page, "Table");
+      await page.getByRole("region", { name: "Fixture sessions", exact: true }).waitFor();
       if (baselineAudit && process.env["MOVE_MOBILE_BASELINE_CSS"]) {
         // Restore exactly the supplied old Move stylesheet in the owned built app, leaving shared styles and live DOM intact.
         await page.evaluate(() => {
@@ -256,9 +227,7 @@ async function auditMobile(): Promise<void> {
 }
 
 try {
-  await buildDemoApp(app);
-  const index = join(app, "index.html");
-  writeFileSync(index, readFileSync(index, "utf8").replace(/<script type="module"/, () => `<script>window.moveFixtureNetwork = window.fetch.bind(window);</script><script src="./demo-transport.js"></script>${harness}<script type="module"`));
+  await buildSessionMoveFixture(root, app);
   server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const path = new URL(request.url).pathname;
     if (path === "/api/machines") return respond({ machines });
@@ -350,13 +319,13 @@ try {
     try {
       const url = `http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/?pane=${encodeURIComponent(chosen.pane_id)}`;
       await page.goto(url);
-      const table = page.getByRole("region", { name: "Table", exact: true });
-      const openTable = () => changeFlockMode(page, "Table");
-      await openTable();
-      const row = table.locator(`tr[data-row-id="${originalExecution.id}"]`);
+      const table = page.getByRole("region", { name: "Fixture sessions", exact: true });
+      const openFixture = () => table.waitFor();
+      await openFixture();
+      const row = table.locator(`[data-row-id="${originalExecution.id}"]`);
       const moveAction = row.getByRole("button", { name: "Move session", exact: true });
       await moveAction.waitFor(); assert.equal(await moveAction.isEnabled(), true);
-      assert.equal(await table.locator(`tr[data-row-id="${store.read().executions[1]!.id}"]`).getByRole("button", { name: "Move session", exact: true }).count(), 0, "other agent kinds get no move action");
+      assert.equal(await table.locator(`[data-row-id="${store.read().executions[1]!.id}"]`).getByRole("button", { name: "Move session", exact: true }).count(), 0, "other agent kinds get no move action");
       const selectionBefore = new URL(page.url()).searchParams.get("pane");
       await moveAction.click();
       let dialog = page.getByRole("dialog", { name: "Move session", exact: true });
@@ -409,8 +378,8 @@ try {
       assert.equal(store.read().sessions[0]!.current_execution_id, originalExecution.id);
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
       await row.getByRole("button", { name: "View move", exact: true }).waitFor();
-      await page.reload(); await openTable();
-      await table.locator(`tr[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "View move", exact: true }).click();
+      await page.reload(); await openFixture();
+      await table.locator(`[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "View move", exact: true }).click();
       dialog = page.getByRole("dialog", { name: "Move session", exact: true });
       assert.equal(await dialog.getByLabel("Destination checkout", { exact: true }).inputValue(), "/work/moved-fixture");
       assert.equal(await dialog.getByLabel("required.png", { exact: true }).isChecked(), true);
@@ -428,7 +397,7 @@ try {
       assert.equal(await dialog.getByLabel("Destination checkout", { exact: true }).isEnabled(), false);
       if (evidence) await page.screenshot({ path: join(evidence, "session-move", `progress-${width}.png`) });
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
-      await table.locator(`tr[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "View move", exact: true }).click();
+      await table.locator(`[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "View move", exact: true }).click();
       dialog = page.getByRole("dialog", { name: "Move session", exact: true });
       await dialog.getByRole("alert").filter({ hasText: "history could not be verified" }).waitFor();
       assert.equal(launches, 1);
@@ -461,10 +430,10 @@ try {
       target.snapshot!.herdr_lifetime = lifetime;
       await dialog.getByRole("button", { name: "Open moved session", exact: true }).click();
       await page.waitForURL((at) => at.searchParams.get("machine") === target.id && at.searchParams.get("pane") === chosen.pane_id);
-      await openTable();
-      assert.equal(await table.locator(`tr[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "Move session", exact: true }).count(), 0, "previous executions cannot start another move");
+      await openFixture();
+      assert.equal(await table.locator(`[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "Move session", exact: true }).count(), 0, "previous executions cannot start another move");
       statusUnreadable = true;
-      await page.reload(); await openTable();
+      await page.reload(); await openFixture();
       await page.getByRole("alert").filter({ hasText: "Move status is unavailable" }).waitFor();
       assert.equal(await table.getByRole("button", { name: "Move session", exact: true }).isEnabled(), false, "unreadable recovery receipts disable new moves");
       assert.ok(guards.length > 0 && guards.every((value) => value === "1"));

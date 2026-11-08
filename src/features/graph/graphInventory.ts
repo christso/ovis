@@ -1,8 +1,10 @@
 import type { FlockRegistry } from "../../../shared/flock.ts";
 import { flockTarget, type FlockRow } from "../../../shared/flock-inventory.ts";
-import type { PaneTarget } from "../../../shared/machines.ts";
+import type { Machine, PaneTarget } from "../../../shared/machines.ts";
+import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
 import { knownStatus } from "../../lib/status.ts";
 import { flockHerdrEndpointKey, flockRelationships, flockRowRelationshipIds } from "../../../shared/flock-relationships.ts";
+import { graphExecutionName } from "./graphNames.ts";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
 const executionId = (row: FlockRow) => {
@@ -22,7 +24,7 @@ function endpointRowIndex(registry: FlockRegistry, rows: readonly FlockRow[]): M
 }
 
 /** A rendering adapter over the ONE shared inventory. Paths label physical metadata only. */
-export function graphInventory(registry: FlockRegistry | null, rows: readonly FlockRow[]): GraphData {
+export function graphInventory(registry: FlockRegistry | null, rows: readonly FlockRow[], machines: readonly Machine[] = [], labels: Readonly<Record<string, string>> = {}, t: Translate = defaultTranslate): GraphData {
   const nodes = new Map<string, GraphNode>();
   const edges: GraphEdge[] = [];
   const addEdge = (source: string, target: string, kind: GraphEdge["kind"], evidence: string) => edges.push({ id: JSON.stringify([source, target, kind]), source, target, kind, evidence });
@@ -35,22 +37,29 @@ export function graphInventory(registry: FlockRegistry | null, rows: readonly Fl
   }
   const checkouts = new Map((registry?.checkouts ?? []).map((checkout) => [checkout.id, checkout]));
   for (const row of rows) if (row.checkout) checkouts.set(row.checkout.id, row.checkout);
+  const checkoutIds = new Map<string, string>();
   for (const checkout of checkouts.values()) {
-    const id = `checkout:${checkout.id}`;
+    checkoutIds.set(checkout.id, `checkout:${JSON.stringify([checkout.machine_id, checkout.path, checkout.repository])}`);
+  }
+  for (const checkout of checkouts.values()) {
+    const id = checkoutIds.get(checkout.id)!;
+    if (nodes.has(id)) continue;
     nodes.set(id, { id, kind: "checkout", label: checkout.branch || checkout.path, machineId: checkout.machine_id, detail: checkout.path });
     if (checkout.repository) {
       const repositoryId = `repository:${JSON.stringify([checkout.machine_id, checkout.repository])}`;
-      nodes.set(repositoryId, { id: repositoryId, kind: "repository", label: checkout.repository, machineId: checkout.machine_id, detail: checkout.repository });
+      const worktree = machines.find((machine) => machine.id === checkout.machine_id)?.snapshot?.workspaces.find((workspace) => workspace.worktree?.repo_root === checkout.repository && workspace.worktree.repo_name)?.worktree;
+      const name = worktree?.repo_name || checkout.repository.split(/[\\/]/).filter(Boolean).at(-1) || checkout.repository;
+      nodes.set(repositoryId, { id: repositoryId, kind: "repository", label: name, repositoryKey: worktree?.repo_name || checkout.repository, machineId: checkout.machine_id, detail: checkout.repository });
       addEdge(id, repositoryId, "checkout-in-repository", `checkout.repository: ${checkout.repository}`);
     }
   }
   for (const row of rows) {
     if (!row.execution && row.session) continue;
     const id = executionId(row);
-    nodes.set(id, { id, kind: "execution", label: row.name, machineId: row.machine_id, status: flockTarget(row) ? knownStatus(row.pane?.agent_status ?? row.status) : "unknown", freshness: freshness(row),
+    nodes.set(id, { id, kind: "execution", label: graphExecutionName(row, machines, labels, t), machineId: row.machine_id, status: flockTarget(row) ? knownStatus(row.pane?.agent_status ?? row.status) : "unknown", freshness: freshness(row),
       detail: row.execution ? `${row.execution.agent} · ${row.execution.native_session_id}` : row.pane?.agent ?? "" });
     if (row.session) addEdge(id, `session:${row.session.id}`, "session-execution", `execution.session_id: ${row.session.id}`);
-    if (row.checkout) addEdge(id, `checkout:${row.checkout.id}`, "execution-in-checkout", row.execution ? `execution.checkout_id: ${row.execution.checkout_id}` : `inventory.checkout: ${row.checkout.path}`);
+    if (row.checkout) addEdge(id, checkoutIds.get(row.checkout.id)!, "execution-in-checkout", row.execution ? `execution.checkout_id: ${row.execution.checkout_id}` : `inventory.checkout: ${row.checkout.path}`);
   }
   const relations = registry ? flockRelationships(registry) : [];
   const rowsByEndpoint = registry && relations.length ? endpointRowIndex(registry, rows) : new Map<string, FlockRow[]>();
@@ -59,7 +68,7 @@ export function graphInventory(registry: FlockRegistry | null, rows: readonly Fl
       if (nodes.has(endpoint.id)) continue;
       const matches = rowsByEndpoint.get(endpoint.id) ?? [], current = matches.length === 1 ? matches[0] : undefined;
       const live = current && flockTarget(current) !== null;
-      nodes.set(endpoint.id, { id: endpoint.id, kind: "session", label: endpoint.label, machineId: endpoint.machine_id, detail: endpoint.native_session_id,
+      nodes.set(endpoint.id, { id: endpoint.id, kind: "session", label: live ? graphExecutionName(current, machines, labels, t) : endpoint.label, machineId: endpoint.machine_id, detail: endpoint.native_session_id,
         status: live ? knownStatus(current.pane?.agent_status ?? current.status) : "unknown", freshness: live ? "live" : current?.availability ?? "unavailable" });
       if (current && !current.session) addEdge(executionId(current), endpoint.id, "session-execution", endpoint.herdr ? `Herdr ${endpoint.herdr.agent_instance_id}` : `native_session_id: ${endpoint.native_session_id}`);
     }
