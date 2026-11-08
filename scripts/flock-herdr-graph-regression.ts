@@ -205,6 +205,13 @@ try {
       const details = page.getByRole("button", { name: "Details and help", exact: true });
       if (mobile && await details.getAttribute("aria-expanded") === "false") await details.click();
       await page.locator(".graph-relations li").filter({ hasText: "2 recorded events" }).filter({ hasText: "Herdr" }).waitFor();
+      await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === false, undefined, { timeout: 20000 });
+      await openWorkspace.click();
+      await page.waitForURL((url) => url.searchParams.get("machine") === "owned-destination" && url.searchParams.get("pane") === "owned:p0" && !url.searchParams.has("page"));
+      await changeView(page, "Graph", mobile); await node.waitFor();
+      assert.equal(await node.getAttribute("aria-pressed"), "true");
+      assert.equal(await node.getAttribute("transform"), position);
+      if (mobile && await details.getAttribute("aria-expanded") === "false") await details.click();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), "the integrated graph has no horizontal overflow");
       const controls = await page.evaluate(() => (window as unknown as { flockProof: { controls: string[] } }).flockProof.controls);
       assert.deepEqual(controls, [], "view changes, observations and transfer verification do not focus or type in a pane");
