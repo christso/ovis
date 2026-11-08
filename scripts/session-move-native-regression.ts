@@ -9,9 +9,8 @@ import { moveFlowFixture } from "../server/session-move/flow.fixture.ts";
 import { nativeFlowDriver } from "./session-move-native-fixture.ts";
 import { jsonResponse } from "../server/http.ts";
 import type { Machine } from "../shared/machines.ts";
-import { buildDemoApp } from "./demo-build.ts";
+import { buildSessionMoveFixture } from "./session-move-fixture-build.ts";
 import { chromePath } from "./chrome-path.ts";
-import { changeFlockMode } from "./flock-navigation.ts";
 
 const driver = nativeFlowDriver(), fixture = await moveFlowFixture(driver);
 const evidence = process.env["UI_EVIDENCE_DIR"];
@@ -27,7 +26,7 @@ let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 try {
   await driver.initialize(fixture.home, fixture.source, fixture.root);
-  await buildDemoApp(app);
+  await buildSessionMoveFixture(fixture.root, app);
   const index = join(app, "index.html");
   const harness = `<script>(() => {
     const network = window.moveNativeNetwork, demo = window.fetch;
@@ -42,7 +41,7 @@ try {
       setInterval(async()=>{const state=await(await network('/fixture/status')).json();panel.querySelector('#native-phase').textContent=state.phase;panel.querySelector('#native-proof').textContent=state.proof?JSON.stringify(state.proof,null,2):'';},350);
     });
   })();</script>`;
-  writeFileSync(index, readFileSync(index, "utf8").replace(/<script type="module"/, () => `<script>window.moveNativeNetwork=window.fetch.bind(window);</script><script src="./demo-transport.js"></script>${harness}<script type="module"`));
+  writeFileSync(index, readFileSync(index, "utf8").replace(/<script type="module"/, () => `<script>window.moveNativeNetwork=window.fetch.bind(window);</script>${harness}<script type="module"`));
   server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const url = new URL(request.url), path = url.pathname;
     if (path === "/api/machines") return jsonResponse({ machines: publicMachines() });
@@ -69,8 +68,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, locale: "en-US", ...(evidence ? { recordVideo: { dir: join(fixture.root, "video"), size: { width: 1600, height: 1000 } } } : {}) });
   const page = await context.newPage();
   await page.goto(server.url.origin);
-  await changeFlockMode(page, "Table");
-  const row = page.getByRole("row").filter({ hasText: "Owned logical session" });
+  const row = page.getByRole("region", { name: "Fixture sessions", exact: true }).locator("[data-row-id]").filter({ hasText: "Owned logical session" });
   await row.getByRole("button", { name: "Move session", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Move session", exact: true });
   await dialog.getByLabel("Destination PC", { exact: true }).selectOption("owned-destination");

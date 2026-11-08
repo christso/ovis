@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
-import type { FlockRow } from "../../shared/flock-inventory.ts";
-import { useT } from "../lib/i18n.ts";
-import { fetchSessionMoves, type SessionMoveState } from "../lib/sessionMoves.ts";
-import { FlockTable, type FlockTableProps } from "./FlockTable.tsx";
-import { SessionMoveDialog } from "./SessionMoveDialog.tsx";
+import type { FlockRow } from "../shared/flock-inventory.ts";
+import { useT } from "../src/lib/i18n.ts";
+import { fetchSessionMoves, type SessionMoveState } from "../src/lib/sessionMoves.ts";
+import type { FlockRegistry } from "../shared/flock.ts";
+import type { Machine, PaneTarget } from "../shared/machines.ts";
+interface MoveFixtureProps { registry: FlockRegistry | null; rows: readonly FlockRow[]; machines: readonly Machine[]; error: string | null; refresh(): Promise<void>; onOpenTarget(target: PaneTarget): void }
+import { SessionMoveDialog } from "../src/components/SessionMoveDialog.tsx";
 
 const unfinished = (state: SessionMoveState): boolean => state.record.phase !== "complete" && state.record.phase !== "cancelled";
 
 /** Transfer state stays outside App's view/navigation hooks and outside the logical registry. */
-export function MovableFlockTable(props: FlockTableProps) {
+export function SessionMoveFixtureControls(props: MoveFixtureProps) {
   const t = useT();
   const [moves, setMoves] = useState<SessionMoveState[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -56,14 +58,14 @@ export function MovableFlockTable(props: FlockTableProps) {
   const action = (row: FlockRow) => {
     const existing = moves.find((state) => unfinished(state) && (state.record.plan.request.source_execution_id === row.execution?.id || (state.record.plan.request.session_id === row.session?.id && row.session?.current_execution_id === row.execution?.id)));
     const current = !!row.execution && row.execution.agent === "codex" && row.session?.current_execution_id === row.execution.id && !!row.checkout;
-    if (!existing && !current) return props.executionAction?.(row) ?? null;
+    if (!existing && !current) return null;
     const connected = props.machines.some((machine) => machine.id === row.machine_id && machine.enabled && machine.state === "connected");
-    return <>{props.executionAction?.(row)}<button type="button" className="btn btn-ghost session-move-action" disabled={!loaded || statusError || (!existing && (!connected || !props.registry || !!props.error))} onClick={() => setSelected({ row, id: existing?.record.id ?? null })}><ArrowRightLeft size={14} aria-hidden="true" />{existing ? t("View move") : t("Move session")}</button></>;
+    return <><button type="button" className="btn btn-ghost session-move-action" disabled={!loaded || statusError || (!existing && (!connected || !props.registry || !!props.error))} onClick={() => setSelected({ row, id: existing?.record.id ?? null })}><ArrowRightLeft size={14} aria-hidden="true" />{existing ? t("View move") : t("Move session")}</button></>;
   };
   return <>
     {statusError && <p className="session-move-error" role="alert">{t("Move status is unavailable. Refresh before starting or retrying a move.")} <button type="button" className="btn btn-ghost" onClick={() => void read()}>{t("Refresh")}</button></p>}
     {moves.some(unfinished) && <aside className="session-move-pending" aria-label={t("Pending session moves")}><span>{t("Pending session moves")}</span>{moves.filter(unfinished).map((state) => <button key={state.record.id} type="button" className="btn btn-ghost" onClick={() => setSelected({ row: props.rows.find((row) => row.execution?.id === state.record.plan.request.source_execution_id) ?? null, id: state.record.id })}>{t("View move")}{" · "}{props.registry?.sessions.find((session) => session.id === state.record.plan.request.session_id)?.name ?? state.record.plan.request.session_id}</button>)}</aside>}
-    <FlockTable {...props} executionAction={action} />
+    <section aria-label="Fixture sessions">{props.rows.map((row) => <div key={row.id} data-row-id={row.id}><span>{row.name}</span>{action(row)}</div>)}</section>
     {selected && <SessionMoveDialog rows={props.rows} row={selectedRow} name={sessionName} machines={props.machines} state={active} statusError={statusError} onState={receive} onClose={close} onOpenTarget={props.onOpenTarget} />}
   </>;
 }

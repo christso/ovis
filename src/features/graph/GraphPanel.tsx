@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import type { FlockRegistry } from "../../../shared/flock.ts";
 import type { FlockRow } from "../../../shared/flock-inventory.ts";
 import type { Machine, PaneTarget } from "../../../shared/machines.ts";
 import { useT } from "../../lib/i18n.ts";
+import { shownTabLabels, subscribeTabLabels } from "../../lib/tabLabels.ts";
 import { graphInventory, graphTarget } from "./graphInventory.ts";
 import GraphView from "./GraphView.tsx";
 
@@ -13,7 +14,8 @@ export interface GraphPanelProps {
 
 export default function GraphPanel({ registry, rows, machines, error, refresh, onOpenTarget }: GraphPanelProps) {
   const t = useT();
-  const data = useMemo(() => graphInventory(registry, rows), [registry, rows]);
+  const labels = useSyncExternalStore(subscribeTabLabels, shownTabLabels);
+  const data = useMemo(() => graphInventory(registry, rows, machines, labels, t), [registry, rows, machines, labels, t]);
   const incomplete = machines.filter((machine) => machine.state !== "connected" || machine.snapshot === null);
   const target = (id: string) => error ? null : graphTarget(registry, rows, id);
   return <div className="graph-panel">

@@ -14,8 +14,6 @@ import { PANE_TABPANEL_ID, paneTabPanelLabel } from "./lib/paneRegion.ts";
 import { worktreeRepoName } from "./lib/composerStrip.ts";
 import { AccessGate } from "./components/AccessGate.tsx";
 import { GraphEntry } from "./features/graph/GraphEntry.tsx";
-import { FlockModes } from "./components/FlockModes.tsx";
-import { MovableFlockTable } from "./components/SessionMoveTable.tsx";
 import { useFlockView } from "./lib/flockView.ts";
 import { AgentMark } from "./components/AgentMark.tsx";
 import { NewSessionDialog } from "./components/NewSessionDialog.tsx";
@@ -593,9 +591,9 @@ export function App() {
   const moreItems: RowMenuItem[] = [
     // first at every width: a phone's header has no palette button, and a touch screen no shortcut
     { id: "palette", label: t("Search panes and actions"), icon: Search, ...(paletteKeys ? { hint: paletteKeys } : {}), run: () => openPalette() },
-    ...(selectedPane && !selectedPane.restore_error ? [{ id: "find", label: t("Find in terminal"), icon: Search, run: actions.openFind }] : []),
+    ...(flockView === "workspace" && selectedPane && !selectedPane.restore_error ? [{ id: "find", label: t("Find in terminal"), icon: Search, run: actions.openFind }] : []),
     // from 769px Files has its own button beside the lens switch; a phone keeps it here
-    ...(selectedPane && !wideScreen ? [{ id: "files", label: t("Browse files"), icon: FolderOpen, run: () => setFilesOpen(true) }] : []),
+    ...(flockView === "workspace" && selectedPane && !wideScreen ? [{ id: "files", label: t("Browse files"), icon: FolderOpen, run: () => setFilesOpen(true) }] : []),
     // the address says where the app is (lib/deepLink.ts); a phone has no address bar to copy it from
     { id: "copy-link", label: t("Copy link"), icon: Link, run: () => void copyText(window.location.href).then((ok) => { if (ok) setHeaderNote("copied"); }) },
     ...(bellVisible ? [{ id: "alerts", label: t("Alerts"), hint: bell.state, checked: bell.on, title: bell.title, icon: Bell, run: () => void bell.run() }] : []),
@@ -666,7 +664,7 @@ export function App() {
           </button>
         </div>
         <HeaderNote note={note} />
-        {note !== null ? null : selectedPane && crumb ? (
+        {note !== null ? null : flockView === "graph" ? <div className="context"><div className="context-title"><span className="context-title-text">{t("Flock")}</span></div></div> : selectedPane && crumb ? (
           <div className="context" title={crumb.tooltip}>
             <div className="context-title">
               {selectedAgent && <AgentMark agent={selectedAgent} size={18} />}
@@ -746,7 +744,7 @@ export function App() {
           <RowMenu
             anchor={more.anchor}
             title={t("More")}
-            header={crumb ? (
+            header={flockView === "workspace" && crumb ? (
               <div className="header-more-crumb">
                 <span>{crumb.place}</span>
                 {crumb.path !== null && <span className="header-more-path">{crumb.path}</span>}
@@ -777,7 +775,7 @@ export function App() {
         <OpenFileContext.Provider value={selectedPaneId !== null ? viewFile : null}>
         <WebPanelContext.Provider value={openWebPage}>
         <div className={`pane-column${chatShown ? " is-chat" : ""}`}>
-        {flockView !== "workspace" && <FlockModes view={flockView} onChange={setFlockView} />}
+
         {/* over the pane only: a bar across the window would cut the sidebar off from its top row in the header */}
         <UpdateNotice updates={updates} onOpen={() => { setSettingsSection("updates"); setSettingsOpen(true); }} />
         <TelemetryNotice enabled={locked === false} onOpen={() => { setSettingsSection("updates"); setSettingsOpen(true); }} />
@@ -799,7 +797,7 @@ export function App() {
           onPaired={() => void loadHealth()}
           onOpened={(paneId, agentStarted) => { if (agentStarted) actions.agentStarted("local", paneId); setupGuide.finish(() => selectTarget("local", paneId)); void load(); }} /></MachineContext.Provider>}
         {flockView === "graph" ? <GraphEntry auth={auth} registry={flock.registry} rows={flockRows} machines={machines} error={flock.error} refresh={flock.refresh} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />
-        : flockView === "table" ? (auth?.role === "watch" ? <p className="flock-note">{t("This device can only watch")}</p> : <MovableFlockTable registry={flock.registry} rows={flockRows} machines={machines} selected={selectedPaneId ? { machine_id: selectedMachineId, pane_id: selectedPaneId } : null} error={flock.error} refresh={flock.refresh} change={flock.change} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />)
+
         : guideShown ? null :
         <div ref={paneAreaRef} className={`pane-split${splitOn ? " is-split" : ""}`} onDragEnterCapture={paneDragOver} onDragOverCapture={paneDragOver} onDragLeave={paneDragLeave} onDropCapture={paneDrop}>
           {(["a", "b"] as const).map((slot) => {

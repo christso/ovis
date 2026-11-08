@@ -27,4 +27,5 @@ export const PALETTE_ZH: Record<string, string> = {
   "Folders": "文件夹",
   "Open in Files": "在文件中打开",
   "Pinned folders": "已固定的文件夹",
+  "Actions": "操作",
 };

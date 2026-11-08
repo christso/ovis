@@ -4,8 +4,10 @@ import { useT } from "../../lib/i18n.ts";
 import { copyText } from "../../lib/clipboard.ts";
 import { useMediaQuery } from "../../lib/useMediaQuery.ts";
 import { projectGraph, type GraphData, type GraphFilters } from "./graphModel.ts";
-import { fitGraph, reconcilePositions, zoomAt } from "./graphLayout.ts";
+import { fitGraph, zoomAt, type Viewport } from "./graphLayout.ts";
 import { GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
+import { useGraphSimulation } from "./useGraphSimulation.ts";
+import { graphAppearance } from "./graphAppearance.ts";
 import { GraphSurface } from "./GraphSurface.tsx";
 import { useGraphState } from "./useGraphState.ts";
 import "./GraphView.css";
@@ -23,6 +25,12 @@ export interface GraphViewProps {
 export default function GraphView({ data, onOpenNode, canOpenNode, error, machineNames }: GraphViewProps) {
   const t = useT();
   const [state, setState, saved] = useGraphState();
+  const [viewport, setViewport] = useState(state.viewport);
+  useEffect(() => setViewport(state.viewport), [state.viewport]);
+  const updateViewport = (next: Viewport, commit = true) => {
+    setViewport(next);
+    if (commit) setState((previous) => ({ ...previous, viewport: next }));
+  };
   const compact = useMediaQuery("(max-width: 700px)");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -30,36 +38,30 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent"].filter(Boolean).length;
   const host = useRef<HTMLDivElement>(null);
   const fitted = useRef(saved);
-  const readableStart = useRef(!saved);
-  const positions = useMemo(() => reconcilePositions(data.nodes, state.positions, state.groupMachine), [data.nodes, state.positions, state.groupMachine]);
+  const [reset, setReset] = useState(0);
   const view = useMemo(() => projectGraph(data, state.filters), [data, state.filters]);
+  const { positions, move, endDrag, layoutReset } = useGraphSimulation(view, state.positions, state.groupMachine, reset, (settled) => setState((previous) => ({ ...previous, positions: { ...previous.positions, ...settled } })));
+  const appearance = useMemo(() => graphAppearance(data), [data]);
+  const repositories = [...new Map(data.nodes.filter((node) => node.kind === "repository").map((node) => [appearance.get(node.id)!.repository, node])).values()];
   const selected = data.nodes.find((node) => node.id === state.selected);
   const focusNodes = data.nodes.filter((node) => ["repository", "session", "work"].includes(node.kind) || node.id === state.filters.focus);
   const machines = [...new Set(data.nodes.flatMap((node) => node.machineId ? [node.machineId] : []))].sort();
-  useEffect(() => {
-    if (Object.keys(positions).length !== Object.keys(state.positions).length) setState((previous) => ({ ...previous, positions }));
-  }, [positions, state.positions, setState]);
   const fit = () => {
     const surface = host.current?.querySelector("svg.graph-surface");
     if (!surface) return;
     const box = surface.getBoundingClientRect();
-    setState((previous) => ({ ...previous, viewport: fitGraph(view.nodes.map((node) => positions[node.id]!), box.width, box.height) }));
+    updateViewport(fitGraph(view.nodes.flatMap((node) => positions[node.id] ? [positions[node.id]!] : []), box.width, box.height));
   };
   useEffect(() => {
-    if (fitted.current || !view.nodes.length) return;
+    if (layoutReset !== reset || fitted.current || !view.nodes.length || !view.nodes.every((node) => positions[node.id])) return;
     fitted.current = true;
-    if (compact && readableStart.current) {
-      const node = view.nodes.find((node) => node.id === state.selected) ?? view.nodes.find((node) => node.kind === "session") ?? view.nodes[0]!;
-      const point = positions[node.id]!;
-      const box = host.current!.querySelector("svg.graph-surface")!.getBoundingClientRect();
-      setState((previous) => ({ ...previous, viewport: { x: box.width / 2 - point.x, y: box.height / 2 - point.y, k: 1 } }));
-    } else fit();
-    readableStart.current = false;
+    fit();
   });
+
   const filter = (patch: Partial<GraphFilters>) => setState((previous) => ({ ...previous, filters: { ...previous.filters, ...patch } }));
   const zoom = (factor: number) => {
     const box = host.current?.querySelector("svg.graph-surface")?.getBoundingClientRect();
-    if (box) setState((previous) => ({ ...previous, viewport: zoomAt(previous.viewport, factor, box.width / 2, box.height / 2) }));
+    if (box) updateViewport(zoomAt(viewport, factor, box.width / 2, box.height / 2));
   };
   return <section className="graph-view" aria-label={t("Graph")} ref={host}>
     <div className="graph-controls">
@@ -87,22 +89,24 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
       <label className="graph-check"><input type="checkbox" checked={state.groupMachine} onChange={(event) => {
         const groupMachine = event.target.checked;
         fitted.current = false;
-        setState((previous) => ({ ...previous, groupMachine, positions: reconcilePositions(data.nodes, {}, groupMachine) }));
+        setState((previous) => ({ ...previous, groupMachine }));
+        setReset((value) => value + 1);
       }} />{t("Group by machine")}</label>
       </div>
     </div>
     {error && <p className="graph-warning" role="status">{error}</p>}
     <div className="graph-body">
       <div className="graph-stage">
-        <GraphSurface nodes={view.nodes} edges={view.edges} positions={positions} viewport={state.viewport} selected={state.selected}
-          onSelect={(selected) => setState((previous) => ({ ...previous, selected }))} onViewport={(viewport) => setState((previous) => ({ ...previous, viewport }))}
-          onMove={(id, point) => setState((previous) => ({ ...previous, positions: { ...previous.positions, [id]: point } }))} onFit={fit} />
+        <div className="graph-repository-legend" aria-label={t("Repository")}>{repositories.map((node) => <span key={node.id}><i style={{ background: appearance.get(node.id)!.colour }} />{node.label}</span>)}</div>
+        <GraphSurface nodes={view.nodes} edges={view.edges} positions={positions} viewport={viewport} selected={state.selected}
+          onSelect={(selected) => setState((previous) => ({ ...previous, selected }))} onViewport={updateViewport}
+          onMove={move} onEndMove={endDrag} onFit={fit} />
         {!view.nodes.length && <p className="graph-empty" role="status">{view.focusMissing ? t("This graph focus is unavailable.") : t("No graph nodes match these filters.")}</p>}
         <div className="graph-tools" role="group" aria-label={t("Graph viewport")}>
           <button type="button" title={t("Zoom in")} aria-label={t("Zoom in")} onClick={() => zoom(1.25)}><Plus size={18} /></button>
           <button type="button" title={t("Zoom out")} aria-label={t("Zoom out")} onClick={() => zoom(0.8)}><Minus size={18} /></button>
           <button type="button" title={t("Fit graph")} aria-label={t("Fit graph")} onClick={fit}><Focus size={18} /></button>
-          <button type="button" className="graph-reset" title={t("Reset graph layout")} aria-label={t("Reset graph layout")} onClick={() => { setState((previous) => ({ ...previous, positions: reconcilePositions(data.nodes, {}, previous.groupMachine) })); fitted.current = false; }}><RotateCcw size={18} aria-hidden="true" />{t("Reset")}</button>
+          <button type="button" className="graph-reset" title={t("Reset graph layout")} aria-label={t("Reset graph layout")} onClick={() => { fitted.current = false; setReset((value) => value + 1); }}><RotateCcw size={18} aria-hidden="true" />{t("Reset")}</button>
           <button type="button" title={t("Copy graph link")} aria-label={t("Copy graph link")} onClick={() => { void copyText(window.location.href); }}><Link size={18} /></button>
         </div>
       </div>

@@ -20,17 +20,17 @@
 .graph-muted { opacity: 0.22; }
 .graph-edge.graph-related line { stroke: var(--accent); stroke-width: 2.5; }
 .graph-node { cursor: pointer; }
-.graph-node rect { fill: var(--bg-panel); stroke: var(--border-strong); stroke-width: 1.5; }
-.graph-node.graph-related rect { stroke: var(--accent); stroke-width: 2; }
-.graph-node:hover rect, .graph-node:focus-visible rect, .graph-node.graph-selected rect { stroke: var(--accent); stroke-width: 3; }
+.graph-node-hit { fill: transparent; stroke: none; }
+.graph-node-disc { fill: var(--repository-colour); stroke: var(--bg); stroke-width: 2; }
+.graph-node.graph-related .graph-node-disc { stroke: var(--text-strong); }
+.graph-node:hover .graph-node-disc, .graph-node:focus-visible .graph-node-disc, .graph-node.graph-selected .graph-node-disc { stroke: var(--text-strong); stroke-width: 3; }
 .graph-node:focus { outline: none; }
-.graph-node-label { fill: var(--text-strong); font-size: 13px; font-family: var(--font-ui); }
-.graph-node-kind { fill: var(--text-dim); font-size: 11px; font-family: var(--font-ui); }
-.graph-status-icon { color: var(--text-dim); }
+.graph-node-label { fill: var(--text-strong); font-size: 12px; font-family: var(--font-ui); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.graph-status-icon { color: var(--text-dim); background: var(--bg); fill: var(--bg); }
 .graph-status-waiting .graph-status-icon, .graph-status-working .graph-status-icon { color: var(--status-working); }
 .graph-status-blocked .graph-status-icon { color: var(--status-blocked); }
 .graph-status-done .graph-status-icon { color: var(--status-done); }
-.graph-stale rect { stroke-dasharray: 4 3; }
+.graph-stale .graph-node-disc { stroke-dasharray: 4 3; }
 .graph-tools { position: absolute; display: flex; gap: 4px; left: 12px; bottom: 12px; max-width: calc(100% - 24px); flex-wrap: wrap; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); }
 .graph-tools button { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--text); border: 0; border-radius: 5px; background: var(--bg-panel); }
 .graph-tools button:hover { background: var(--bg-hover); }
@@ -75,3 +75,7 @@
 }
 
 .graph-tools button.graph-reset { display: flex; align-items: center; justify-content: center; gap: 4px; width: auto; padding: 0 8px; font: inherit; font-size: 12px; }
+
+.graph-repository-legend { position: absolute; z-index: 1; top: 12px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; pointer-events: none; font-size: 12px; color: var(--text-dim); }
+.graph-repository-legend span { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.graph-repository-legend i { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }

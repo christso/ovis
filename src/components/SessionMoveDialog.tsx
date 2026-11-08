@@ -166,7 +166,7 @@ export function SessionMoveDialog({ row, rows, name, machines, state, statusErro
         {!destinations.length && <p className="session-move-note">{t("Connect another configured PC to move this session.")}</p>}
         {record && <>
           <p className="session-move-progress" role="status" aria-live="polite">{movePhaseWord(record.phase, t)}{running ? "…" : ""}</p>
-          {running && <p className="session-move-note">{t("You can close this dialog and reopen the move from Table.")}</p>}
+          {running && <p className="session-move-note">{t("You can close this dialog while the transfer continues.")}</p>}
           {uncertain(record.phase) && !running && <p className="session-move-native">{t("A destination launch may already exist. Check its status before continuing; Ovis will not start another copy.")}</p>}
           {record.phase === "complete" ? <><p>{t("Native history was verified and the new execution was recorded. The source copy was retained.")}</p>{!destinationReported && <p className="session-move-note">{t("Waiting for the destination PC to report the resumed session.")}</p>}</> : <>
             {candidates.length > 0 && <fieldset className="session-move-untracked" disabled={!editable || pending || running}><legend>{t("Untracked work files")}</legend><p className="session-move-note">{t("Only the individual files you select are included.")}</p>{candidates.map((path) => <label key={path}><input type="checkbox" checked={untracked.includes(path)} onChange={(event) => setUntracked((current) => event.target.checked ? [...current, path] : current.filter((item) => item !== path))} /><span>{path}</span></label>)}</fieldset>}

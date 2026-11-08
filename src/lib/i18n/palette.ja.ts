@@ -27,4 +27,5 @@ export const PALETTE_JA: Record<string, string> = {
   "Folders": "フォルダ",
   "Open in Files": "ファイルで開く",
   "Pinned folders": "固定したフォルダ",
+  "Actions": "操作",
 };

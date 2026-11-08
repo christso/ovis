@@ -112,7 +112,7 @@ export function readLink(search: string): AppLink {
     workspaceSlug: ws && cut > 0 ? named(ws.slice(cut + 1)) : null,
     pane: named(query.get("pane")),
     view: view === "chat" || view === "terminal" ? view : null,
-    ...(page === "graph" || page === "table" ? { page } : {}),
+    ...(page === "graph" || page === "table" ? { page: "graph" as const } : {}),
     file: named(query.get("file")),
     settings,
     section: settings ? named(query.get("section")) : null,

@@ -19,6 +19,7 @@ try {
   server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === "/favicon.ico") return new Response(null, { status: 204 });
+    if (url.pathname === "/storage.html") return new Response("<!doctype html><title>Fixture state setup</title>", { headers: { "content-type": "text/html" } });
     if (url.pathname.startsWith("/api")) throw new Error("Graph fixture must not discover sources");
     return new Response(Bun.file(join(output, url.pathname === "/" ? "index.html" : url.pathname.slice(1))));
   } });
@@ -36,6 +37,7 @@ try {
       await page.goto(`http://127.0.0.1:${server.port}`);
       const node = page.locator('[data-graph-node="session"]');
       await node.waitFor();
+      assert.ok(await page.locator(".graph-node-label").evaluateAll((labels) => labels.length > 0 && labels.every((label) => { const matrix = (label as SVGTextElement).getScreenCTM()!; return parseFloat(getComputedStyle(label).fontSize) * Math.hypot(matrix.a, matrix.b) >= 11.99; })), "visible labels keep a readable screen size at every viewport scale");
       const reset = page.getByRole("button", { name: "Reset graph layout", exact: true });
       assert.equal(await reset.innerText(), "Reset", "layout reset has a visible text label");
       const filters = page.getByRole("button", { name: /^Graph filters/ });
@@ -151,7 +153,7 @@ try {
       stage = "overview tap";
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
       await node.scrollIntoViewIfNeeded();
-      const sessionBox = await node.boundingBox(); assert.ok(sessionBox);
+      const sessionBox = await node.locator(".graph-node-disc").boundingBox(); assert.ok(sessionBox);
       if (mobile) {
         stage = "pinch cancel";
         await page.touchscreen.tap(sessionBox.x + sessionBox.width / 2, sessionBox.y + sessionBox.height / 2);
@@ -245,7 +247,7 @@ try {
       const resetDefaults = await page.locator("[data-graph-node]").evaluateAll((nodes) => Object.fromEntries(nodes.map((node) => [node.getAttribute("data-graph-node"), node.getAttribute("transform")])));
       await node.focus(); await page.keyboard.press("Enter");
       const beforeReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
-      const dragBox = (await node.boundingBox())!;
+      const dragBox = (await node.locator(".graph-node-disc").boundingBox())!;
       const start = { x: dragBox.x + dragBox.width / 2, y: dragBox.y + dragBox.height / 2 };
       if (mobile) {
         const cdp = await context.newCDPSession(page);
@@ -292,6 +294,14 @@ try {
         assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), afterPinch, "a fresh drag works after pinch cancellation");
         await cdp.detach();
       }
+      await page.goto(`http://127.0.0.1:${server.port}/storage.html`);
+      await page.evaluate(() => localStorage.setItem("ovis:graph:v1", JSON.stringify({ version: 1, selected: "session", filters: { search: "prune", status: "", machine: "", focus: "", showCompleted: false, communication: "recent" }, groupMachine: false, positions: { session: { x: 9999, y: 9999 } }, viewport: { x: 1, y: 2, k: 1 } })));
+      await page.goto(`http://127.0.0.1:${server.port}`); await node.waitFor();
+      assert.equal(await node.getAttribute("aria-pressed"), "true", "column-layout migration preserves selected identity");
+      assert.equal(await page.getByLabel("Search graph", { exact: true }).inputValue(), "prune", "column-layout migration preserves filters");
+      const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+      assert.equal(migrated.layout, "force");
+      assert.notDeepEqual(migrated.positions.session, { x: 9999, y: 9999 }, "the retired column positions receive a natural layout once");
       await page.evaluate(() => localStorage.setItem("ovis:graph:v1", '{"version":99,"future":"keep"}'));
       await page.reload();
       await page.getByLabel("Search graph", { exact: true }).fill("future reader");
@@ -308,6 +318,120 @@ try {
       throw error;
     } finally { await context.close(); }
   }
+  // Exercise the animated D3 path separately from the reduced-motion accessibility matrix.
+  const motion = await browser.newContext({ viewport: { width: 1280, height: 844 }, reducedMotion: "no-preference", locale: "en-US" });
+  try {
+    const page = await motion.newPage(); page.setDefaultTimeout(15000);
+    await page.goto(`http://127.0.0.1:${server.port}`);
+    const node = page.locator('[data-graph-node="session"]'), neighbour = page.locator('[data-graph-node="execution"]');
+    await node.waitFor();
+    const colour = (id: string) => page.locator(`[data-graph-node="${id}"] .graph-node-disc`).evaluate((disc) => getComputedStyle(disc).fill);
+    assert.equal(await colour("repo"), await colour("checkout"));
+    assert.equal(await colour("checkout"), await colour("execution"));
+    assert.notEqual(await colour("repo"), await colour("harbour"));
+    assert.ok(Number(await page.locator('[data-graph-node="checkout"]').getAttribute("data-radius")) > Number(await page.locator('[data-graph-node="repo"]').getAttribute("data-radius")));
+    const box = (await node.locator(".graph-node-disc").boundingBox())!;
+    const before = await neighbour.getAttribute("transform");
+    const storedBefore = await page.evaluate(() => localStorage.getItem("ovis:graph:v1"));
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 60, { steps: 8 });
+    await page.waitForFunction((before) => document.querySelector('[data-graph-node="execution"]')?.getAttribute("transform") !== before, before);
+    assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v1")), storedBefore, "animated ticks do not persist unfinished coordinates");
+    const held = await node.getAttribute("transform");
+    await page.getByRole("button", { name: "Add neighbour", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+    await page.locator('[data-graph-node="new-neighbour"]').waitFor();
+    const coordinates = (value: string) => value.match(/[-\d.]+/g)!.map(Number);
+    const [oldX, oldY] = coordinates(held!), [newX, newY] = coordinates((await node.getAttribute("transform"))!);
+    assert.ok(Math.hypot(newX! - oldX!, newY! - oldY!) < 45, "a topology update starts from visible dragged coordinates instead of the older saved frame");
+    const heldAfterTopology = await page.evaluate(async (expected) => {
+      const node = document.querySelector('[data-graph-node="session"]')!, neighbour = document.querySelector('[data-graph-node="new-neighbour"]')!;
+      const before = neighbour.getAttribute("transform"); let frames = 0, drift = false;
+      await new Promise<void>((resolve) => { const frame = () => { frames++; drift ||= node.getAttribute("transform") !== expected; if (frames >= 24) resolve(); else requestAnimationFrame(frame); }; requestAnimationFrame(frame); });
+      return { drift, neighbourMoved: neighbour.getAttribute("transform") !== before };
+    }, held!);
+    assert.equal(heldAfterTopology.drift, false, "a held drag remains pinned under the cursor through topology replacement and subsequent simulation frames");
+    assert.equal(heldAfterTopology.neighbourMoved, true, "the new force simulation actually advances while preserving the dragged pin");
+    await page.mouse.up();
+    const released = await page.evaluate(() => { const point = JSON.parse(localStorage.getItem("ovis:graph:v1")!).positions.session; return `translate(${point.x} ${point.y})`; });
+    await page.getByRole("button", { name: "Switch view", exact: true }).click();
+    await page.getByRole("button", { name: "Switch view", exact: true }).click(); await node.waitFor();
+    assert.equal(await node.getAttribute("transform"), released, "a normal-motion drag checkpoints at release so an immediate view departure preserves the released layout");
+    // The remount intentionally stops at its saved checkpoint; resume a real gesture to prove cooling.
+    const resumed = (await node.locator(".graph-node-disc").boundingBox())!;
+    await page.mouse.move(resumed.x + resumed.width / 2, resumed.y + resumed.height / 2); await page.mouse.down();
+    await page.mouse.move(resumed.x + resumed.width / 2 + 40, resumed.y + resumed.height / 2 + 20, { steps: 4 }); await page.mouse.up();
+    const settled = async () => page.evaluate(async () => {
+      const began = performance.now(); let stableFrames = 0, last = "";
+      await new Promise<void>((resolve, reject) => {
+        const frame = () => {
+          const saved = JSON.parse(localStorage.getItem("ovis:graph:v1") ?? "null"), nodes = [...document.querySelectorAll("[data-graph-node]")];
+          const signature = nodes.map((node) => node.getAttribute("transform")).join("|");
+          const matches = saved && nodes.every((node) => { const point = saved.positions[node.getAttribute("data-graph-node")!]; return point && node.getAttribute("transform") === `translate(${point.x} ${point.y})`; });
+          stableFrames = matches && signature === last ? stableFrames + 1 : 0; last = signature;
+          if (stableFrames >= 12) resolve();
+          else if (performance.now() - began > 15000) reject(new Error("Animated graph did not settle to its persisted frame"));
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      });
+    });
+    await settled();
+    const stable = await page.evaluate(async () => {
+      const svg = document.querySelector(".graph-surface")!, nodes = [...svg.querySelectorAll("[data-graph-node]")], frame = svg.querySelector(":scope > g")!.getAttribute("transform");
+      const positions = nodes.map((node) => node.getAttribute("transform"));
+      [...document.querySelectorAll('nav button')].find((button) => button.textContent === 'Live update')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      let frames = 0, changed = false;
+      await new Promise<void>((resolve) => { const check = () => { frames++; changed ||= document.querySelector(".graph-surface") !== svg || nodes.some((node, index) => !node.isConnected || node.getAttribute("transform") !== positions[index]) || svg.querySelector(":scope > g")!.getAttribute("transform") !== frame; if (frames >= 80) resolve(); else requestAnimationFrame(check); }; requestAnimationFrame(check); });
+      return { changed, frames };
+    });
+    assert.equal(stable.changed, false, "settled status/order polling never reheats, remounts, jitters or refits the graph");
+    await page.getByRole("button", { name: "Reset graph layout", exact: true }).click(); await settled();
+    const savedReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+    await page.reload(); await node.waitFor();
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!).positions), savedReset.positions, "settled reset survives reload without a simulation restart");
+    console.log("PASS animated graph: repository colours, distinct-neighbour radius, connected drag, topology continuity, settled polling, deferred persistence, reset/reload");
+  } finally { await motion.close(); }
+
+  const dense = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce", locale: "en-US" });
+  try {
+    const page = await dense.newPage(); page.setDefaultTimeout(15000);
+    const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${server.port}?dense=1`);
+    await page.waitForFunction(() => document.querySelectorAll("[data-graph-node]").length === 150);
+    const labels = await page.locator(".graph-node-label").evaluateAll((labels) => labels.map((label) => { const box = label.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }; }));
+    assert.ok(labels.length >= 5, "dense overview retains meaningful readable labels");
+    for (const [index, a] of labels.entries()) for (const b of labels.slice(index + 1)) assert.ok(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top, "shown dense overview labels do not overlap");
+    assert.equal(await page.locator(".graph-repository-legend span").count(), 5);
+    if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "graph-dense-390-overview.png") });
+    const surface = page.locator(".graph-surface");
+    const beforePan = await surface.locator(":scope > g").getAttribute("transform");
+    await surface.focus(); await page.keyboard.press("ArrowRight");
+    assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), beforePan);
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await page.getByRole("button", { name: "Fit graph", exact: true }).click();
+    await page.getByRole("button", { name: /^Graph filters/ }).click();
+    await page.getByRole("combobox", { name: "Inspect node", exact: true }).selectOption("dense-agent-0-0");
+    await page.getByRole("button", { name: /^Graph filters/ }).click();
+    const node = page.locator('[data-graph-node="dense-agent-0-0"]');
+    assert.equal(await node.getAttribute("aria-pressed"), "true");
+    const beforeDrag = await node.getAttribute("transform"), box = (await node.locator(".graph-node-disc").boundingBox())!;
+    const cdp = await dense.newCDPSession(page), x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + 40, y: y + 30 }] });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await cdp.detach();
+    assert.notEqual(await node.getAttribute("transform"), beforeDrag, "a dense phone graph still supports node dragging");
+    const snapshot = await page.locator("[data-graph-node]").evaluateAll((nodes) => nodes.map((node) => [node.getAttribute("data-graph-node"), node.getAttribute("transform")]));
+    const frame = await surface.locator(":scope > g").getAttribute("transform");
+    await page.getByRole("button", { name: "Live update", exact: true }).click();
+    assert.deepEqual(await page.locator("[data-graph-node]").evaluateAll((nodes) => nodes.map((node) => [node.getAttribute("data-graph-node"), node.getAttribute("transform")]).sort()), snapshot.sort(), "dense status/order polling preserves settled positions");
+    assert.equal(await surface.locator(":scope > g").getAttribute("transform"), frame);
+    assert.equal(await node.getAttribute("aria-pressed"), "true");
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "graph-dense-390-selected.png") });
+    assert.deepEqual(errors, []);
+    console.log("PASS dense 150-node / 5-repository fictional phone graph: readable non-overlapping overview labels, pan/zoom/select/touch drag, settled polling and no overflow");
+  } finally { await dense.close(); }
+
 } finally {
   await browser?.close(); server?.stop(); rmSync(root, { recursive: true, force: true });
 }

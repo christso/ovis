@@ -12,7 +12,7 @@ import { flockBinding } from "../shared/flock-inventory.ts";
 import { FlockStore, handleFlockRequest } from "../server/flock.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
-import { changeFlockMode, openFlock, openNativeAgent } from "./flock-navigation.ts";
+import { openFlock, openNativeAgent } from "./flock-navigation.ts";
 
 const videoDir = process.env.GRAPH_VIDEO_DIR;
 const testedSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -24,7 +24,7 @@ const root = mkdtempSync(join(tmpdir(), "ovis-graph-app-")), app = join(root, "a
 const original = structuredClone(fixture.machines[0]) as Machine;
 const chosen = original.snapshot!.panes.find((pane) => pane.agent === "codex")!;
 original.snapshot!.panes = [chosen]; original.snapshot!.herdr_lifetime = "graph-owned-local";
-// Explicit fictional proof stands in for Table's native reader; the ordinary roster below omits it.
+// Explicit fictional proof stands in for the native reader; the ordinary roster below omits it.
 chosen.terminal_id = "graph-terminal-local";
 const nativeSourceId = "11111111-1111-4111-8111-111111111111", nativeChildId = "22222222-2222-4222-8222-222222222222";
 original.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: chosen.terminal_id, agent: chosen.agent!, native_session_id: nativeSourceId }];
@@ -93,8 +93,7 @@ try {
     const errors: string[] = [], assets: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message)); page.on("request", (request) => { if (request.url().includes("GraphPanel-")) assets.push(request.url()); });
     const base = `http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/`;
-    const modes = page.getByRole("group", { name: "Flock view", exact: true });
-    const openGraph = () => changeFlockMode(page, "Graph");
+    const openGraph = () => openFlock(page);
     const node = () => page.locator(`[data-graph-node="${sessionId}"]`);
     const options = async (open: boolean) => {
       const button = page.getByRole("button", { name: /^Graph filters/ });
@@ -111,31 +110,37 @@ try {
       if (width >= 980) await page.getByRole("button", { name: "Browse files", exact: true }).waitFor();
       const beforePane = new URL(page.url()).searchParams.get("pane");
       await openFlock(page);
-      await page.getByRole("region", { name: "Table", exact: true }).waitFor();
-      assert.equal(await modes.getByRole("button", { name: "Table", exact: true }).getAttribute("aria-pressed"), "true", "Flock defaults to Table");
+      await node().waitFor();
+      assert.equal(await page.getByRole("group", { name: "Flock view", exact: true }).count(), 0, "Flock opens the graph directly without a mode selector");
       assert.equal(await page.getByRole("banner").count(), 1, "Flock keeps one global app banner");
-      assert.equal(await page.getByRole("group", { name: "Pane view", exact: true }).count(), 0, "Flock exposes only its Table/Graph modes");
+      assert.equal(await page.locator(".app-header .context-title-text").innerText(), "Flock", "the global header names the active graph");
+      await page.getByRole("button", { name: /^More(?: · alerts are off)?$/ }).click();
+      assert.equal(await page.getByRole("menuitem", { name: "Find in terminal", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("menuitem", { name: "Browse files", exact: true }).count(), 0);
+      await page.keyboard.press("Escape");
+      assert.equal(await page.getByRole("group", { name: "Pane view", exact: true }).count(), 0, "Flock hides pane-only controls");
       assert.equal(await page.getByRole("button", { name: "Browse files", exact: true }).count(), 0, "pane-only Files control stays with the workspace");
       assert.equal(await page.locator(".agents-sidebar").count(), 1, "only the native Agents section exists");
       assert.equal(await page.getByRole("navigation", { name: "Views", exact: true }).count(), 0, "no duplicate global view navigation");
       if (mobile) assert.ok(!(await page.locator("#workspace-drawer").getAttribute("class"))?.includes("is-open"), "Flock closes the phone drawer");
-      assert.equal(assets.length, 0, "opening Table does not load Graph");
+      assert.ok(assets.length > 0, "opening Flock lazily loads Graph");
       await openGraph(); await node().waitFor(); assert.ok(assets.length > 0, "Graph is a lazy chunk");
       await openNativeAgent(page, "local", chosen.pane_id);
       await page.waitForURL((url) => !url.searchParams.has("page"));
       await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
+      assert.notEqual(await page.locator(".app-header .context-title-text").innerText(), "Flock", "native pane selection restores its title");
       if (width >= 980) await page.getByRole("button", { name: "Browse files", exact: true }).waitFor();
       await openFlock(page); await node().waitFor();
-      assert.equal(await modes.getByRole("button", { name: "Graph", exact: true }).getAttribute("aria-pressed"), "true", "Flock remembers Graph after native pane selection");
+      assert.equal(new URL(page.url()).searchParams.get("page"), "graph");
       if (mobile) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
       await page.getByRole("region", { name: `PC ${original.name}`, exact: true }).locator(`.workspace-select[data-pane="${chosen.pane_id}"]`).click();
       await page.waitForURL((url) => !url.searchParams.has("page"));
       await openFlock(page); await node().waitFor();
-      assert.equal(await modes.getByRole("button", { name: "Graph", exact: true }).getAttribute("aria-pressed"), "true", "native workspace selection returns to Workspace and keeps the last Flock mode");
+      assert.equal(new URL(page.url()).searchParams.get("page"), "graph");
       assert.equal(await page.getByRole("button", { name: "Flock", exact: true, includeHidden: true }).getAttribute("aria-current"), "page");
       assert.equal(new URL(page.url()).searchParams.get("pane"), beforePane);
       await page.getByText(/Inventory is incomplete for:.*Graph awaiting inventory/).waitFor();
-      await inspect(sessionId); const position = await node().getAttribute("transform");
+      await inspect(sessionId);
       await page.locator(".graph-edge-delegation").waitFor({ state: "attached" });
       assert.equal(await page.locator(".graph-edge-communication").count(), 1, "repeated native sends update one connection");
       assert.ok(await page.locator(".graph-edge-delegation line").getAttribute("marker-end"), "observed delegation shows direction");
@@ -181,7 +186,7 @@ try {
       await page.getByRole("combobox", { name: "Focus graph", exact: true }).selectOption("");
       await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("");
       await options(false);
-      await changeFlockMode(page, "Table");
+      await openNativeAgent(page, "local", chosen.pane_id);
       await openGraph();
       await node().waitFor(); assert.equal(await node().getAttribute("aria-pressed"), "true");
       assert.equal(await page.getByLabel("Search graph", { exact: true }).inputValue(), "Prune orchard");
@@ -198,7 +203,7 @@ try {
       await page.locator(`[data-graph-node="execution:${store.read().sessions[0]!.current_execution_id}"]`).waitFor();
       assert.equal(store.read().observations?.length, 3, "replaying the copied rollout on its destination does not import receipts twice");
       assert.equal(await page.locator(".graph-edge-communication").count(), 1, "the logical connection survives a move without duplicate links");
-      assert.equal(await node().getAttribute("transform"), position, "execution move preserves logical node layout");
+      assert.equal(await node().getAttribute("aria-pressed"), "true", "execution changes preserve logical selection");
       if (width >= 980) {
         const withFile = new URL(page.url()); withFile.searchParams.delete("page"); withFile.searchParams.set("file", "README.md");
         await page.goto(withFile.href);
@@ -228,8 +233,8 @@ try {
       assert.equal(new URL(linked.url()).searchParams.get("page"), "graph", "a copied Graph link lands on Graph even after a different terminal was selected");
       assert.equal(new URL(linked.url()).searchParams.get("machine"), null);
       await linked.goto(`${base}?page=table&pane=${encodeURIComponent(chosen.pane_id)}&view=terminal`);
-      await linked.getByRole("region", { name: "Table", exact: true }).waitFor();
-      assert.equal(new URL(linked.url()).searchParams.get("pane"), chosen.pane_id, "Table deep links retain the pane target");
+      await linked.getByRole("region", { name: "Graph", exact: true }).waitFor();
+      assert.equal(new URL(linked.url()).searchParams.get("pane"), chosen.pane_id, "legacy Table deep links map to Graph and retain the pane target");
       await linked.goto(`${base}?page=agents&pane=${encodeURIComponent(chosen.pane_id)}&view=terminal`);
       await linked.waitForURL((url) => !url.searchParams.has("page"));
       assert.equal(new URL(linked.url()).searchParams.get("pane"), chosen.pane_id, "legacy Agents links keep the pane target");
@@ -243,7 +248,7 @@ try {
       machines[1]!.state = "disconnected";
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       await page.waitForFunction(() => (document.querySelector('.graph-details button') as HTMLButtonElement)?.disabled === true);
-      assert.equal(await node().getAttribute("transform"), position, "disconnect leaves layout intact");
+      assert.equal(await node().getAttribute("aria-pressed"), "true", "disconnect preserves logical selection");
       machines[1]!.state = "connected"; machines[1]!.snapshot!.panes[0]!.terminal_id = "graph-reused-terminal";
       machines[1]!.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: "graph-reused-terminal", agent: chosen.agent!, native_session_id: "reused-native" }];
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
@@ -259,7 +264,7 @@ try {
       future = false; await page.getByRole("button", { name: "Refresh", exact: true }).click(); await node().waitFor();
       // Browser history restores the Graph page and its filters, without selecting Herdr focus.
       await page.getByLabel("Search graph", { exact: true }).fill("Prune orchard");
-      await changeFlockMode(page, "Table");
+      await openNativeAgent(page, "local", chosen.pane_id);
       await page.goBack(); await node().waitFor();
       assert.equal(new URL(page.url()).searchParams.get("page"), "graph");
       assert.equal(await page.getByLabel("Search graph", { exact: true }).inputValue(), "Prune orchard");

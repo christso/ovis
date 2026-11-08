@@ -14,7 +14,7 @@ import { handleFlockRequest } from "../server/flock.ts";
 import { moveFlowFixture } from "../server/session-move/flow.fixture.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
-import { changeFlockMode } from "./flock-navigation.ts";
+import { openFlock } from "./flock-navigation.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ovis-flock-integration-")), app = join(root, "app");
 const evidence = process.env["UI_EVIDENCE_DIR"];
@@ -123,7 +123,7 @@ try {
       assert.equal(await openWorkspace.isDisabled(), false, "Graph can open an exactly proven Herdr-only agent");
       await openWorkspace.click();
       await page.waitForURL((url) => url.searchParams.get("machine") === "owned-source" && url.searchParams.get("pane") === worker.pane_id && !url.searchParams.has("page"));
-      await changeFlockMode(page, "Graph");
+      await openFlock(page);
       await inspect(page, workerId, mobile);
       workerOccupancy = "fixture-worker-replacement";
       await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === true);
@@ -132,7 +132,6 @@ try {
       workerOccupancy = worker.agent_instance_id;
       await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === false);
       await inspect(page, logicalId, mobile);
-      const position = await node.getAttribute("transform");
       const steady = await page.evaluate(async (id) => {
         const selected = document.querySelector(`[data-graph-node="${id}"]`)!, svg = document.querySelector(".graph-surface")!, group = svg.querySelector(":scope > g")!;
         const state = (window as unknown as { flockProof: { reads: number } }).flockProof;
@@ -153,43 +152,42 @@ try {
       assert.ok(steady.frames > 10); assert.equal(steady.changes, 0, "routine source reads do not remount or move the selected graph");
       assert.equal(flow.flock.read().observations?.length, 3, "polling does not create another receipt");
 
-      stage = "Table move";
-      await changeFlockMode(page, "Table");
-      const workerRow = page.getByRole("row").filter({ has: page.getByRole("button", { name: "Review worker", exact: true }) });
-      assert.equal(await workerRow.getByRole("button", { name: "Associate session", exact: true }).isDisabled(), true, "occupancy proof does not grant native-session association");
-      assert.equal(await workerRow.getByRole("button", { name: "Move session", exact: true }).count(), 0);
-      await workerRow.getByRole("button", { name: "Review worker", exact: true }).click();
-      await page.waitForURL((url) => url.searchParams.get("machine") === "owned-source" && url.searchParams.get("pane") === worker.pane_id && !url.searchParams.has("page"));
-      await changeFlockMode(page, "Table");
-      const sourceRow = page.locator(`[data-row-id="${sourceExecution.id}"]`);
-      await sourceRow.getByRole("button", { name: "Move session", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Move session", exact: true });
-      await dialog.getByLabel("Destination PC", { exact: true }).selectOption("owned-destination");
-      await dialog.getByLabel("Destination checkout", { exact: true }).fill(flow.target);
-      await dialog.getByRole("button", { name: "Preview transfer", exact: true }).click();
-      await dialog.getByLabel("selected.txt", { exact: true }).check();
-      await dialog.getByRole("button", { name: "Refresh preview", exact: true }).click();
+      stage = "owned backend move";
+      const viewportBeforeMove = await page.locator(".graph-surface > g").getAttribute("transform");
+      const mutation = async (body: object) => {
+        const response = await page.request.post(server.url.origin + "/api/session-moves", { headers: { "x-herdr-machine": "1" }, data: body });
+        assert.ok(response.ok()); return response.json();
+      };
+      let operation = await mutation({ action: "preview", request: flow.request });
       await flow.exit();
-      await dialog.getByRole("button", { name: "Refresh preview", exact: true }).click();
-      await dialog.getByLabel("I finished the turn and exited this session in Codex.").check();
+      operation = await mutation({ action: "preview", request: flow.request, id: operation.record.id });
       flow.failLaunch();
-      await dialog.getByRole("button", { name: "Move session", exact: true }).click();
-      await dialog.getByRole("button", { name: "Check destination", exact: true }).waitFor();
+      await mutation({ action: "run", id: operation.record.id, fingerprint: operation.record.plan.fingerprint });
+      const waitForMove = (phase: string) => page.evaluate(async (phase) => {
+        const began = performance.now();
+        while (performance.now() - began < 30000) {
+          const value = await (await (window as unknown as { flockNetwork: typeof fetch }).flockNetwork("/api/session-moves")).json();
+          if (value.moves.some((state: { running: boolean; record: { phase: string } }) => !state.running && state.record.phase === phase)) return;
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+        throw new Error(`Owned migration did not reach ${phase}`);
+      }, phase);
+      await waitForMove("launching");
       assert.equal(flow.flock.read().sessions[0]!.current_execution_id, sourceExecution.id, "an uncertain launch does not rebind the logical session");
-      await dialog.getByRole("button", { name: "Check destination", exact: true }).click();
-      await dialog.getByText("Session moved", { exact: true }).waitFor({ timeout: 30000 });
+      await mutation({ action: "run", id: operation.record.id, fingerprint: operation.record.plan.fingerprint });
+      await waitForMove("complete");
       assert.deepEqual(flow.counts(), { creates: 1, launches: 1 });
       assert.equal(flow.flock.read().executions.length, 2);
       assert.equal(flow.flock.read().sessions[0]!.name, session.name);
       assert.equal(flow.flock.read().sessions[0]!.work_id, session.work_id);
       const work = flow.verifyWork();
       assert.equal(work.committed, "committed\n"); assert.equal(work.staged, "staged\n"); assert.equal(work.working, "working\n"); assert.equal(work.selected, "selected work\n");
-      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
 
       stage = "Graph after move";
-      await changeFlockMode(page, "Graph"); await node.waitFor();
-      assert.equal(await node.getAttribute("aria-pressed"), "true", "selection survives the complete Table/Move round trip");
-      assert.equal(await node.getAttribute("transform"), position, "the logical node retains its position after a real Move API operation");
+      await openFlock(page); await node.waitFor();
+      assert.equal(await node.getAttribute("aria-pressed"), "true", "selection survives an owned backend migration");
+      assert.equal(await page.locator(".graph-surface > g").getAttribute("transform"), viewportBeforeMove, "an intentional topology change preserves the viewport");
       await page.locator(`[data-graph-node="execution:${flow.flock.read().sessions[0]!.current_execution_id}"]`).waitFor();
       assert.equal(await page.locator(".graph-edge-delegation").count(), 1);
       assert.equal(await page.locator(".graph-edge-communication").count(), 1);
@@ -200,9 +198,9 @@ try {
       await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === false, undefined, { timeout: 20000 });
       await openWorkspace.click();
       await page.waitForURL((url) => url.searchParams.get("machine") === "owned-destination" && url.searchParams.get("pane") === "owned:p0" && !url.searchParams.has("page"));
-      await changeFlockMode(page, "Graph"); await node.waitFor();
+      await openFlock(page); await node.waitFor();
       assert.equal(await node.getAttribute("aria-pressed"), "true");
-      assert.equal(await node.getAttribute("transform"), position);
+      assert.ok(await node.getAttribute("transform"));
       if (mobile && await details.getAttribute("aria-expanded") === "false") await details.click();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), "the integrated graph has no horizontal overflow");
       const controls = await page.evaluate(() => (window as unknown as { flockProof: { controls: string[] } }).flockProof.controls);
@@ -214,7 +212,7 @@ try {
       }
       caseResult = { width, theme, steady, move: flow.counts(), receipts: flow.flock.read().observations?.length, pageErrors: errors };
       results.push(caseResult);
-      console.log(`PASS integrated Graph → Table Move → Graph ${width} ${theme}: real HTTP/Git transfer, fixture Herdr/native receipts, preserved logical identity and links`);
+      console.log(`PASS integrated Graph + owned Move API ${width} ${theme}: real HTTP/Git transfer, fixture Herdr/native receipts, preserved logical identity and links`);
     } catch (error) {
       console.error("Integrated Flock proof failed", { width, theme, stage, url: page.url(), errors }, await page.locator("body").innerText());
       throw error;
