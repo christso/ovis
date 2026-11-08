@@ -21,12 +21,17 @@ async function collect(socketPath: string): Promise<HerdrCoordinationPage | unde
   let scan = old ? { ...old, receipts: new Map(old.receipts) } : undefined;
   let last: HerdrCoordinationPage | undefined;
   for (let index = 0; index < PAGES_PER_READ; index += 1) {
-    const requestedCursor = scan?.cursor ?? null;
+    let requestedCursor = scan?.cursor ?? null;
     let raw: unknown;
     try {
       raw = await agentCoordinationList(scan?.cursor ?? undefined, socketPath);
     } catch {
-      return undefined;
+      if (!scan?.cursor || index + 1 >= PAGES_PER_READ) return undefined;
+      index += 1;
+      try { raw = await agentCoordinationList(undefined, socketPath); } catch { return undefined; }
+      if (!flockCoordinationPageValue(raw) || (raw.server_id === scan.server && raw.boot_id === scan.boot)) return undefined;
+      scan = undefined;
+      requestedCursor = null;
     }
     if (!flockCoordinationPageValue(raw)) return undefined;
     if (scan && (scan.server !== raw.server_id || scan.boot !== raw.boot_id)) {

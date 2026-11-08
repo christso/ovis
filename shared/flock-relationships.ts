@@ -109,12 +109,18 @@ export function flockRelationships(registry: FlockRegistry): FlockRelationship[]
     if (!value) { value = flockRelationshipEndpoint(registry, machine, native); endpoints.set(key, value); }
     return value;
   };
+  const herdrEndpoint = (value: HerdrCoordinationEndpoint) => {
+    const key = `herdr:${flockHerdrEndpointKey(value)}`;
+    let resolved = endpoints.get(key);
+    if (!resolved) { resolved = flockHerdrRelationshipEndpoint(registry, value); endpoints.set(key, resolved); }
+    return resolved;
+  };
   for (const event of registry.observations ?? []) {
     const receipt = flockReceiptKey(event);
     if (receipts.has(receipt)) continue;
     receipts.add(receipt);
-    const source = event.source === "herdr" ? flockHerdrRelationshipEndpoint(registry, event.source_endpoint) : endpoint(event.machine_id, event.source_native_session_id);
-    const target = event.source === "herdr" ? flockHerdrRelationshipEndpoint(registry, event.target_endpoint) : endpoint(event.machine_id, event.target_native_session_id);
+    const source = event.source === "herdr" ? herdrEndpoint(event.source_endpoint) : endpoint(event.machine_id, event.source_native_session_id);
+    const target = event.source === "herdr" ? herdrEndpoint(event.target_endpoint) : endpoint(event.machine_id, event.target_native_session_id);
     if (source.id === target.id) continue;
     const id = JSON.stringify([event.kind, source.id, target.id]);
     const before = relations.get(id);
