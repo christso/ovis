@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FlockStore, handleFlockRequest } from "./flock.ts";
-import { flockCurrentHerdrEndpoint, flockHerdrRelationshipEndpoint, flockHerdrTarget, flockRelationships, flockRowRelationshipIds } from "../shared/flock-relationships.ts";
+import { flockCoordinationValue, flockCurrentHerdrEndpoint, flockHerdrRelationshipEndpoint, flockHerdrTarget, flockRelationships, flockRowRelationshipIds } from "../shared/flock-relationships.ts";
 import { flockInventory, flockTarget } from "../shared/flock-inventory.ts";
 import type { FlockRegistry, HerdrCoordinationEndpoint, HerdrCoordinationPage } from "../shared/flock.ts";
 import type { Machine } from "../shared/machines.ts";
@@ -162,3 +162,25 @@ it("targets only one exact current Herdr occupancy and never promotes it to nati
   source.state = "disconnected";
   expect(flockHerdrTarget(endpoint, [source])).toBeNull();
 });
+
+for (const [description, agent] of [["long ASCII", "x".repeat(101)], ["astral Unicode", "🐑".repeat(51)], ["embedded NUL", "custom\u0000agent"]] as const) {
+  it(`retains a native Herdr ${description} agent label without discarding coordination history`, () => {
+    const root = mkdtempSync(join(tmpdir(), "ovis-herdr-agent-label-"));
+    const source = machine();
+    const parent: HerdrCoordinationEndpoint = { server_id: "server", boot_id: "boot", terminal_id: "parent-terminal", agent_instance_id: "parent", agent: "codex", pane_id: "parent-pane", name: "Parent" };
+    const child = { ...parent, terminal_id: "child-terminal", agent_instance_id: "child", agent, pane_id: "child-pane", name: "Child" };
+    source.snapshot!.panes = [{ pane_id: child.pane_id, terminal_id: child.terminal_id, agent: child.agent, workspace_id: "w1", tab_id: "w1:t1", focused: false, revision: 0, agent_status: "idle" }];
+    source.snapshot!.flock_bindings = []; source.snapshot!.flock_observations = [];
+    const page: HerdrCoordinationPage = { version: 1, server_id: "server", boot_id: "boot", agents: [child], receipts: [{ id: "custom-agent-operation", kind: "communication", source: parent, target: child, occurred_at: event.occurred_at }], cursor: null };
+    source.snapshot!.flock_coordination = page;
+    try {
+      expect(flockCoordinationValue(page)).toBe(true);
+      const store = new FlockStore(root); store.observe([source]);
+      expect(flockRelationships(store.read())).toHaveLength(1);
+      expect(flockRelationships(new FlockStore(root).read())[0]!.target.agent).toBe(child.agent);
+      expect(flockTarget(flockInventory(store.read(), [source])[0]!)).toEqual({ machine_id: source.id, pane_id: child.pane_id });
+      expect(flockInventory(store.read(), [source])[0]!.binding).toBeNull();
+      for (const invalid of ["", " \n "]) expect(flockCoordinationValue({ ...page, agents: [{ ...child, agent: invalid }] })).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+}

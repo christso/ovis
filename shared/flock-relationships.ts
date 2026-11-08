@@ -9,9 +9,10 @@ const text = (value: unknown, limit = 512): value is string => typeof value === 
 const time = (value: unknown): value is string => text(value, 64) && Number.isFinite(Date.parse(value));
 const kind = (value: unknown): value is FlockObservation["kind"] => value === "delegation" || value === "communication";
 
+/** Custom agent labels mirror Herdr's display metadata; runtime identity fields stay bounded. */
 export function flockHerdrEndpointValue(value: unknown): value is HerdrCoordinationEndpoint {
   return object(value) && [value.server_id, value.boot_id, value.terminal_id, value.agent_instance_id, value.pane_id].every((item) => text(item))
-    && text(value.agent, 100) && (value.name === null || text(value.name, 200));
+    && typeof value.agent === "string" && value.agent.trim().length > 0 && (value.name === null || text(value.name, 200));
 }
 export function flockHerdrEndpointMetadata(endpoint: HerdrCoordinationEndpoint): HerdrCoordinationEndpoint {
   return { server_id: endpoint.server_id, boot_id: endpoint.boot_id, terminal_id: endpoint.terminal_id, agent_instance_id: endpoint.agent_instance_id,
