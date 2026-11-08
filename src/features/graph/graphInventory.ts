@@ -2,7 +2,7 @@ import type { FlockRegistry } from "../../../shared/flock.ts";
 import { flockTarget, type FlockRow } from "../../../shared/flock-inventory.ts";
 import type { PaneTarget } from "../../../shared/machines.ts";
 import { knownStatus } from "../../lib/status.ts";
-import { flockHerdrEndpointKey, flockRelationships, flockRowRelationshipIds, type FlockRelationshipEndpoint } from "../../../shared/flock-relationships.ts";
+import { flockHerdrEndpointKey, flockRelationships, flockRowRelationshipIds } from "../../../shared/flock-relationships.ts";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
 const executionId = (row: FlockRow) => {
@@ -11,7 +11,14 @@ const executionId = (row: FlockRow) => {
   return `observed:${JSON.stringify([...(binding ? [row.id, binding.machine_id, binding.herdr_lifetime, binding.pane_id, binding.agent, binding.native_session_id] : [row.id, null]), row.herdr_endpoint ? flockHerdrEndpointKey(row.herdr_endpoint) : null])}`;
 };
 const freshness = (row: FlockRow): GraphNode["freshness"] => flockTarget(row) ? "live" : row.availability;
-const endpointRows = (registry: FlockRegistry, rows: readonly FlockRow[], endpoint: FlockRelationshipEndpoint) => rows.filter((row) => flockRowRelationshipIds(registry, row).includes(endpoint.id));
+function endpointRowIndex(registry: FlockRegistry, rows: readonly FlockRow[]): Map<string, FlockRow[]> {
+  const index = new Map<string, FlockRow[]>();
+  for (const row of rows) for (const id of flockRowRelationshipIds(registry, row)) {
+    const matches = index.get(id);
+    if (matches) matches.push(row); else index.set(id, [row]);
+  }
+  return index;
+}
 
 /** A rendering adapter over the ONE shared inventory. Paths label physical metadata only. */
 export function graphInventory(registry: FlockRegistry | null, rows: readonly FlockRow[]): GraphData {
@@ -44,10 +51,12 @@ export function graphInventory(registry: FlockRegistry | null, rows: readonly Fl
     if (row.session) addEdge(id, `session:${row.session.id}`, "session-execution", `execution.session_id: ${row.session.id}`);
     if (row.checkout) addEdge(id, `checkout:${row.checkout.id}`, "execution-in-checkout", row.execution ? `execution.checkout_id: ${row.execution.checkout_id}` : `inventory.checkout: ${row.checkout.path}`);
   }
-  for (const relation of registry ? flockRelationships(registry) : []) {
+  const relations = registry ? flockRelationships(registry) : [];
+  const rowsByEndpoint = registry && relations.length ? endpointRowIndex(registry, rows) : new Map<string, FlockRow[]>();
+  for (const relation of relations) {
     for (const endpoint of [relation.source, relation.target]) {
       if (nodes.has(endpoint.id)) continue;
-      const matches = endpointRows(registry!, rows, endpoint), current = matches.length === 1 ? matches[0] : undefined;
+      const matches = rowsByEndpoint.get(endpoint.id) ?? [], current = matches.length === 1 ? matches[0] : undefined;
       const live = current && flockTarget(current) !== null;
       nodes.set(endpoint.id, { id: endpoint.id, kind: "session", label: endpoint.label, machineId: endpoint.machine_id, detail: endpoint.native_session_id,
         status: live ? knownStatus(current.pane?.agent_status ?? current.status) : "unknown", freshness: live ? "live" : current?.availability ?? "unavailable" });
@@ -64,7 +73,7 @@ export function graphTarget(registry: FlockRegistry | null, rows: readonly Flock
   if (!registry) return null;
   if (id.startsWith("native:") || id.startsWith("herdr:")) {
     const endpoint = flockRelationships(registry).flatMap((relation) => [relation.source, relation.target]).find((endpoint) => endpoint.id === id);
-    const matches = endpoint ? endpointRows(registry, rows, endpoint) : [];
+    const matches = endpoint ? endpointRowIndex(registry, rows).get(endpoint.id) ?? [] : [];
     return endpoint && matches.length === 1 ? flockTarget(matches[0]!) : null;
   }
   const session = registry.sessions.find((session) => `session:${session.id}` === id);
