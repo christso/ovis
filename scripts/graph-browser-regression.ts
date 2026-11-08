@@ -36,6 +36,8 @@ try {
       await page.goto(`http://127.0.0.1:${server.port}`);
       const node = page.locator('[data-graph-node="session"]');
       await node.waitFor();
+      const reset = page.getByRole("button", { name: "Reset graph layout", exact: true });
+      assert.equal(await reset.innerText(), "Reset", "layout reset has a visible text label");
       const filters = page.getByRole("button", { name: /^Graph filters/ });
       const options = async (open: boolean) => {
         if (mobile && await filters.getAttribute("aria-expanded") !== String(open)) await filters.click();
@@ -237,7 +239,40 @@ try {
         const stage = svg.getBoundingClientRect();
         return [...svg.querySelectorAll("[data-graph-node]")].every((node) => { const box = node.getBoundingClientRect(); return box.x >= stage.x && box.right <= stage.right && box.y >= stage.y && box.bottom <= stage.bottom; });
       }), "Fit graph keeps every filtered node accessible in the overview");
+      stage = "reset layout";
+      await options(true); await page.getByLabel("Show completed", { exact: true }).check(); await page.getByLabel("Group by machine", { exact: true }).check(); await options(false);
+      await page.getByRole("button", { name: "Fit graph", exact: true }).click();
+      const resetDefaults = await page.locator("[data-graph-node]").evaluateAll((nodes) => Object.fromEntries(nodes.map((node) => [node.getAttribute("data-graph-node"), node.getAttribute("transform")])));
+      await node.focus(); await page.keyboard.press("Enter");
+      const beforeReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+      const dragBox = (await node.boundingBox())!;
+      const start = { x: dragBox.x + dragBox.width / 2, y: dragBox.y + dragBox.height / 2 };
       if (mobile) {
+        const cdp = await context.newCDPSession(page);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: start.x + 30, y: start.y + 20 }] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await cdp.detach();
+      } else {
+        await page.mouse.move(start.x, start.y); await page.mouse.down(); await page.mouse.move(start.x + 30, start.y + 20, { steps: 5 }); await page.mouse.up();
+      }
+      assert.notEqual(await node.getAttribute("transform"), resetDefaults.session, "dragged node moves before reset");
+      await surface.focus(); await page.keyboard.press("ArrowRight");
+      const draggedFrame = await surface.locator(":scope > g").getAttribute("transform");
+      await reset.click();
+      await page.waitForFunction((defaults) => [...document.querySelectorAll("[data-graph-node]")].every((node) => node.getAttribute("transform") === defaults[node.getAttribute("data-graph-node")!]), resetDefaults);
+      await page.waitForFunction((frame) => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== frame, draggedFrame);
+      assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), draggedFrame, "reset refits the graph");
+      const afterReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+      assert.equal(afterReset.selected, beforeReset.selected, "reset preserves selection");
+      assert.deepEqual(afterReset.filters, beforeReset.filters, "reset preserves filters");
+      assert.equal(afterReset.groupMachine, true, "reset preserves grouping");
+      await page.reload(); await node.waitFor();
+      assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!).positions), afterReset.positions, "reset positions survive reload");
+      assert.equal(await node.getAttribute("transform"), resetDefaults.session);
+      if (mobile) {
+        assert.ok((await reset.boundingBox())!.height >= 44, "reset meets phone touch size");
+        assert.ok(await page.locator(".graph-tools").evaluate((tools) => { const box = tools.getBoundingClientRect(); return box.x >= 0 && box.right <= innerWidth; }), "labeled toolbar fits a narrow phone");
         await node.focus(); await page.keyboard.press("Enter");
         await surface.scrollIntoViewIfNeeded();
         const box = (await surface.boundingBox())!;

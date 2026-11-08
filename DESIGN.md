@@ -4021,6 +4021,22 @@ footer cannot cover the field or its caret. Desktop controls retain their
 existing arrangement. Phone evidence uses fictional transfer/proof fixtures;
 keyboard-sized geometry is simulated in Chromium, without an actual-device Safari
 or native-transfer claim.
+## Flock navigation
+
+Flock sits beside the native Agents section in Ovis's sidebar. The existing Agents list stays
+responsible for live pane navigation; Flock opens the shared inventory with a local Table/Graph
+switch. The sidebar follows Ovis's own section spacing and
+[Warp's vertical tabs](https://docs.warp.dev/terminal/windows/vertical-tabs/) pattern of keeping
+workstream context visible while the main view changes. No external code is copied.
+Flock remembers the last Table/Graph mode for the app session, starting with Table. Existing
+Table and Graph links and browser history retain the selected pane and its lens. Picking a native
+workspace or agent returns to that workspace without changing Herdr's focus or sending input.
+Watch-only devices have no Flock entry.
+
+Graph's visible Reset control uses the existing layout reset: it restores all default node
+positions and fits the filtered graph while retaining selection, filters and machine grouping.
+The reset positions and viewport remain in Graph's existing browser state across reloads.
+
 ## Graph view
 
 Graph is another view of the shared Table inventory. Logical work and sessions retain their IDs

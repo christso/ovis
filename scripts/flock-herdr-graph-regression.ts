@@ -14,6 +14,7 @@ import { handleFlockRequest } from "../server/flock.ts";
 import { moveFlowFixture } from "../server/session-move/flow.fixture.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
+import { changeFlockMode } from "./flock-navigation.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ovis-flock-integration-")), app = join(root, "app");
 const evidence = process.env["UI_EVIDENCE_DIR"];
@@ -47,15 +48,6 @@ const harness = `<script>(() => {
     const timer=setInterval(emit,400);source.close=()=>{source.readyState=2;clearInterval(timer);};queueMicrotask(emit);return source;
   };
 })();</script>`;
-
-async function changeView(page: Page, name: "Graph" | "Table", mobile: boolean): Promise<void> {
-  const target = page.getByRole("navigation", { name: "Views" }).getByRole("button", { name, exact: true });
-  if (mobile && !await target.isVisible()) {
-    const open = page.getByRole("button", { name: "Open workspace list", exact: true });
-    if (await open.isVisible() && !(await page.locator("#workspace-drawer").getAttribute("class"))?.includes("is-open")) await open.click();
-  }
-  await target.click();
-}
 
 async function inspect(page: Page, id: string, mobile: boolean): Promise<void> {
   const filters = page.getByRole("button", { name: /^Graph filters/ });
@@ -131,7 +123,7 @@ try {
       assert.equal(await openWorkspace.isDisabled(), false, "Graph can open an exactly proven Herdr-only agent");
       await openWorkspace.click();
       await page.waitForURL((url) => url.searchParams.get("machine") === "owned-source" && url.searchParams.get("pane") === worker.pane_id && !url.searchParams.has("page"));
-      await changeView(page, "Graph", mobile);
+      await changeFlockMode(page, "Graph");
       await inspect(page, workerId, mobile);
       workerOccupancy = "fixture-worker-replacement";
       await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === true);
@@ -162,13 +154,13 @@ try {
       assert.equal(flow.flock.read().observations?.length, 3, "polling does not create another receipt");
 
       stage = "Table move";
-      await changeView(page, "Table", mobile);
+      await changeFlockMode(page, "Table");
       const workerRow = page.getByRole("row").filter({ has: page.getByRole("button", { name: "Review worker", exact: true }) });
       assert.equal(await workerRow.getByRole("button", { name: "Associate session", exact: true }).isDisabled(), true, "occupancy proof does not grant native-session association");
       assert.equal(await workerRow.getByRole("button", { name: "Move session", exact: true }).count(), 0);
       await workerRow.getByRole("button", { name: "Review worker", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("machine") === "owned-source" && url.searchParams.get("pane") === worker.pane_id && !url.searchParams.has("page"));
-      await changeView(page, "Table", mobile);
+      await changeFlockMode(page, "Table");
       const sourceRow = page.locator(`[data-row-id="${sourceExecution.id}"]`);
       await sourceRow.getByRole("button", { name: "Move session", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Move session", exact: true });
@@ -195,7 +187,7 @@ try {
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
 
       stage = "Graph after move";
-      await changeView(page, "Graph", mobile); await node.waitFor();
+      await changeFlockMode(page, "Graph"); await node.waitFor();
       assert.equal(await node.getAttribute("aria-pressed"), "true", "selection survives the complete Table/Move round trip");
       assert.equal(await node.getAttribute("transform"), position, "the logical node retains its position after a real Move API operation");
       await page.locator(`[data-graph-node="execution:${flow.flock.read().sessions[0]!.current_execution_id}"]`).waitFor();
@@ -208,7 +200,7 @@ try {
       await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === false, undefined, { timeout: 20000 });
       await openWorkspace.click();
       await page.waitForURL((url) => url.searchParams.get("machine") === "owned-destination" && url.searchParams.get("pane") === "owned:p0" && !url.searchParams.has("page"));
-      await changeView(page, "Graph", mobile); await node.waitFor();
+      await changeFlockMode(page, "Graph"); await node.waitFor();
       assert.equal(await node.getAttribute("aria-pressed"), "true");
       assert.equal(await node.getAttribute("transform"), position);
       if (mobile && await details.getAttribute("aria-expanded") === "false") await details.click();

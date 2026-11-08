@@ -12,6 +12,7 @@ import type { SessionMoveState } from "../src/lib/sessionMoves.ts";
 import { FlockStore, handleFlockRequest } from "../server/flock.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
+import { changeFlockMode } from "./flock-navigation.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ovis-move-browser-"));
 const app = join(root, "app");
@@ -133,8 +134,7 @@ async function auditMobile(): Promise<void> {
     };
     try {
       await page.goto(`http://127.0.0.1:${server!.port}/herdr-web-ui/demo/app/?pane=${encodeURIComponent(chosen.pane_id)}`);
-      if (phone) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
-      await page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: "Table", exact: true }).click();
+      await changeFlockMode(page, "Table");
       if (baselineAudit && process.env["MOVE_MOBILE_BASELINE_CSS"]) {
         // Restore exactly the supplied old Move stylesheet in the owned built app, leaving shared styles and live DOM intact.
         await page.evaluate(() => {
@@ -351,13 +351,7 @@ try {
       const url = `http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/?pane=${encodeURIComponent(chosen.pane_id)}`;
       await page.goto(url);
       const table = page.getByRole("region", { name: "Table", exact: true });
-      const openTable = async () => {
-        const target = page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: "Table", exact: true });
-        if (width === 390 && !await target.isVisible() && await page.getByRole("button", { name: "Open workspace list", exact: true }).isVisible()) {
-          if (!(await page.locator("#workspace-drawer").getAttribute("class"))?.includes("is-open")) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
-        }
-        await target.click();
-      };
+      const openTable = () => changeFlockMode(page, "Table");
       await openTable();
       const row = table.locator(`tr[data-row-id="${originalExecution.id}"]`);
       const moveAction = row.getByRole("button", { name: "Move session", exact: true });

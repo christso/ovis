@@ -102,7 +102,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           <button type="button" title={t("Zoom in")} aria-label={t("Zoom in")} onClick={() => zoom(1.25)}><Plus size={18} /></button>
           <button type="button" title={t("Zoom out")} aria-label={t("Zoom out")} onClick={() => zoom(0.8)}><Minus size={18} /></button>
           <button type="button" title={t("Fit graph")} aria-label={t("Fit graph")} onClick={fit}><Focus size={18} /></button>
-          <button type="button" title={t("Reset graph layout")} aria-label={t("Reset graph layout")} onClick={() => { setState((previous) => ({ ...previous, positions: reconcilePositions(data.nodes, {}, previous.groupMachine) })); fitted.current = false; }}><RotateCcw size={18} /></button>
+          <button type="button" className="graph-reset" title={t("Reset graph layout")} aria-label={t("Reset graph layout")} onClick={() => { setState((previous) => ({ ...previous, positions: reconcilePositions(data.nodes, {}, previous.groupMachine) })); fitted.current = false; }}><RotateCcw size={18} aria-hidden="true" />{t("Reset")}</button>
           <button type="button" title={t("Copy graph link")} aria-label={t("Copy graph link")} onClick={() => { void copyText(window.location.href); }}><Link size={18} /></button>
         </div>
       </div>

@@ -159,6 +159,12 @@ describe("the sidebar", () => {
 
 
 describe("Graph page and pane location", () => {
+  it("keeps legacy Agents links on the native workspace and retains their target", () => {
+    const link = readLink("?page=agents&machine=garden&pane=w7%3Ap2&view=terminal");
+    expect(link.page).toBeUndefined();
+    expect(link).toMatchObject({ machine: "garden", pane: "w7:p2", view: "terminal" });
+    expect(linkSearch(link)).not.toContain("page=");
+  });
   it("round trips Graph separately from the pane lens and recognizes page changes as navigation", () => {
     const graph = { ...readLink("?machine=garden&pane=w7%3Ap2&view=terminal"), page: "graph" as const };
     expect(readLink(linkSearch(graph))).toMatchObject({ machine: "garden", pane: "w7:p2", view: "terminal", page: "graph" });

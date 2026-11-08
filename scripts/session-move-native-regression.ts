@@ -11,6 +11,7 @@ import { jsonResponse } from "../server/http.ts";
 import type { Machine } from "../shared/machines.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
+import { changeFlockMode } from "./flock-navigation.ts";
 
 const driver = nativeFlowDriver(), fixture = await moveFlowFixture(driver);
 const evidence = process.env["UI_EVIDENCE_DIR"];
@@ -68,7 +69,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, locale: "en-US", ...(evidence ? { recordVideo: { dir: join(fixture.root, "video"), size: { width: 1600, height: 1000 } } } : {}) });
   const page = await context.newPage();
   await page.goto(server.url.origin);
-  await page.getByRole("button", { name: "Table", exact: true }).first().click();
+  await changeFlockMode(page, "Table");
   const row = page.getByRole("row").filter({ hasText: "Owned logical session" });
   await row.getByRole("button", { name: "Move session", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Move session", exact: true });
