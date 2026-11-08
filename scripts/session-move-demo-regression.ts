@@ -352,10 +352,11 @@ try {
       await page.goto(url);
       const table = page.getByRole("region", { name: "Table", exact: true });
       const openTable = async () => {
-        if (width === 390 && await page.getByRole("button", { name: "Open workspace list", exact: true }).isVisible()) {
+        const target = page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: "Table", exact: true });
+        if (width === 390 && !await target.isVisible() && await page.getByRole("button", { name: "Open workspace list", exact: true }).isVisible()) {
           if (!(await page.locator("#workspace-drawer").getAttribute("class"))?.includes("is-open")) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
         }
-        await page.getByRole("navigation", { name: "Views" }).getByRole("button", { name: "Table", exact: true }).click();
+        await target.click();
       };
       await openTable();
       const row = table.locator(`tr[data-row-id="${originalExecution.id}"]`);

@@ -3,7 +3,11 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "references": [{ "path": "./shared/vendor/paseo-e2ee" }],
+  "references": [
+    {
+      "path": "./shared/vendor/paseo-e2ee"
+    }
+  ],
   "files": [
     "integrations/gjc.ts",
     "integrations/gjc.test.ts",
@@ -38,6 +42,10 @@
     "scripts/chat-fallback-fixture.tsx",
     "scripts/chat-outcome-note-browser-qa.ts",
     "scripts/chat-outcome-note-fixture.tsx",
+    "scripts/graph-fixture.tsx",
+    "scripts/graph-browser-regression.ts",
+    "scripts/graph-app-demo-regression.ts",
+    "scripts/flock-herdr-graph-regression.ts",
     "scripts/chat-virtual-fixture.tsx",
     "scripts/chat-virtual-browser-qa.ts",
     "scripts/chat-gjc-streaming-browser-qa.ts",

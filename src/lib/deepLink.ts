@@ -22,6 +22,7 @@
  * pane the app picked itself only replace the entry. Settings keeps its own entries
  * (lib/settingsHistory.ts); the address of the one shown carries its page.
  */
+import type { FlockView } from "./flockView.ts";
 import type { SessionSnapshot } from "../../shared/protocol.ts";
 
 export type LinkView = "chat" | "terminal";
@@ -34,6 +35,8 @@ export interface AppLink {
   workspaceSlug?: string | null;
   pane: string | null;
   view: LinkView | null;
+  /** Full-page presentation, independent of the selected pane lens. Omitted for Workspace. */
+  page?: Exclude<FlockView, "workspace">;
   /** the file open in the viewer over the pane, as the chat or the Files dialog gave its path */
   file?: string | null;
   settings: string | null;
@@ -60,7 +63,7 @@ const AGENT_KIND = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 
 const LOCAL = "local";
 /** the query names this module owns; anything else in the address is left as it is */
-const OWN = ["machine", "ws", "pane", "view", "file", "settings", "section", "new", "cwd", "name", "agent", "sidebar"] as const;
+const OWN = ["machine", "ws", "pane", "view", "page", "file", "settings", "section", "new", "cwd", "name", "agent", "sidebar"] as const;
 const SIDEBAR: Readonly<Record<string, "shown" | "hidden">> = { shown: "shown", show: "shown", open: "shown", "1": "shown", hidden: "hidden", hide: "hidden", closed: "hidden", "0": "hidden" };
 /** a slug stays this short, cut at a word where it can be: a link names the workspace, it does not spell it out */
 const SLUG_MAX = 24;
@@ -98,6 +101,7 @@ export function fileFromLink(link: Pick<AppLink, "file" | "pane">): string | nul
 export function readLink(search: string): AppLink {
   const query = new URLSearchParams(search);
   const view = query.get("view");
+  const page = query.get("page");
   // herdr's ids hold no hyphen: the first one starts the slug
   const ws = named(query.get("ws"));
   const cut = ws?.indexOf("-") ?? -1;
@@ -108,6 +112,7 @@ export function readLink(search: string): AppLink {
     workspaceSlug: ws && cut > 0 ? named(ws.slice(cut + 1)) : null,
     pane: named(query.get("pane")),
     view: view === "chat" || view === "terminal" ? view : null,
+    ...(page === "graph" || page === "table" || page === "agents" ? { page } : {}),
     file: named(query.get("file")),
     settings,
     section: settings ? named(query.get("section")) : null,
@@ -138,6 +143,7 @@ export function linkSearch(link: AppLink, current = ""): string {
   if (link.workspace) query.set("ws", link.workspaceSlug ? `${link.workspace}-${link.workspaceSlug}` : link.workspace);
   if (link.pane) query.set("pane", link.pane);
   if (link.pane && link.view) query.set("view", link.view);
+  if (link.page) query.set("page", link.page);
   const file = fileFromLink(link);
   if (file) query.set("file", file);
   if (link.settings) query.set("settings", link.settings);
@@ -185,8 +191,8 @@ export function resolveLink(snapshot: Pick<SessionSnapshot, "workspaces" | "pane
 }
 
 /** Whether going from one place to another is a move the history keeps (another pane or PC). */
-export function isNavigation(from: Pick<AppLink, "machine" | "pane">, to: Pick<AppLink, "machine" | "pane">): boolean {
-  return to.pane !== null && (from.machine !== to.machine || from.pane !== to.pane);
+export function isNavigation(from: Pick<AppLink, "machine" | "pane" | "page">, to: Pick<AppLink, "machine" | "pane" | "page">): boolean {
+  return from.page !== to.page || (to.pane !== null && (from.machine !== to.machine || from.pane !== to.pane));
 }
 
 /** Marks an entry the app pushed for a move between panes. */
