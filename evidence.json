@@ -1,0 +1,27 @@
+{
+  "before": {
+    "revision": "ca2b4d5a9938628bcb77bda768dad6cefdf4c432",
+    "version": "0.5.1",
+    "browser": "155.0.8059.39",
+    "label": "Motion-designee",
+    "requests": []
+  },
+  "after": {
+    "revision": "fix/tab-rename-keyboard",
+    "version": "0.4.22",
+    "browser": "155.0.8059.39",
+    "label": "motion-designer",
+    "requests": [
+      {
+        "tab_id": "w1C:t1",
+        "label": "motion-designer"
+      }
+    ]
+  },
+  "fix_revision": "9fd2e232e7fc25d3934540798d8aba69d82a7639",
+  "duration_seconds": 20.4,
+  "sha256": "3031bb453e29221718d6739c1a7411cdc2beb1472d2fa93856f772f82de4b0de",
+  "data": "Fictional demo fixtures in the actual upstream and fork browser clients.",
+  "input": "Chrome CDP Input.dispatchKeyEvent with key Enter, keyCode 229, text carriage return, isComposing false.",
+  "limitation": "Automated browser-event reproduction; no physical Android keyboard event trace was captured."
+}
