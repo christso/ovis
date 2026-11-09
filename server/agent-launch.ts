@@ -43,10 +43,10 @@ export async function agentLaunch(paneId: string, agent: AgentPayload, launched?
     const launch = options.resolveLaunch?.();
     const kind = agent.kind as string;
     const args = agent.args as string[] | undefined;
+    // another machine of the core: its path would be this PC's, and its start is never seen there (no pids)
+    if ((launch || isShellAgentKind(kind)) && hcMachine() !== null) return { agent_started: false, error: { code: "other_machine", message: `${kind} starts only on the PC that runs Ovis` } };
     if (launch) await startAgentLauncher(launch, paneId, typeof agent.name === "string" ? agent.name : undefined);
     else if (isShellAgentKind(kind)) {
-      // another machine of the core: its path would be this PC's, and its start is never seen there (no pids)
-      if (hcMachine() !== null) return { agent_started: false, error: { code: "other_machine", message: `${kind} starts only on the PC that runs Ovis` } };
       const pid = await startShellAgent(kind, paneId, args, locator ? { locator } : {});
       if (pid !== null) launched?.(pid);
     }

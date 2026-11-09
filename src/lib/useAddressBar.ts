@@ -113,11 +113,13 @@ export function useAddressBar({ page = "workspace", onPage, newSessionOpen, sele
   useEffect(() => {
     if (locked !== false) return;
     if (machines.length === 0 || snapshot === null || !linkLanded) {
-      const current = new URL(window.location.href);
-      const shownPage = readLink(pageSearch()).page ?? "workspace";
+      const search = pageSearch();
+      const current = new URLSearchParams(search);
+      const shownPage = readLink(search).page ?? "workspace";
       if (page === shownPage) return;
-      if (page === "workspace") current.searchParams.delete("page"); else current.searchParams.set("page", page);
-      window.history.pushState(window.history.state, "", current);
+      if (page === "workspace") current.delete("page"); else current.set("page", page);
+      const query = current.toString();
+      window.history.pushState(window.history.state, "", pageAddress(window.location.pathname, query ? `?${query}` : "", window.location.hash));
       writtenLink.current = null;
       return;
     }
@@ -181,47 +183,47 @@ export function useAddressBar({ page = "workspace", onPage, newSessionOpen, sele
       const link = readLink(pageSearch());
       if (link.page !== writtenLink.current?.page) poppedTo.current = true;
       try {
-      // before the PCs are in, nothing can say the entry's PC is still set up: it waits as a link
-      // opened with the page does, settled against its roster or answered with a note once they are
-      if (machinesRef.current.length === 0) {
-        // an entry that asks for nothing drops a creation the page or an earlier entry left waiting
-        if (!link.pane && !link.workspace && !link.create) { pendingCreate.current = null; return; }
-        if (!link.create) setNewSessionOpen(false);
-        pendingCreate.current = link.create ?? null;
-        selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
-        poppedTo.current = true;
-        popMoving.current = true;
-        // a creation-only entry names no place to settle: as when the page opens with one, its PC is
-        // the selection, which the first roster checks, connected or not
-        if (!link.pane && !link.workspace) return;
-        pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
-        linkSince.current = rosterSeq.current;
-        return;
-      }
-      const machine = machinesRef.current.find((candidate) => candidate.id === link.machine);
-      const missing = !machine && machinesRef.current.length > 0;
-      // the New workspace dialog is part of the address it was open on: Back closes it, Forward opens
-      // it again, but not for a PC removed since
-      // an entry without one drops a creation still waiting; a dialog open for another PC gives way to the entry's
-      if (!link.create) { setNewSessionOpen(false); pendingCreate.current = null; }
-      else if (!missing && (!newSessionOpenRef.current || link.machine !== selectionRef.current.machineId)) { setNewSessionOpen(false); pendingCreate.current = link.create; }
-      // an entry naming a PC since removed leaves the app where it is and says so, as a link to it would
-      if (missing) setHeaderNote("machine-missing");
-      else {
-        const pane = machine?.snapshot ? resolveLink(machine.snapshot, link).pane : link.pane;
-        if (pane === null) {
-          // the dialog opens over the pane already shown on its PC; another PC's fallback pane is picked
-          if (link.create && selectionRef.current.machineId !== link.machine) { poppedTo.current = true; popMoving.current = true; selectTargetRef.current(link.machine, null); }
+        // before the PCs are in, nothing can say the entry's PC is still set up: it waits as a link
+        // opened with the page does, settled against its roster or answered with a note once they are
+        if (machinesRef.current.length === 0) {
+          // an entry that asks for nothing drops a creation the page or an earlier entry left waiting
+          if (!link.pane && !link.workspace && !link.create) { pendingCreate.current = null; return; }
+          if (!link.create) setNewSessionOpen(false);
+          pendingCreate.current = link.create ?? null;
+          selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
+          poppedTo.current = true;
+          popMoving.current = true;
+          // a creation-only entry names no place to settle: as when the page opens with one, its PC is
+          // the selection, which the first roster checks, connected or not
+          if (!link.pane && !link.workspace) return;
+          pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
+          linkSince.current = rosterSeq.current;
           return;
         }
-        const current = selectionRef.current;
-        // the entry's lens is drawn over the pane's own, as a tapped notification's is. Where it
-        // lands is written over the entry, so Forward keeps the entries after it
-        if (current.machineId !== link.machine || current.paneId !== pane) { poppedTo.current = true; popMoving.current = true; selectTargetRef.current(link.machine, pane, link.pane === pane ? link.view ?? undefined : undefined); return; }
-      }
-      // the same pane, or no PC to go to: the entry landed on may still say what is no longer shown
-      // (the address a link to Settings opened the page with, under the dialog's own entries), so it says it now
-      sayShown();
+        const machine = machinesRef.current.find((candidate) => candidate.id === link.machine);
+        const missing = !machine && machinesRef.current.length > 0;
+        // the New workspace dialog is part of the address it was open on: Back closes it, Forward opens
+        // it again, but not for a PC removed since
+        // an entry without one drops a creation still waiting; a dialog open for another PC gives way to the entry's
+        if (!link.create) { setNewSessionOpen(false); pendingCreate.current = null; }
+        else if (!missing && (!newSessionOpenRef.current || link.machine !== selectionRef.current.machineId)) { setNewSessionOpen(false); pendingCreate.current = link.create; }
+        // an entry naming a PC since removed leaves the app where it is and says so, as a link to it would
+        if (missing) setHeaderNote("machine-missing");
+        else {
+          const pane = machine?.snapshot ? resolveLink(machine.snapshot, link).pane : link.pane;
+          if (pane === null) {
+            // the dialog opens over the pane already shown on its PC; another PC's fallback pane is picked
+            if (link.create && selectionRef.current.machineId !== link.machine) { poppedTo.current = true; popMoving.current = true; selectTargetRef.current(link.machine, null); }
+            return;
+          }
+          const current = selectionRef.current;
+          // the entry's lens is drawn over the pane's own, as a tapped notification's is. Where it
+          // lands is written over the entry, so Forward keeps the entries after it
+          if (current.machineId !== link.machine || current.paneId !== pane) { poppedTo.current = true; popMoving.current = true; selectTargetRef.current(link.machine, pane, link.pane === pane ? link.view ?? undefined : undefined); return; }
+        }
+        // the same pane, or no PC to go to: the entry landed on may still say what is no longer shown
+        // (the address a link to Settings opened the page with, under the dialog's own entries), so it says it now
+        sayShown();
       } finally { onPageRef.current?.(link.page ?? "workspace"); }
     };
     const sayShown = (): void => {

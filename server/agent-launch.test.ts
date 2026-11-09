@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 
 import * as herdr from "./herdr/client.ts";
 import * as runtime from "./herdr-core/runtime.ts";
+import * as savedLauncher from "./saved-launcher-start.ts";
 import { agentLaunch } from "./agent-launch.ts";
 import { launchedAgents } from "./launched-agents.ts";
 
@@ -58,16 +59,20 @@ describe("agentLaunch", () => {
     expect(existsSync(dir)).toBe(false);
   });
 
-  it("refuses a shell-started agent on another machine of the core, typing nothing into its shell", async () => {
+  it.each([false, true])("refuses a shell-started agent on another machine of the core, typing nothing into its shell (saved: %s)", async (saved) => {
     const machine = spyOn(runtime, "hcMachine").mockReturnValue({ name: "lab", id: "lab-id" });
     const typed = spyOn(herdr, "paneSendText").mockImplementation(async () => ({}) as never);
+    const launcher = spyOn(savedLauncher, "startAgentLauncher").mockRejectedValue(new Error("A local launcher must never start on another core machine"));
     try {
-      const answer = await agentLaunch(PANE, { kind: "gjc" });
+      const kind = saved ? "codex" : "gjc";
+      const answer = await agentLaunch(PANE, { kind }, undefined, undefined, { resolveLaunch: () => saved ? { kind, id: "saved-fixture", command: "/fixture/codex" } : undefined });
       expect(answer).toMatchObject({ agent_started: false, error: { code: "other_machine" } });
       expect(typed).not.toHaveBeenCalled();
+      expect(launcher).not.toHaveBeenCalled();
     } finally {
       machine.mockRestore();
       typed.mockRestore();
+      launcher.mockRestore();
     }
   });
 });
