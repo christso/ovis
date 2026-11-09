@@ -264,8 +264,8 @@ export function MachineSidebar(props: Props) {
     </section>
     {!settings.agentGroups && <SidebarSplit shell={shell} order={order} split={splits[order]} controls={listId} onSplit={changeSplit} onFold={foldSections} />}
     {!settings.agentGroups && agentList}
-    {props.flock && <FlockSidebar active={props.flock.active} onOpen={props.flock.onOpen} />}
     <footer className="sidebar-footer">
+      {props.flock && <FlockSidebar active={props.flock.active} onOpen={props.flock.onOpen} />}
       {/* one PC of the phone's several: which one, and back to the list in one tap, as a team switcher at a
           sidebar's foot does (Slack, Discord); Settings → Phone & devices keeps its Change PC row too */}
       {exitToPcs !== null && (

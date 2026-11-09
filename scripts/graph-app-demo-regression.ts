@@ -23,7 +23,7 @@ const runs: readonly (readonly [number, number, "dark" | "light"])[] = videoDir 
 const root = mkdtempSync(join(tmpdir(), "ovis-graph-app-")), app = join(root, "app");
 const original = structuredClone(fixture.machines[0]) as Machine;
 const chosen = original.snapshot!.panes.find((pane) => pane.agent === "codex")!;
-original.snapshot!.panes = [chosen]; original.snapshot!.herdr_lifetime = "graph-owned-local";
+original.snapshot!.panes = [chosen]; original.snapshot!.herdr_lifetime = `demo-${original.id}`;
 // Explicit fictional proof stands in for the native reader; the ordinary roster below omits it.
 chosen.terminal_id = "graph-terminal-local";
 const nativeSourceId = "11111111-1111-4111-8111-111111111111", nativeChildId = "22222222-2222-4222-8222-222222222222";
@@ -144,7 +144,8 @@ try {
       await openNativeAgent(page, "local", chosen.pane_id);
       await page.waitForURL((url) => !url.searchParams.has("page"));
       await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
-      assert.notEqual(await page.locator(".app-header .context-title-text").innerText(), "Flock", "native pane selection restores its title");
+      if (mobile) assert.notEqual(await page.locator(".app-header .context-title-text").innerText(), "Flock", "native pane selection restores its title");
+      else assert.equal(await page.locator('.app-header [role="tab"][aria-selected="true"]').getAttribute("data-tab-id"), chosen.tab_id, "native pane selection restores its header tab");
       if (width >= 980) await page.getByRole("button", { name: "Browse files", exact: true }).waitFor();
       await openFlock(page); await node().waitFor();
       assert.equal(new URL(page.url()).searchParams.get("page"), "graph");

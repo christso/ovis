@@ -19,7 +19,7 @@ import type { useSettingsDialog } from "./useSettingsDialog.ts";
  * panes is an entry, Back and Forward select the entry's pane, and a file open over a pane is left
  * behind, or kept for Back and shown again on return (#3179), when another pane is selected.
  */
-export function useAddressBar({ page = "workspace", onPage, newSessionOpen, selectedPane, selectedPaneId, selectedWorkspace, viewing, selectedMachineId, leaveFile, restoreFile, fileFromPop, forgetLeftFiles, locked, machines, snapshot, linkLanded, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, wideScreen, sidebarCollapsed, newTab, newFields, autoSelected, pendingFile, selectedMachine, openFile, machinesRef, selectTargetRef, pendingLink, setLinkLanded, linkSince, rosterSeq, setNewSessionOpen, pendingCreate, setHeaderNote, selectionRef }: {
+export function useAddressBar({ page = "workspace", onPage, newSessionOpen, selectedPane, selectedPaneId, selectedWorkspace, viewing, selectedMachineId, leaveFile, restoreFile, fileFromPop, forgetLeftFiles, locked, machines, snapshot, linkLanded, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, wideScreen, sidebarCollapsed, newTab, newFields, autoSelected, pendingFile, selectedMachine, openFile, machinesRef, selectTargetRef, pendingLink, setLinkLanded, linkSince, rosterSeq, setNewSessionOpen, pendingCreate, setHeaderNote, selectionRef, setLinkTick }: {
   page?: FlockView;
   onPage?(page: FlockView): void;
   newSessionOpen: boolean;
@@ -59,6 +59,7 @@ export function useAddressBar({ page = "workspace", onPage, newSessionOpen, sele
   pendingCreate: ReturnType<typeof useNewSessionState>["pendingCreate"];
   setHeaderNote: Dispatch<SetStateAction<LinkNote | "copied" | null>>;
   selectionRef: RefObject<SelectionMark>;
+  setLinkTick: Dispatch<SetStateAction<number>>;
 }): void {
   // The address follows the app (lib/deepLink.ts): opening another pane or PC is an entry of the
   // history, so Back returns to the last one; a lens, a Settings page or a pane the app picked
@@ -212,6 +213,15 @@ export function useAddressBar({ page = "workspace", onPage, newSessionOpen, sele
         else {
           const pane = machine?.snapshot ? resolveLink(machine.snapshot, link).pane : link.pane;
           if (pane === null) {
+            if (link.pane) {
+              selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
+              pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
+              linkSince.current = rosterSeq.current;
+              poppedTo.current = true;
+              popMoving.current = true;
+              setLinkTick((tick) => tick + 1);
+              return;
+            }
             // the dialog opens over the pane already shown on its PC; another PC's fallback pane is picked
             if (link.create && selectionRef.current.machineId !== link.machine) { poppedTo.current = true; popMoving.current = true; selectTargetRef.current(link.machine, null); }
             return;

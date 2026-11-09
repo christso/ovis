@@ -19,7 +19,7 @@ test.each([false, true])("keeps offline Flock navigation in the page query (rela
     sidebarCollapsed: false, newTab: null, newFields: null, autoSelected: false,
     pendingFile: { current: null }, selectedMachine: undefined, openFile() {},
     machinesRef: { current: [] }, selectTargetRef: { current() {} }, pendingLink: { current: null },
-    setLinkLanded() {}, linkSince: { current: 0 }, rosterSeq: { current: 0 },
+    setLinkTick() {}, setLinkLanded() {}, linkSince: { current: 0 }, rosterSeq: { current: 0 },
     setNewSessionOpen() {}, pendingCreate: { current: null }, setHeaderNote() {},
     selectionRef: { current: { machineId: "remote", paneId: null, generation: 0 } },
   };
