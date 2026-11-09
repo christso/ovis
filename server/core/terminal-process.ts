@@ -3,11 +3,11 @@
  * the mirrored screen) shared by every client of the pane, its retries while herdr refuses, the
  * take-over a user asks for, and the new terminal a live handoff moves the pane to.
  */
-import type { HerdrPane, ServerMessage } from "../../shared/protocol.ts";
+import type { HerdrPane, ServerMessage, SessionSnapshot } from "../../shared/protocol.ts";
 import { AttachOutputTail, AttachStartupProbes, isTakeoverExit } from "../attach-output.ts";
 import { HerdrError, herdrSocketPath, paneRead, paneSendText, sessionSnapshot } from "../herdr/client.ts";
 import { CoreAttachSession } from "../herdr-core/attach-session.ts";
-import { coreConnection, hcBin, runtime } from "../herdr-core/runtime.ts";
+import { coreConnection, HC_MOVED, hcBin, runtime } from "../herdr-core/runtime.ts";
 import { MirrorSession } from "../mirror.ts";
 import { ReplayBuffer } from "../output-window.ts";
 import { PtySession, type PtySessionOptions } from "../pty/session.ts";
@@ -138,6 +138,12 @@ export const ATTACH_HELD_RETRY_MS = 3_000;
 const ATTACH_REFUSING_RE = /terminal attach failed[^\r\n]*\s*$/;
 /** how long a refusal's exit is waited for before its output is taken for the pane's own */
 const ATTACH_REFUSAL_EXIT_MS = 2_000;
+/**
+ * how long herdr's whole takeover diagnostic waits for the exit that confirms it: a busy host's
+ * exit comes after ATTACH_HOLD_MS, and the displaced tab would show herdr's words. Past it they are
+ * taken for the pane's own text.
+ */
+export const ATTACH_TAKEOVER_EXIT_MS = 2_000;
 export const ATTACH_HELD_MESSAGE = "Another web bridge has this pane open. It connects here as soon as that bridge lets go.";
 /**
  * How long a pane whose attach herdr ended is looked up again before its terminal is taken for
@@ -220,6 +226,16 @@ export type PaneAttachment = PtyAttachment | MirrorAttachment;
  * The attach the server's clients share for each pane. `attachments` stays the server's: a callback
  * of an attachment that is no longer the pane's record does nothing.
  */
+/**
+ * A pane's grid in cells: herdr's layout rect, or on herdr-core the terminal's own grid, where
+ * layout rects are shares of a fixed area (server/herdr-core/layout-doc.ts); null when neither says.
+ */
+export function paneGrid(snapshot: Pick<SessionSnapshot, "layouts">, pane: Pick<HerdrPane, "pane_id" | "grid">): { width: number; height: number } | null {
+  if (pane.grid) return { width: pane.grid.cols, height: pane.grid.rows };
+  const rect = snapshot.layouts.flatMap((layout) => layout.panes).find((entry) => entry.pane_id === pane.pane_id)?.rect ?? null;
+  return rect ? { width: rect.width, height: rect.height } : null;
+}
+
 export function createSpawnAttachment({ attachments, retiringAttachments, terminalAttach, isStopped, closeAttachment, broadcast, sendOutput, reconcileOutput, holdPendingPane, inputReady, holdFor, heldRetry, retryFor, relookupFor }: {
   attachments: Map<string, PaneAttachment>;
   retiringAttachments: Map<string, Promise<void>>;
@@ -249,14 +265,15 @@ export function createSpawnAttachment({ attachments, retiringAttachments, termin
     if (!terminalId) throw new HerdrError("no_terminal", `pane ${paneId} has no terminal`);
     // the pane's grid as the operator's layout holds it: an observe connection must
     // create the pty at THIS size, never at the observer's own viewport
-    const rect = snapshot.layouts.flatMap((layout) => layout.panes).find((entry) => entry.pane_id === paneId)?.rect ?? null;
-    return { terminalId, rect: rect ? { width: rect.width, height: rect.height } : null };
+    return { terminalId, rect: paneGrid(snapshot, pane as HerdrPane) };
   }
 
   async function spawnAttachment(paneId: string, cols: number, rows: number, forObserver: boolean): Promise<PaneAttachment> {
     await retiringAttachments.get(paneId);
     const mirrored = !(await terminalAttach());
     const { terminalId, rect } = await terminalInfoFor(paneId);
+    // a pane moved here while its terminal was looked up: the process attached under its old ID still holds herdr's slot (#1503)
+    await retiringAttachments.get(paneId);
     if (isStopped()) throw new HerdrError("server_stopped", "the web bridge stopped during attachment creation");
     // an observer-first attachment spawns at the pane's own grid (fallback 80x24 when
     // the layout has no rect for it): the attach must not seed the shared pty with a
@@ -373,8 +390,11 @@ export function createSpawnAttachment({ attachments, retiringAttachments, termin
       const probes = onCore ? null : new AttachStartupProbes();
       const outputTail = new AttachOutputTail();
       let tailTimer: ReturnType<typeof setTimeout> | undefined;
+      /** when the words held now have waited long enough: set by their first byte, never moved by later reads */
+      let tailDeadline: number | null = null;
       const flushTail = (taken = false): void => {
         clearTimeout(tailTimer);
+        tailDeadline = null;
         const data = outputTail.flush(taken);
         if (data) forward(data);
       };
@@ -382,8 +402,14 @@ export function createSpawnAttachment({ attachments, retiringAttachments, termin
         clearTimeout(tailTimer);
         const visible = outputTail.push(data);
         if (visible) forward(visible);
-        // A pane may print the same bytes without exiting: never keep its text indefinitely.
-        if (outputTail.pending) tailTimer = setTimeout(flushTail, holdFor);
+        // A pane may print the same bytes without exiting: never keep its text past one deadline.
+        // A line the guard below still holds may be the rest of the diagnostic held here: its own
+        // timer publishes it here again, and the two are judged together.
+        if (!outputTail.pending) tailDeadline = null;
+        else {
+          tailDeadline ??= Date.now() + ATTACH_TAKEOVER_EXIT_MS;
+          tailTimer = setTimeout(() => { if (!guarded) flushTail(); }, Math.max(0, tailDeadline - Date.now()));
+        }
       };
       // After an early release, until the hold would have ended, what may be a refusal line waits
       // for the exit: a refusal is dropped then, anything else is passed on when the window ends.
@@ -602,7 +628,9 @@ export function createSpawnAttachment({ attachments, retiringAttachments, termin
       // ended attach (#925): look it up on the PATH and from the home directory the sidecar uses.
       if (!Bun.which(command, { PATH: process.env["PATH"] ?? "", cwd: process.env["HOME"] ?? "/" })) {
         throw new HerdrError("attach_failed", onCore
-          ? `hc could not be started: ${command} is not an executable on the server's PATH (set OVIS_HC_BIN to hc's full path)`
+          ? command === HC_MOVED
+            ? "herdr-core moved (an update?), and Ovis is looking for it again: try again in a moment"
+            : `hc could not be started: ${command} is not an executable on the server's PATH (set OVIS_HC_BIN to hc's full path)`
           : `herdr could not be started: ${command} is not an executable on the server's PATH (set OVIS_HERDR_BIN to herdr's full path)`);
       }
       // A resize since this attach started, even one back to its first grid, makes herdr's screens

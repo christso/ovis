@@ -1,6 +1,6 @@
 /**
  * GET /api/agents: the agent kinds this PC can start, with display labels: herdr's agent manifests,
- * Oh My Pi and Claude Code always, and the shell-started agents this server finds (shell-agent.ts).
+ * Oh My Pi and Claude Code on herdr, and the shell-started agents this server finds (shell-agent.ts).
  * The dispatcher in index.ts runs the access gate first.
  */
 import { SAVED_LAUNCHER_KINDS, type SavedAgentLauncher } from "../shared/agent-launchers.ts";
@@ -9,6 +9,7 @@ import { savedLaunchersSupported, type SavedLauncherStore } from "./saved-launch
 import { HerdrError } from "./herdr/client.ts";
 import type { AgentKind } from "../shared/agents.ts";
 import { agentManifests } from "./herdr/client.ts";
+import { hcMachine, servingCore } from "./herdr-core/runtime.ts";
 import { badRequest, errorResponse, jsonResponse, setRequestRoute } from "./http.ts";
 import { SHELL_AGENTS, type ShellAgentLocator } from "./shell-agent.ts";
 
@@ -50,9 +51,21 @@ export async function handleAgentsRequest(request: Request, pathname: string, sh
       try { if (canSaveLaunchers) saved = savedLaunchers.get(); }
       catch (error) { if (!(error instanceof HerdrError) || error.code !== "launcher_store_unavailable") throw error; }
       const kinds = new Set((await agentManifests()).manifests.map((manifest) => manifest.agent));
-      if (canSaveLaunchers) for (const kind of SAVED_LAUNCHER_KINDS) kinds.add(kind);
-      kinds.add("omp");
-      kinds.add("claude");
+      // another machine of the core (machine-bridge.ts): this PC's PATH does not tell what that machine
+      // has, and a shell-started agent would be typed in from this PC's path, so only herdr's own kinds
+      // are offered, without saying whether they are installed
+      if (hcMachine() !== null) {
+        const agents: AgentKind[] = [...kinds].map((kind) => ({ kind, label: AGENT_LABELS[kind] ?? kind }))
+          .sort((left, right) => left.label.localeCompare(right.label) || left.kind.localeCompare(right.kind));
+        return jsonResponse({ agents });
+      }
+      if (canSaveLaunchers && !servingCore()) for (const kind of SAVED_LAUNCHER_KINDS) kinds.add(kind);
+      // herdr starts these two without a manifest; herdr-core's manifests already name every kind its
+      // panes can start (adapter.ts)
+      if (!servingCore()) {
+        kinds.add("omp");
+        kinds.add("claude");
+      }
       // not herdr kinds: offered where this server can run them (see shell-agent.ts), with the locator
       // the start asks too, so what is offered is what starts
       const shellStarted = new Set<string>();

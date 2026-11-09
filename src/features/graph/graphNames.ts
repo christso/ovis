@@ -2,7 +2,9 @@ import type { FlockRow } from "../../../shared/flock-inventory.ts";
 import type { Machine } from "../../../shared/machines.ts";
 import type { HerdrTab } from "../../../shared/protocol.ts";
 import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
-import { autoTabLabel, customTabLabel, tabLabel } from "../../lib/tabName.ts";
+import { customTabLabel, tabLabel } from "../../lib/tabName.ts";
+
+import { tabLabelKey } from "../../lib/tabLabels.ts";
 
 const meaningful = (name: string | null | undefined, launcher: string) => name?.trim() && ![launcher.toLocaleLowerCase(), "codex", "claude", "agent"].includes(name.trim().toLocaleLowerCase()) ? name.trim() : null;
 
@@ -11,9 +13,11 @@ export function graphTabNames(machine: Machine, tab: HerdrTab, labels: Readonly<
   const siblings = snapshot?.tabs.filter((item) => item.workspace_id === tab.workspace_id) ?? [];
   const place = siblings.indexOf(tab) + 1;
   const workspace = snapshot?.workspaces.find((item) => item.workspace_id === tab.workspace_id);
+  const custom = customTabLabel(tab, place);
+  const panes = snapshot?.panes.filter((pane) => pane.tab_id === tab.tab_id) ?? [];
   return {
-    custom: customTabLabel(tab, place),
-    automatic: autoTabLabel(tab, snapshot?.panes.filter((pane) => pane.tab_id === tab.tab_id) ?? [], machine.id, labels, place),
+    custom,
+    automatic: custom === null ? panes.map((pane) => labels[tabLabelKey(machine.id, pane)]).find(Boolean) ?? null : null,
     numbered: [workspace?.label, tabLabel(tab, t, place)].filter(Boolean).join(" · "),
   };
 }

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 
-import { ApiError, CONVERSATION_ANSWER_MAX_BYTES, CONVERSATION_ANSWERS_BYTES, CONVERSATION_ANSWERS_KEPT, fetchPaneConversation, conversationAnswerBytes, observePaneSessions, paneSessionEvents, paneSessionsMoving, peekPaneConversation, pinPaneConversation, prefetchPaneConversation, PRESS_READ_MS, unpinPaneConversation } from "./api.ts";
+import { ApiError, CONVERSATION_ANSWER_MAX_BYTES, CONVERSATION_ANSWERS_BYTES, CONVERSATION_ANSWERS_KEPT, fetchPaneConversation, fetchPaneTranscript, conversationAnswerBytes, observePaneSessions, paneSessionEvents, paneSessionsMoving, peekPaneConversation, pinPaneConversation, prefetchPaneConversation, PRESS_READ_MS, unpinPaneConversation } from "./api.ts";
 import { ConversationRefresh } from "./conversationRefresh.ts";
+import { withChatReadDeadline } from "./chatReadDeadline.ts";
+import { forgetWaitingSends, settleWaitingSends, waitingBaseline, waitingKey } from "./sentWaiting.ts";
 import type { ConversationResponse } from "../../shared/protocol.ts";
 
 const realFetch = globalThis.fetch;
@@ -103,6 +105,25 @@ describe("conversation polling", () => {
     expect(sent).toEqual([null, "\"v1\"", "\"v1\"", null, null]);
   });
 
+  it("bounds a send by the PC's clock from each answered read, a 304's too, timed as the answer arrived", async () => {
+    let time = "2026-11-05T10:00:00.000Z";
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => new Headers(init?.headers).get("if-none-match") === '"c1"'
+      ? new Response(null, { status: 304, headers: { etag: '"c1"', "x-server-time": time } })
+      : Response.json({ source: "claude-transcript", turns: [], cursor: null, server_time: time }, { headers: { etag: '"c1"' } })) as typeof fetch;
+    const key = waitingKey("local", "clock-read");
+    const monotonic = spyOn(performance, "now").mockReturnValue(1_000);
+    try {
+      await fetchPaneConversation("clock-read");
+      settleWaitingSends(key, [], Date.now(), true);
+      expect(waitingBaseline(key, 1_000)?.pcFloor).toBe(Date.parse(time));
+      // ten minutes on, the unchanged transcript answers 304 with the PC's clock now
+      time = "2026-11-05T10:10:00.000Z";
+      monotonic.mockReturnValue(601_000);
+      await fetchPaneConversation("clock-read");
+      expect(waitingBaseline(key, 601_000)?.pcFloor).toBe(Date.parse(time));
+    } finally { monotonic.mockRestore(); forgetWaitingSends(key); }
+  });
+
   it("keeps the polled answer however many older pages are read", async () => {
     const sent: (string | null)[] = [];
     globalThis.fetch = (async (_url: string, init?: RequestInit) => {
@@ -171,7 +192,7 @@ describe("conversation polling", () => {
 
 describe("conversation read started by a press", () => {
   // herdr reports each pane's session: only then is a press read started and taken
-  beforeEach(() => named("local", Object.fromEntries(["press:p1", "press:p2", "press:held", "press:again", "press:p3", "press:p4", "press:late"].map((pane) => [pane, "a"]))));
+  beforeEach(() => named("local", Object.fromEntries(["press:p1", "press:p2", "press:held", "press:again", "press:p3", "press:p4", "press:late", "press:failed"].map((pane) => [pane, "a"]))));
   /** every request the chat makes: its query and whether it revalidates */
   function answering(): { url: string; etag: string | null }[] {
     const sent: { url: string; etag: string | null }[] = [];
@@ -235,6 +256,30 @@ describe("conversation read started by a press", () => {
     // the very object drawn would tell the chat nothing was read: no presentation read, no finish proved
     expect(read).not.toBe(drawn);
     expect(read).toEqual(drawn!);
+  });
+
+  it("is not taken once it failed: the chat that mounts after it asks the server again (#2593)", async () => {
+    let status = 503;
+    let failed!: () => void;
+    const failure = new Promise<void>((resolve) => { failed = resolve; });
+    const sent: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      sent.push(String(url));
+      if (status === 200) return Response.json({ source: "claude-transcript", history_id: "history-a", cursor: null, turns: [] }, { headers: { etag: '"a"' } });
+      const response = Response.json({ error: { code: "conversation_read_pending", message: "retry" } }, { status });
+      const body = response.json.bind(response);
+      // the press read has its error once this body is read; the rest of its failure is promise turns
+      response.json = async () => { try { return await body(); } finally { failed(); } };
+      return response;
+    }) as typeof fetch;
+    prefetchPaneConversation("press:failed", "local", 10);
+    await failure;
+    await new Promise((resolve) => setImmediate(resolve));
+    // the bridge is back before the chat mounts, within PRESS_READ_MS of the press
+    status = 200;
+    const mounted = await fetchPaneConversation("press:failed", "local", { prompts: 10, fresh: true });
+    expect(mounted.history_id).toBe("history-a");
+    expect(sent).toHaveLength(2);
   });
 
   it("starts nothing for a pane whose chat is mounted: a cached tab reads no more than before", () => {
@@ -753,6 +798,31 @@ describe("conversation invalidation refresh", () => {
     refresh.stop();
   });
 
+  it("gives up a newest read sent before a reconnect and reads again at once, not after its deadline", async () => {
+    refreshClock();
+    const refresh = pushedRefresh();
+    const signals: AbortSignal[] = [];
+    // the first read went out on a connection that died silently: only an abort ends it
+    refresh.setRead(async (signal) => {
+      signals.push(signal);
+      if (signals.length === 1) await new Promise<void>((done) => signal.addEventListener("abort", () => done(), { once: true }));
+    });
+    refresh.refresh();
+    // the reply's push waits behind it
+    refresh.invalidate();
+    expect(signals).toHaveLength(1);
+    refresh.restart();
+    await settleRefresh();
+    expect(signals).toHaveLength(2);
+    expect(signals[0]!.aborted).toBe(true);
+    expect(signals[1]!.aborted).toBe(false);
+    // with no read in flight, a reconnect reads once
+    refresh.restart();
+    await settleRefresh();
+    expect(signals).toHaveLength(3);
+    refresh.stop();
+  });
+
   it("keeps long in-flight reads serial and trails at the later of completion and the fixed deadline", async () => {
     const clock = refreshClock();
     const refresh = pushedRefresh();
@@ -854,13 +924,17 @@ describe("conversation invalidation refresh", () => {
     refresh.stop();
   });
 
-  it("resumes visibility with the current reader only after the cancelled request finishes", async () => {
+  it("resumes visibility without waiting for the cancelled screen's stalled REST read", async () => {
     const clock = refreshClock();
     const refresh = pushedRefresh();
     const old = Promise.withResolvers<void>();
     const current = Promise.withResolvers<void>();
     const reads: string[] = [];
-    refresh.setRead(async () => { reads.push("old"); await old.promise; });
+    let oldSignal: AbortSignal | undefined;
+    refresh.setRead(async (signal) => {
+      reads.push("old"); oldSignal = signal;
+      await withChatReadDeadline(() => old.promise, 30_000, signal).catch(() => {});
+    });
     refresh.refresh();
     refresh.invalidate();
     refresh.stop();
@@ -868,10 +942,11 @@ describe("conversation invalidation refresh", () => {
     refresh.refresh();
     refresh.refresh();
     expect(reads).toEqual(["old"]);
-    old.resolve();
-    await settleRefresh();
-    expect(reads).toEqual(["old", "current"]);
-    current.resolve();
+    try {
+      await settleRefresh();
+      expect(reads).toEqual(["old", "current"]);
+      expect(oldSignal?.aborted).toBe(true);
+    } finally { old.resolve(); current.resolve(); refresh.stop(); }
     await settleRefresh();
     clock.advance(2000);
     expect(reads).toEqual(["old", "current"]);
@@ -879,6 +954,37 @@ describe("conversation invalidation refresh", () => {
     clock.advance(30_000);
     expect(reads).toEqual(["old", "current"]);
     expect(clock.pending()).toBe(0);
+  });
+
+  it("aborts an active older page on reader replacement", async () => {
+    refreshClock();
+    const refresh = pushedRefresh();
+    refresh.setRead(async () => {});
+    refresh.refresh();
+    await settleRefresh();
+    let pageSignal: AbortSignal | undefined;
+    const older = refresh.page((signal) => {
+      pageSignal = signal;
+      return withChatReadDeadline(() => new Promise<string>(() => {}), 30_000, signal);
+    });
+    refresh.setRead(async () => {});
+    await expect(older).rejects.toMatchObject({ name: "AbortError" });
+    expect(pageSignal?.aborted).toBe(true);
+    refresh.stop();
+  });
+
+  it("cancels a queued older page without starting it after the screen closes", async () => {
+    refreshClock();
+    const refresh = pushedRefresh();
+    refresh.setRead(async (signal) => {
+      await withChatReadDeadline(() => new Promise<void>(() => {}), 30_000, signal).catch(() => {});
+    });
+    refresh.refresh();
+    let started = false;
+    const older = refresh.page(async () => { started = true; });
+    refresh.stop();
+    await expect(older).rejects.toMatchObject({ name: "AbortError" });
+    expect(started).toBe(false);
   });
 
   it("drops an old reader's in-flight trailing work on replacement without starting the new reader", async () => {
@@ -984,6 +1090,42 @@ describe("conversation invalidation refresh", () => {
     refresh.stop();
     expect(clock.pending()).toBe(0);
   });
+
+  it("answers a refresh asked for once a newest read begun after it has ended, not the read in flight", async () => {
+    refreshClock();
+    const refresh = pushedRefresh();
+    const reads: ReturnType<typeof Promise.withResolvers<void>>[] = [];
+    // a read ends when its screen goes, as fetch does when its signal aborts
+    refresh.setRead((signal) => {
+      const read = Promise.withResolvers<void>();
+      signal.addEventListener("abort", () => read.resolve(), { once: true });
+      reads.push(read);
+      return read.promise;
+    });
+    refresh.refresh();
+    let answered = false;
+    const asked = refresh.refreshed().then(() => { answered = true; });
+    reads[0]!.resolve();
+    await settleRefresh();
+    expect(reads).toHaveLength(2);
+    expect(answered).toBe(false);
+    reads[1]!.resolve();
+    await asked;
+    // a read a reconnect gives up answers through the read that replaces it
+    answered = false;
+    const replaced = refresh.refreshed().then(() => { answered = true; });
+    await settleRefresh();
+    refresh.restart();
+    await settleRefresh();
+    expect(reads).toHaveLength(4);
+    expect(answered).toBe(false);
+    reads[3]!.resolve();
+    await replaced;
+    // a screen that goes answers what it was asked for: nothing waits on a read that never comes
+    const stopped = refresh.refreshed();
+    refresh.stop();
+    await stopped;
+  });
 });
 
 it.each([200, 409])("a timed-out read cannot replace or clear the last conversation ETag after a late %s response", async (status) => {
@@ -1009,4 +1151,131 @@ it.each([200, 409])("a timed-out read cannot replace or clear the last conversat
     expect(await fetchPaneConversation(pane)).toBe(current);
     expect(asked).toEqual(['"current"']);
   } finally { clock.mockRestore(); }
+});
+
+it.each([200, 409])("an aborted screen's late %s body cannot replace or purge the current cache", async (status) => {
+  const pane = `aborted-cache:${status}`;
+  globalThis.fetch = (async () => Response.json({ source: "claude-transcript", history_id: "H1", turns: [], cursor: null }, { headers: { etag: '"current"' } })) as unknown as typeof fetch;
+  const current = await fetchPaneConversation(pane);
+  const late = Promise.withResolvers<ConversationResponse>();
+  const bodyStarted = Promise.withResolvers<void>();
+  const response = Response.json({}, { status, headers: { etag: '"obsolete"' } });
+  response.json = () => { bodyStarted.resolve(); return late.promise; };
+  globalThis.fetch = (async () => response) as unknown as typeof fetch;
+  const screen = new AbortController();
+  const pending = fetchPaneConversation(pane, "local", { signal: screen.signal });
+  await bodyStarted.promise;
+  screen.abort();
+  await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  late.resolve({ source: "claude-transcript", history_id: "obsolete", turns: [], cursor: null });
+  await settleRefresh();
+  expect(peekPaneConversation(pane)).toBe(current);
+});
+
+
+describe("screen cancellation across press and session reads", () => {
+  it.each([200, 409])("cancels only the taken press read, keeping a newer cache after its late %s body", async (status) => {
+    const pane = `press:cancel:${status}`;
+    named("local", { [pane]: "a" });
+    const late = Promise.withResolvers<ConversationResponse>();
+    const bodyStarted = Promise.withResolvers<void>();
+    const signals: AbortSignal[] = [];
+    let calls = 0;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      signals.push(init!.signal as AbortSignal);
+      if (++calls === 1) {
+        const response = Response.json({}, { status });
+        response.json = () => { bodyStarted.resolve(); return late.promise; };
+        return response;
+      }
+      return Response.json({ source: "claude-transcript", history_id: "current", turns: [], cursor: null }, { headers: { etag: '"current"' } });
+    }) as unknown as typeof fetch;
+    prefetchPaneConversation(pane, "local", 10);
+    await bodyStarted.promise;
+    const screen = new AbortController();
+    const adopted = fetchPaneConversation(pane, "local", { prompts: 10, signal: screen.signal });
+    const newer = await fetchPaneConversation(pane, "local", { prompts: 10 });
+    expect(calls).toBe(2); // the press was taken once, not shared by the later caller
+    screen.abort();
+    await expect(adopted).rejects.toMatchObject({ name: "AbortError" });
+    expect(signals.map((signal) => signal.aborted)).toEqual([true, false]);
+    late.resolve({ source: "claude-transcript", history_id: "obsolete", turns: [], cursor: null });
+    await settleRefresh();
+    expect(peekPaneConversation(pane, "local", 10)).toBe(newer);
+    const etags: (string | null)[] = [];
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => { etags.push(new Headers(init?.headers).get("if-none-match")); return new Response(null, { status: 304 }); }) as unknown as typeof fetch;
+    expect(await fetchPaneConversation(pane, "local", { prompts: 10 })).toBe(newer);
+    expect(etags).toEqual(['"current"']);
+  });
+
+  it("an already hidden screen neither starts a request nor consumes another screen's pending press", async () => {
+    const pane = "press:already-hidden";
+    named("local", { [pane]: "a" });
+    const response = Promise.withResolvers<Response>();
+    let calls = 0;
+    globalThis.fetch = (() => { calls += 1; return response.promise; }) as unknown as typeof fetch;
+    prefetchPaneConversation(pane, "local", 10);
+    const hidden = new AbortController(); hidden.abort();
+    await expect(fetchPaneConversation(pane, "local", { prompts: 10, signal: hidden.signal })).rejects.toMatchObject({ name: "AbortError" });
+    const adopted = fetchPaneConversation(pane, "local", { prompts: 10 });
+    response.resolve(Response.json({ source: "claude-transcript", turns: [], cursor: null }));
+    await adopted;
+    expect(calls).toBe(1);
+  });
+
+  it.each([false, true])("removes a taken press read's screen listener after settling (reject=%s)", async (reject) => {
+    const pane = `press:listener:${reject}`;
+    named("local", { [pane]: "a" });
+    const response = Promise.withResolvers<Response>();
+    globalThis.fetch = (() => response.promise) as unknown as typeof fetch;
+    prefetchPaneConversation(pane, "local", 10);
+    const screen = new AbortController();
+    const add = spyOn(screen.signal, "addEventListener");
+    const remove = spyOn(screen.signal, "removeEventListener");
+    try {
+      const adopted = fetchPaneConversation(pane, "local", { prompts: 10, signal: screen.signal });
+      if (reject) { response.reject(new Error("fixture offline")); await expect(adopted).rejects.toThrow("fixture offline"); }
+      else { response.resolve(Response.json({ source: "claude-transcript", turns: [] })); await adopted; }
+      expect(add).toHaveBeenCalledTimes(1);
+      expect(remove).toHaveBeenCalledWith("abort", add.mock.calls[0]![1]);
+    } finally { add.mockRestore(); remove.mockRestore(); }
+  });
+
+  it("cancels the one permitted session replacement retry with the original screen", async () => {
+    const pane = "screen:session-retry";
+    named("local", { [pane]: "a" });
+    const first = Promise.withResolvers<Response>();
+    const second = Promise.withResolvers<Response>();
+    const signals: AbortSignal[] = [];
+    globalThis.fetch = ((_url: string, init?: RequestInit) => { signals.push(init!.signal as AbortSignal); return signals.length === 1 ? first.promise : second.promise; }) as unknown as typeof fetch;
+    const screen = new AbortController();
+    const pending = fetchPaneConversation(pane, "local", { signal: screen.signal });
+    named("local", { [pane]: "b" });
+    first.resolve(Response.json({ source: "claude-transcript", history_id: "a", turns: [] }));
+    await settleRefresh();
+    expect(signals).toHaveLength(2);
+    screen.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(signals[1]!.aborted).toBe(true);
+    second.resolve(Response.json({ source: "claude-transcript", history_id: "b", turns: [] }, { headers: { etag: '"late-b"' } }));
+    await settleRefresh();
+    expect(signals).toHaveLength(2);
+    expect(peekPaneConversation(pane)).toBeUndefined();
+  });
+});
+
+it("cancels a terminal fallback's pending read with its screen without retrying a wrapped read", async () => {
+  const late = Promise.withResolvers<Response>();
+  const started = Promise.withResolvers<void>();
+  let transport: AbortSignal | undefined, reads = 0;
+  globalThis.fetch = ((_url: string, init?: RequestInit) => { reads += 1; transport = init?.signal as AbortSignal; started.resolve(); return late.promise; }) as unknown as typeof fetch;
+  const screen = new AbortController();
+  const pending = fetchPaneTranscript("cancel:terminal-fallback", 100, "local", screen.signal);
+  await started.promise;
+  screen.abort();
+  await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  expect(transport?.aborted).toBe(true);
+  late.resolve(Response.json({ read: { text: "obsolete terminal", truncated: false } }));
+  await settleRefresh();
+  expect(reads).toBe(1);
 });

@@ -131,7 +131,8 @@ export function bindScope(hostname: string): BindScope {
   return (family === 4 ? tailnetIpv4.check(address, "ipv4") : family === 6 && tailnetIpv6.check(address, "ipv6")) ? "tailnet" : "other";
 }
 
-const inTailnet = (address: string | null | undefined): boolean => {
+/** Is this one address (never a list) in Tailscale's assigned ranges? */
+export const inTailnet = (address: string | null | undefined): boolean => {
   const family = isIP(address ?? "");
   return family === 4 ? tailnetIpv4.check(address!, "ipv4") : family === 6 && tailnetIpv6.check(address!, "ipv6");
 };
@@ -151,7 +152,7 @@ export function observedIngress(input: Pick<AccessInput, "loopback" | "forwarded
   peerKnown: boolean;
   /** a forwarding header (`forwardingHeaders`) came with the request */
   forwardingHeaders: boolean;
-}): Exclude<ObservedIngress, "relay"> {
+}): Exclude<ObservedIngress, "relay" | "portal"> {
   if (!input.peerKnown) return "unknown";
   const tailscaleHere = input.owner !== null || input.tagged;
   const throughServe = input.serveOnly && input.loopback && tailscaleHere;
@@ -244,6 +245,16 @@ export function portalLogin(input: Pick<AccessInput, "portal">): PortalLogin | n
   // a wallet is its address; an OIDC account is an email or sub:<id>; a link is whatever its name is
   if (method === "siwe" ? !/^0x[0-9a-f]{40}$/i.test(user) : method === "oidc" && !user.startsWith("sub:") && !user.includes("@")) return null;
   return { user, method };
+}
+
+/**
+ * The owner, from any device he signed in or paired himself, for actions that change what runs on this PC's PCs
+ * (updates, installs, approving a setup, server/machine-api.ts): a driving sign-in on this PC, its token, its
+ * Tailscale login, or a driving device paired with this install, directly or over the relay (his phone, his other
+ * PCs). Never a visitor of an open install (nothing paired), a Portal visitor, or a device that only watches.
+ */
+export function ownerAccess(access: Access): boolean {
+  return access.level === "full" && access.role === "drive" && access.via !== "open" && access.via !== "portal";
 }
 
 export function decideAccess(input: AccessInput): Access {

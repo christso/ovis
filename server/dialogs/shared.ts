@@ -87,6 +87,8 @@ type Responder =
   | "claude-model"
   | "claude-effort"
   | "codex-model"
+  | "letta-model"
+  | "letta-effort"
   | "omo-question"
   | "omo-review"
   | "omo-typing"
@@ -157,6 +159,12 @@ export type ParsedPrompt = InteractivePrompt & {
   ompCall?: string;
   /** Claude's /effort: the state its Ultracode switch shows, null without one; checked before `s`, never sent */
   claudeUltracode?: boolean | null;
+  /** Letta's /model: what its search line shows (letta.ts), the search each key of a typed one is checked against */
+  lettaSearch?: string;
+  /** Letta's /model: the tab it shows (letta.ts), part of a row's identity */
+  lettaTab?: string;
+  /** Letta's /model: the tabs its tab bar draws, which a search can empty (letta.ts lettaSearchShown) */
+  lettaTabs?: string[];
   menuLabels: string[];
   selectedIndex: number;
   checkedOptionIndices: number[];
@@ -363,6 +371,7 @@ export function publicPrompt(parsed: ParsedPrompt): InteractivePrompt {
     ...(parsed.fallback ? { fallback: true as const } : {}),
     ...(parsed.own_text ? { own_text: parsed.own_text } : {}),
     ...(parsed.screen_words ? { screen_words: parsed.screen_words } : {}),
+    ...(parsed.option_preview ? { option_preview: parsed.option_preview } : {}),
   };
   parsedByPublicPrompt.set(prompt, parsed);
   return prompt;
@@ -510,6 +519,13 @@ export const PI_ROW_RE = /^([\u2192\u276f\u279c])?\s*(?:[\u2713\u2714]\s+)?(\S.*
  * row once another one is current, so the position is read rather than assumed.
  */
 export const PI_MODEL_HINT_RE = /enter to select\s*·\s*ctrl\+s to set as default\s*·\s*escape\/ctrl\+c to cancel/i;
+
+/**
+ * A composer or a shell's prompt: one starting with its mark (`❯`, `$ `, oh-my-zsh's `➜`), or ending
+ * with it (`user@host:~/app$`). Never an ending `%`: a usage status ends with one (`usage 12%`), so
+ * zsh's `host%` prompt, the rarer case, is not recognised.
+ */
+export const PROMPT_LINE_RE = /^(?:[❯›>➜]|[$#](?:\s|$))|[❯›>$#]$/u;
 
 /** pi ticks the model answering now, and marks the one it starts on with `· default` */
 const PI_MODEL_CURRENT_RE = /[\u2713\u2714]/;

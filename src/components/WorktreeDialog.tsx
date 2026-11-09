@@ -23,7 +23,7 @@ import { useMachineApi, useMachineId } from "../lib/machineContext.tsx";
 import { useT } from "../lib/i18n.ts";
 import { latestRead, READ_AGAIN_MS, READ_AGAIN_TIMES, readAgainUntil } from "../lib/latestRead.ts";
 import { useSettings } from "../lib/settings.ts";
-import { launchAgent } from "../lib/agentLaunchMode.ts";
+import { launchAgent, launchDefaults } from "../lib/agentLaunchMode.ts";
 import { suggestWorktreeBranch, worktreeLabel } from "../lib/worktreeName.ts";
 import { useSheetSwipe } from "../lib/sheets.ts";
 import { usePhoneSheetBack } from "../lib/sheetHistory.ts";
@@ -197,7 +197,7 @@ export function WorktreeDialog({ mode, workspace, onClose, onOpened, onOpenPane 
     const name = branch.trim();
     if (!name || editingLauncher || loadingCatalog || missingLauncher || (agentKind !== "" && !catalogReady)) return;
     void run(t("Creating the checkout…"), async () => {
-      const result = await createWorktree({ workspace_id: workspace.workspace_id, branch: name, base: base.trim() || null, label: label.trim() || null, agent: launcher ? { kind: agentKind, launcher } : launchAgent(agentKind, settings) });
+      const result = await createWorktree({ workspace_id: workspace.workspace_id, branch: name, base: base.trim() || null, label: label.trim() || null, agent: launcher ? { kind: agentKind, launcher } : launchAgent(agentKind, settings, launchDefaults(agentKind, settings)) });
       // the default follows what actually started: Shell after a plain checkout, an agent only once it runs
       if (!agentKind || result.agent_started === true) rememberAgent(agentKind);
       return result;

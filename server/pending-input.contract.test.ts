@@ -341,6 +341,153 @@ describe("resumable pending dispositions", () => {
 });
 
 describe("resumable follow-up receipts (#2421)", () => {
+  it.each(["sent", "discarded"] as const)("recovers a relayed Codex %s receipt without typing again or sharing it with another device", async (outcome) => {
+    const f = await setup("remote-codex-resume", "codex", "› Message\n", { bridgeToken: "fixture-bridge-token", machines: false });
+    const endpoint = MachineManager.prototype.endpoint;
+    const remoteId = "receipt-test-remote";
+    const remote = spyOn(MachineManager.prototype, "endpoint").mockImplementation(function (this: MachineManager, id: string) {
+      return id === remoteId ? { url: `http://127.0.0.1:${f.port}`, token: "fixture-bridge-token" } : endpoint.call(this, id);
+    });
+    const stateDir = join(root, `remote-receipt-central-${outcome}`);
+    const devices = new DeviceStore(stateDir);
+    const pair = (role: "drive" | "watch") => {
+      const paired = devices.pair(devices.startPairing().code, "Receipt test device", role)!;
+      devices.match(paired.token);
+      return `${DEVICE_COOKIE}=${paired.token}`;
+    };
+    const owner = pair("drive"), other = pair("drive"), watcher = pair("watch");
+    const central = createServer({ port: 0, hostname: "127.0.0.1", token: "fixture-server-token", tailscaleOwner: null, stateDir });
+    const sockets: Socket[] = [];
+    const connect = async (resumeId: string, cookie = owner) => {
+      const socket = new Socket(central.port, `/ws?machine_id=${remoteId}`, cookie); sockets.push(socket);
+      await socket.attach(f.pane, true, resumeId);
+      return socket;
+    };
+    try {
+      await f.socket.disconnect();
+      const resumeId = crypto.randomUUID(), browser = await connect(resumeId);
+      browser.send({ type: "submit", id: 983, pane_id: f.pane, text: "remote follow-up", payload: "unused\r", delivery: "queue" });
+      const row = (await browser.result(983)).pending;
+      expect(row?.id).toBeString();
+      if (outcome === "discarded") {
+        browser.send({ type: "pending-action", id: 984, pane_id: f.pane, pending_id: row.id, action: "discard" });
+        expect((await browser.action(984)).ok).toBe(true);
+      } else {
+        await f.state("idle", browser);
+        await f.waitBytes(`${paste(row.text)}\r`);
+      }
+      const expected = outcome === "discarded" ? "discarded" : "sent";
+      await f.removed(row.id, expected, browser);
+      const bytes = f.bytes(), writes = herdrWrites.slice();
+      await browser.disconnect();
+      // A guessed browser UUID cannot recover another authenticated device's receipts.
+      for (const [id, cookie] of [[resumeId, other], [resumeId, watcher], [crypto.randomUUID(), owner]] as const) {
+        const stranger = await connect(id, cookie);
+        stranger.send({ type: "ping", id: 985 });
+        await stranger.wait((frame) => frame.type === "pong" && frame.id === 985);
+        expect(stranger.seen.some((frame) => frame.type === "pending-messages" && frame.removed?.some((item: { id: string }) => item.id === row.id))).toBe(false);
+        await stranger.disconnect();
+      }
+      const resumed = await connect(resumeId);
+      const replay = await f.removed(row.id, expected, resumed);
+      expect(replay.removed).toContainEqual({ id: row.id, outcome: expected, resumed: true });
+      expect(f.bytes()).toBe(bytes);
+      expect(herdrWrites).toEqual(writes);
+    } finally {
+      for (const socket of sockets) socket.close();
+      central.stop(); remote.mockRestore();
+    }
+  }, 25_000);
+
+  it("retains a relayed Codex sent receipt for a closed owner after an explicit resend", async () => {
+    const f = await setup("remote-codex-closed-owner", "codex", "› Message\n", { bridgeToken: "fixture-bridge-token", machines: false });
+    const endpoint = MachineManager.prototype.endpoint;
+    const remoteId = "receipt-test-remote";
+    const remote = spyOn(MachineManager.prototype, "endpoint").mockImplementation(function (this: MachineManager, id: string) {
+      return id === remoteId ? { url: `http://127.0.0.1:${f.port}`, token: "fixture-bridge-token" } : endpoint.call(this, id);
+    });
+    const stateDir = join(root, "remote-receipt-central-closed-owner");
+    const devices = new DeviceStore(stateDir);
+    const pair = (role: "drive" | "watch") => {
+      const paired = devices.pair(devices.startPairing().code, "Receipt test device", role)!;
+      devices.match(paired.token);
+      return `${DEVICE_COOKIE}=${paired.token}`;
+    };
+    const owner = pair("drive"), other = pair("drive"), watcher = pair("watch");
+    const central = createServer({ port: 0, hostname: "127.0.0.1", token: "fixture-server-token", tailscaleOwner: null, stateDir });
+    const sockets: Socket[] = [];
+    const connect = async (resumeId: string, cookie = owner) => {
+      const socket = new Socket(central.port, `/ws?machine_id=${remoteId}`, cookie); sockets.push(socket);
+      await socket.attach(f.pane, true, resumeId);
+      return socket;
+    };
+    const close = pendingInput.PendingInputs.prototype.close;
+    let rowId: string;
+    let closed!: (value: { store: pendingInput.PendingInputs<unknown, unknown>; owner: unknown }) => void;
+    const ownerClosed = new Promise<{ store: pendingInput.PendingInputs<unknown, unknown>; owner: unknown }>((resolve) => { closed = resolve; });
+    const closing = spyOn(pendingInput.PendingInputs.prototype, "close").mockImplementation(function (this: pendingInput.PendingInputs<unknown, unknown>, owner) {
+      const retained = rowId !== undefined && this.get(owner, f.pane, rowId) !== undefined;
+      close.call(this, owner);
+      if (retained) closed({ store: this, owner });
+    });
+    try {
+      await f.socket.disconnect();
+      const resumeId = crypto.randomUUID(), browser = await connect(resumeId);
+      const writes = herdrWrites.slice();
+      browser.send({ type: "submit", id: 986, pane_id: f.pane, text: "remote held follow-up", payload: "unused\r", delivery: "queue" });
+      const answer = await browser.result(986);
+      expect(answer.ok).toBe(true);
+      const row = answer.pending as PendingMessage;
+      expect(row.id).toBeString();
+      expect(row.state).toBe("queued");
+      rowId = row.id;
+      await browser.disconnect();
+      // The client close can precede the remote bridge's close; wait for the original owner's store.
+      const retained = await ownerClosed;
+      const disconnectedFrames = browser.seen.slice();
+      expect(retained.store.list(retained.owner, f.pane)).toContainEqual(expect.objectContaining({ id: row.id, state: "held" }));
+      expect(retained.store.outcome(retained.owner, f.pane, row.id)).toBeUndefined();
+      expect(f.bytes()).toBe("");
+      expect(herdrWrites).toEqual(writes);
+
+      const resender = await connect(resumeId);
+      await f.state("idle", resender);
+      resender.send({ type: "ping", id: 987 });
+      await resender.wait((frame) => frame.type === "pong" && frame.id === 987);
+      expect(retained.store.list(retained.owner, f.pane)).toContainEqual(expect.objectContaining({ id: row.id, state: "held" }));
+      expect(retained.store.outcome(retained.owner, f.pane, row.id)).toBeUndefined();
+      expect(resender.seen.some((frame) => frame.type === "pending-messages" && frame.removed?.some((item: { id: string }) => item.id === row.id))).toBe(false);
+      expect(f.bytes()).toBe("");
+      expect(herdrWrites).toEqual(writes);
+
+      resender.send({ type: "submit", id: 988, pane_id: f.pane, text: row.text, payload: paste(row.text), resend_id: row.id });
+      const resent = await resender.result(988);
+      expect(resent.ok, JSON.stringify(resent)).toBe(true);
+      await f.waitBytes(`${paste(row.text)}\r`);
+      expect(f.bytes()).toBe(`${paste(row.text)}\r`);
+      expect(herdrWrites.slice(writes.length)).toEqual([`prompt ${f.pane}`]);
+      expect(retained.store.outcome(retained.owner, f.pane, row.id)).toBe("sent");
+      const deliveredWrites = herdrWrites.slice();
+      await resender.disconnect();
+      for (const [id, cookie] of [[resumeId, other], [resumeId, watcher], [crypto.randomUUID(), owner]] as const) {
+        const stranger = await connect(id, cookie);
+        stranger.send({ type: "ping", id: 989 });
+        await stranger.wait((frame) => frame.type === "pong" && frame.id === 989);
+        expect(stranger.seen.some((frame) => frame.type === "pending-messages" && frame.removed?.some((item: { id: string }) => item.id === row.id))).toBe(false);
+        await stranger.disconnect();
+      }
+      const resumed = await connect(resumeId);
+      const replay = await f.removed(row.id, "sent", resumed);
+      expect(replay.removed).toContainEqual({ id: row.id, outcome: "sent", resumed: true });
+      expect(browser.seen).toEqual(disconnectedFrames);
+      expect(f.bytes()).toBe(`${paste(row.text)}\r`);
+      expect(herdrWrites).toEqual(deliveredWrites);
+    } finally {
+      for (const socket of sockets) socket.close();
+      central.stop(); remote.mockRestore(); closing.mockRestore();
+    }
+  }, 25_000);
+
   it.each(["sent", "discarded"] as const)("replays a Codex follow-up's exact %s receipt to its returning browser without typing again", async (outcome) => {
     const f = await setup(`codex-resume-${outcome}`, "codex");
     const token = crypto.randomUUID(), from = f.socket.seen.length;
@@ -494,6 +641,59 @@ describe("Ovis-origin Pi transcript receipts", () => {
     expect(f.socket.seen.some((frame) => frame.type === "pending-messages" && frame.removed?.some((item: any) => item.id === receipt.id && item.outcome === "consumed"))).toBe(false);
     appendFileSync(transcript, piLine("u1", "a0", "user", "follow after work"));
     await f.socket.wait((frame) => frame.type === "pending-messages" && frame.removed?.some((item: any) => item.id === receipt.id && item.outcome === "consumed"), from);
+  }, 20_000);
+
+  it("keeps no receipt for a command Pi runs, which it never records as sent", async () => {
+    const transcript = piFile("pi-command");
+    const f = await setup("pi-command", "pi", "› Message\n", {}, false, transcript);
+    f.socket.send({ type: "conversation-watch", pane_id: f.pane, enabled: true });
+    const from = f.socket.seen.length;
+    // a builtin, sent now and queued for the next turn: Pi writes no user record of either
+    f.socket.send({ type: "submit", id: 905, pane_id: f.pane, text: "/model", payload: "/model", delivery: "immediate" });
+    expect((await f.socket.result(905)).ok).toBe(true);
+    await f.waitBytes(`${paste("/model")}\r`);
+    await f.queue(906, "/thinking high");
+    await f.state("idle");
+    await f.waitBytes(`${paste("/thinking high")}\r`);
+    // a shell command, recorded as its output
+    f.socket.send({ type: "submit", id: 908, pane_id: f.pane, text: "!git status", payload: "!git status", delivery: "immediate" });
+    expect((await f.socket.result(908)).ok).toBe(true);
+    await f.waitBytes(`${paste("!git status")}\r`);
+    // an unknown name is a message to Pi, recorded as typed: it keeps its receipt
+    f.socket.send({ type: "submit", id: 907, pane_id: f.pane, text: "/not-a-pi-command", payload: "/not-a-pi-command", delivery: "immediate" });
+    expect((await f.socket.result(907)).ok).toBe(true);
+    await f.socket.wait((frame) => frame.type === "pending-messages" && frame.pane_id === f.pane
+      && frame.messages.some((item: PendingMessage) => item.request_id === 907 && item.error?.code === "pi_transcript_pending"), from);
+    const receipts = f.socket.seen.slice(from).flatMap((frame) => frame.type === "pending-messages" ? frame.messages as PendingMessage[] : []);
+    // the queued row itself shows while it waits; only a receipt after Enter carries a transcript code
+    expect(receipts.filter((item) => ["/model", "/thinking high", "!git status"].includes(item.text) && item.error?.code?.includes("transcript"))).toEqual([]);
+  }, 20_000);
+
+  it("confirms a receipt queued behind a Pi command once its record lands, each sent once and in order", async () => {
+    const transcript = piFile("pi-command-queue");
+    const f = await setup("pi-command-queue", "pi", "› Message\n", {}, false, transcript);
+    f.socket.send({ type: "conversation-watch", pane_id: f.pane, enabled: true });
+    const command = await f.queue(910, "/model sonnet");
+    const message = await f.queue(911, "after the switch");
+    const from = f.socket.seen.length;
+    await f.state("idle");
+    await f.removed(command.id, "sent");
+    await f.waitBytes(`${paste("/model sonnet")}\r`);
+    // the queue advances one message per turn
+    await f.state("working"); await f.state("idle");
+    await f.removed(message.id, "sent");
+    // the command left no receipt to wait for, so the message behind it is not held back
+    const sent = await f.socket.wait((frame) => frame.type === "pending-messages" && frame.pane_id === f.pane
+      && frame.messages.some((item: PendingMessage) => item.text === "after the switch" && item.error?.code === "pi_transcript_pending"), from);
+    const receipt = sent.messages.find((item: PendingMessage) => item.text === "after the switch" && item.error?.code === "pi_transcript_pending");
+    expect(receipt.id).not.toBe(message.id);
+    expect(f.bytes()).toBe(`${paste("/model sonnet")}\r${paste("after the switch")}\r`);
+    const receipts = f.socket.seen.slice(from).flatMap((frame) => frame.type === "pending-messages" ? frame.messages as PendingMessage[] : []);
+    expect(receipts.filter((item) => item.text === "/model sonnet" && item.error?.code?.includes("transcript"))).toEqual([]);
+    // Pi records the switch as nothing a user typed, and the message as typed
+    appendFileSync(transcript, piLine("u1", "a0", "user", "after the switch"));
+    await f.removed(receipt.id, "consumed");
+    expect(f.bytes()).toBe(`${paste("/model sonnet")}\r${paste("after the switch")}\r`);
   }, 20_000);
 
   it("keeps explicit Send now non-resendable while Pi works", async () => {
@@ -1445,10 +1645,14 @@ describe("connection-owned pending input", () => {
   it("marks a queued send typed at once as typed now, and never its replay or a discarded row's", async () => {
     const f = await setup("typed-now");
     await f.state("idle");
+    const asked = Date.now();
     f.socket.send({ type: "submit", id: 1, pane_id: f.pane, text: "typed at once", payload: "unused\r", delivery: "queue" });
     const fresh = await f.socket.result(1);
     expect(fresh).toMatchObject({ ok: true, typed_now: true });
     expect(fresh.pending).toBeUndefined();
+    // the PC's clock before it typed: the message's turn is written after it (src/lib/sentWaiting.ts)
+    expect(Date.parse(fresh.sending_at)).toBeGreaterThanOrEqual(asked);
+    expect(Date.parse(fresh.sending_at)).toBeLessThanOrEqual(Date.now());
     await f.waitBytes(`${paste("typed at once")}\r`);
     // the same id again: its answer is replayed and nothing is typed twice
     const bytes = f.bytes(), from = f.socket.seen.length;
@@ -1456,6 +1660,7 @@ describe("connection-owned pending input", () => {
     const replay = await f.socket.wait((frame) => frame.type === "submit-result" && frame.id === 1, from);
     expect(replay.ok).toBe(true);
     expect(replay.typed_now).toBeUndefined();
+    expect(replay.sending_at).toBeUndefined();
     expect(f.bytes()).toBe(bytes);
     // queued while the agent works, then discarded: its replay answers ok with no row, and was never typed
     await f.state("working");
@@ -1469,7 +1674,20 @@ describe("connection-owned pending input", () => {
     expect(discarded.ok).toBe(true);
     expect(discarded.pending).toBeUndefined();
     expect(discarded.typed_now).toBeUndefined();
+    expect(discarded.sending_at).toBeUndefined();
     expect(f.bytes()).toBe(bytes);
+  }, 30_000);
+
+  it("stamps an immediate send's result with the PC's clock before it typed", async () => {
+    const f = await setup("immediate-stamp");
+    await f.state("idle");
+    const asked = Date.now();
+    f.socket.send({ type: "submit", id: 1, pane_id: f.pane, text: "sent at once", payload: paste("sent at once") });
+    const answer = await f.socket.result(1);
+    expect(answer.ok).toBe(true);
+    expect(Date.parse(answer.sending_at)).toBeGreaterThanOrEqual(asked);
+    expect(Date.parse(answer.sending_at)).toBeLessThanOrEqual(Date.now());
+    await f.waitBytes(`${paste("sent at once")}\r`);
   }, 30_000);
 
   it("takes no colors from a scrolled viewport: an older grey box with the typed words holds the message", async () => {
@@ -2094,7 +2312,8 @@ describe("a create request's first message", () => {
     expect(res.status).toBe(200);
     const tab = await res.json() as { pane_id: string; agent_started: boolean; first_message: { id: string } | null };
     expect(tab.agent_started).toBeTrue();
-    expect(tab.first_message).not.toBeNull();
+    // queued for the page that asked: nothing says held
+    expect(tab.first_message).toEqual({ id: expect.any(String) });
     expect(launches.at(-1)).toBe("claude");
     const pane = tab.pane_id;
     // the case's own control: the route queued it while herdr named no agent in the pane
@@ -2119,6 +2338,27 @@ describe("a create request's first message", () => {
     await sent;
     await written(() => f.bytes().endsWith(`${paste("FIRST-first-launched")}\r`), "input timeout", 8_000);
     expect(f.bytes()).toBe(`${paste("FIRST-first-launched")}\r`);
+  }, 30_000);
+
+  it("asked for with no page connection, the create route's answer says it is held (#2743)", async () => {
+    const created = await herdrRpc<{ workspace: { workspace_id: string } }>("workspace.create", { label: "ovis-test-pending-first-unattended-answer", cwd: root, focus: false });
+    const entry: (typeof active)[number] = { stop: () => {}, sockets: [], workspace: created.workspace.workspace_id }; active.push(entry);
+    const server = createServer({ port: 0, stateDir: join(root, "state-first-unattended-answer") });
+    entry.stop = server.stop;
+    standInLaunch = true;
+    const res = await fetch(`http://localhost:${server.port}/api/tab/create`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspace_id: created.workspace.workspace_id, cwd: root, agent: { kind: "claude" }, first_message: "FIRST-NO-PAGE" }),
+    }).finally(() => { standInLaunch = false; });
+    expect(res.status).toBe(200);
+    const tab = await res.json() as { pane_id: string; agent_started: boolean; first_message: { id: string; held?: string } };
+    expect(tab.agent_started).toBeTrue();
+    expect(tab.first_message).toEqual({ id: expect.any(String), held: "first_message_unattended" });
+    // what the answer says is what the pane's list says
+    const socket = new Socket(server.port); entry.sockets.push(socket);
+    await socket.attach(tab.pane_id);
+    const held = await listed(socket, tab.pane_id, tab.first_message.id, "held");
+    expect(held.messages.find((item: PendingMessage) => item.id === tab.first_message.id).error.code).toBe("first_message_unattended");
   }, 30_000);
 
   it("queued for one launched agent, is held, not typed, when another agent comes up in its terminal", async () => {

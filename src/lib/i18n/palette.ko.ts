@@ -4,6 +4,7 @@
  * Register and fixed terms follow ../i18n.ko.ts; a key another feature also uses goes there.
  */
 export const PALETTE_KO: Record<string, string> = {
+  "Actions": "동작",
   "Workspace": "워크스페이스",
   "Move tab to {workspace}": "탭을 {workspace}(으)로 이동",
   "Enable notifications": "알림 켜기",
@@ -14,7 +15,6 @@ export const PALETTE_KO: Record<string, string> = {
   "Close command palette": "명령 팔레트 닫기",
   "Filter panes by status": "상태별 패널 필터",
   "All": "전체",
-  "Recent": "최근",
   "Unknown workspace": "알 수 없는 워크스페이스",
   "Plugin actions": "플러그인 동작",
   "Running…": "실행 중…",
@@ -27,5 +27,7 @@ export const PALETTE_KO: Record<string, string> = {
   "Folders": "폴더",
   "Open in Files": "파일에서 열기",
   "Pinned folders": "고정한 폴더",
-  "Actions": "동작",
+  "Open a page on this PC…": "이 PC의 페이지 열기…",
+  "Page on this PC": "이 PC의 페이지",
+  "Open {address}": "{address} 열기",
 };

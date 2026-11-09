@@ -107,9 +107,11 @@ const NODE_HOST = join(import.meta.dir, "pty-host.mjs");
 const IDENTITY = 'if [ "$#" -eq 0 ]; then printf "pty-sidecar: usage: fixture\\n" >&2; exit 2; fi';
 const DELEGATE = `exec node '${NODE_HOST}' "$@"`;
 
+// No core dump from a fake that crashes on purpose: with a relative core_pattern it would land in
+// the working directory, the checkout, where check.ts counts it as a source change.
 function fakeHost(body: string, mode = 0o755, shebang = true): string {
   const path = join(fixtures, crypto.randomUUID());
-  writeFileSync(path, `${shebang ? "#!/bin/sh\n" : ""}${body}\n`);
+  writeFileSync(path, `${shebang ? "#!/bin/sh\nulimit -c 0\n" : ""}${body}\n`);
   chmodSync(path, mode);
   return path;
 }
@@ -565,6 +567,56 @@ function parity(host: "node" | "rust") {
       } finally { burst.session.kill(); }
     }, 15_000);
 
+    // a signal's end is never the 0 of a success: told as a shell tells it
+    it.skipIf(process.platform === "win32")("reports a command a signal ended as 128 plus the signal's number", async () => {
+      const ended = run("sh", ["-c", "kill -TERM $$"]);
+      try {
+        expect(await ended.exited).toBe(143);
+      } finally { ended.session.kill(); }
+    }, 15_000);
+
+    // that wait ends the moment the command has exited: a plain exit is not held for it (timing is the
+    // behaviour here, bounded well past a host's start and well under the 200 ms wait plus a quiet one)
+    it.skipIf(process.platform === "win32")("ends a plain exit without waiting out the hold for a closed terminal", async () => {
+      const started = performance.now();
+      const ended = run("sh", ["-c", "exit 7"]);
+      try {
+        expect(await ended.exited).toBe(7);
+        expect(performance.now() - started).toBeLessThan(150);
+      } finally { ended.session.kill(); }
+    }, 15_000);
+
+    // the host waits (EXIT_QUIET) for a command that closed its terminal, as a dying one does, before hanging it up:
+    // time is the behaviour here, a command exiting 50 ms after it closed its terminal is well within that wait
+    it.skipIf(process.platform === "win32")("lets a command that closed its terminal exit with its own code", async () => {
+      const ended = run("sh", ["-c", "exec 0<&- 1>&- 2>&-; sleep 0.05; exit 3"]);
+      try {
+        expect(await ended.exited).toBe(3);
+      } finally { ended.session.kill(); }
+    }, 15_000);
+
+    it.skipIf(process.platform === "win32")("hangs up a command that closed its terminal and kept running as an end of its own, not a signal", async () => {
+      const ended = run("sh", ["-c", "exec 0<&- 1>&- 2>&-; sleep 5"]);
+      try {
+        expect(await ended.exited).toBe(0);
+      } finally { ended.session.kill(); }
+    }, 15_000);
+
+    // past that wait the host ends the command itself: only the signals it sent are its own end
+    it.skipIf(process.platform === "win32")("reports a signal the command sent itself after the host hung it up, as that signal", async () => {
+      const ended = run("sh", ["-c", "trap '' HUP; exec 0<&- 1>&- 2>&-; sleep 0.45; kill -TERM $$"]);
+      try {
+        expect(await ended.exited).toBe(143);
+      } finally { ended.session.kill(); }
+    }, 15_000);
+
+    it.skipIf(process.platform === "win32")("ends a command that closed its terminal and ignores the hangup, as an end of its own", async () => {
+      const ended = run("sh", ["-c", "trap '' HUP; exec 0<&- 1>&- 2>&-; sleep 30"]);
+      try {
+        expect(await ended.exited).toBe(0);
+      } finally { ended.session.kill(); }
+    }, 15_000);
+
     it.skipIf(process.platform === "win32")("signals SIGWINCH to the command without changing its size", async () => {
       const winch = run("node", ["-e", `
         process.on("SIGWINCH", () => process.stdout.write("WINCH " + process.stdout.columns + "x" + process.stdout.rows, () => process.exit(0)));
@@ -736,7 +788,8 @@ parity("rust");
 
 /** The Rust host run directly, so a test can write what PtySession never does: frames cut off, floods. */
 function direct(args: string[]) {
-  const proc = Bun.spawn([RUST_HOST ?? "", "40", "5", ...args], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  // exec keeps the host's pid; no core dump in the checkout when a test aborts it (see fakeHost)
+  const proc = Bun.spawn(["sh", "-c", 'ulimit -c 0; exec "$0" "$@"', RUST_HOST ?? "", "40", "5", ...args], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   let output = "";
   const waiters = new Set<() => void>();
   void (async () => {
