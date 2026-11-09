@@ -166,7 +166,7 @@ it("tells a held session omo has not written yet from an older one", async () =>
   expect(await omoSessionForPane(started, root, panes, root)).toEqual({ path: null, pending: "unwritten-first" });
   expect(await omoSessionForPane(afterNew, root, panes, root)).toEqual({ path: null, pending: "unwritten-after-new" });
   const written = session("unwritten-first");
-  expect(await omoSessionForPane(started, root, panes, root)).toEqual({ path: realpathSync(written), pending: null });
+  expect(await omoSessionForPane(started, root, panes, root)).toEqual({ path: realpathSync(written), pending: null, identity: expect.any(String) });
 });
 
 it("serves a held omo session as an empty conversation until its file is written", async () => {
@@ -180,7 +180,7 @@ it("serves a held omo session as an empty conversation until its file is written
   try {
     const pending = await read();
     expect(pending.status).toBe(200);
-    expect(await pending.json()).toEqual({ source: "omo-transcript", turns: [], metadata: { model: null, reasoning_effort: null }, cursor: null, history_id: "unwritten:unwritten-http" });
+    expect(await pending.json()).toEqual({ source: "omo-transcript", turns: [], metadata: { model: null, reasoning_effort: null }, cursor: null, history_id: "unwritten:unwritten-http", server_time: expect.any(String) });
     // a cursor from the conversation before /new has no page here
     expect((await read("&before=stale:0")).status).toBe(409);
     writeFileSync(join(dir, "2026-10-03T00-00-00-000Z_unwritten-http.jsonl"), [

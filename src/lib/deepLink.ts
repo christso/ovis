@@ -78,7 +78,9 @@ export function slugOf(label: string | null | undefined): string {
 }
 
 /** Settings pages merged into another: a link or history entry naming one opens the page it went to. */
-const MOVED_SETTINGS: Readonly<Record<string, string>> = { usage: "agents", integrations: "agents" };
+const MOVED_SETTINGS: Readonly<Record<string, string>> = { usage: "agents", integrations: "agents", voice: "chat", remote: "devices" };
+/** The group a merged page became, for a link naming the old page alone. */
+const MOVED_SECTIONS: Readonly<Record<string, string>> = { voice: "voice", remote: "remote" };
 
 /** The Settings page a link or history entry names, as this version calls it. */
 export function currentSettingsPage(page: string): string;
@@ -115,7 +117,7 @@ export function readLink(search: string): AppLink {
     ...(page === "graph" || page === "table" ? { page: "graph" as const } : {}),
     file: named(query.get("file")),
     settings,
-    section: settings ? named(query.get("section")) : null,
+    section: settings ? named(query.get("section")) ?? MOVED_SECTIONS[named(query.get("settings")) ?? ""] ?? null : null,
     create: readCreate(query),
     sidebar: SIDEBAR[query.get("sidebar") ?? ""] ?? null,
   };

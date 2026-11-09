@@ -1,15 +1,20 @@
-import { authenticatedWebSocket } from "./remote-websocket.ts";
 import { createHmac, randomBytes } from "node:crypto";
+import { RECEIPT_RESUME_ID } from "../shared/receipt-resume.ts";
+import { authenticatedWebSocket } from "./remote-websocket.ts";
 import { OUTPUT_HARD_BYTES, OUTPUT_HIGH_BYTES, OUTPUT_STALL_MS } from "./output-window.ts";
 import { OUTPUT_STALLED_CLOSE_CODE } from "../shared/terminal-flow.ts";
 import type { MachineManager } from "./machines.ts";
 import type { ServerMessage, SessionSnapshot } from "../shared/protocol.ts";
-import { RECEIPT_RESUME_ID } from "../shared/receipt-resume.ts";
+import { LARGE_REPLY_BYTES } from "./herdr/client.ts";
 
-/** One connection server's lifetime, matching the in-memory delivery receipts on its bridges. */
+/** Unlinkable receipt identities for one connection server lifetime; no browser-controlled namespace crosses PCs or devices. */
 export class RelayReceiptIds {
   private readonly key = randomBytes(32);
 
+  /**
+   * Returns an opaque UUID stable for this server, PC, authenticated device and browser UUID.
+   * Invalid browser UUIDs return undefined; restarting the server invalidates derived identities.
+   */
   scope(machine: string, device: string | undefined, browser: string): string | undefined {
     if (!RECEIPT_RESUME_ID.test(browser)) return undefined;
     const digest = createHmac("sha256", this.key).update(JSON.stringify([machine, device ?? null, browser])).digest();
@@ -20,9 +25,15 @@ export class RelayReceiptIds {
   }
 }
 
+/**
+ * The browser's socket as the core hands it over (connections.ts `relayClient`): `send` holds it to this PC's
+ * transport budget and closes it past that, and `getBufferedAmount` is what counts against it, without what is
+ * left of a large frame still draining (#2573), which `large` tells.
+ */
 interface RelayClient {
   send(data: string): number;
   getBufferedAmount(): number;
+  large?(): number;
   close(code?: number, reason?: string): void;
 }
 
@@ -55,6 +66,8 @@ export class MachineRelay {
   private client?: RelayClient;
   private waiting: string[] = [];
   private bytes = 0;
+  /** what waits of frames larger than the budget, a large session's snapshot (#2573): held to herdr's largest reply */
+  private large = 0;
   private closed = false;
   private untrack: () => void;
   private timer: ReturnType<typeof setInterval>;
@@ -84,8 +97,10 @@ export class MachineRelay {
       const raw = this.told(String(event.data));
       if (this.closed) return;
       if (!this.client) {
-        this.bytes += Buffer.byteLength(raw);
-        if (this.bytes > OUTPUT_HARD_BYTES) this.close(OUTPUT_STALLED_CLOSE_CODE, "output overflow");
+        // a frame larger than the budget waits apart, as the browser's socket excuses it (connections.ts `send`)
+        const bytes = Buffer.byteLength(raw);
+        if (bytes > OUTPUT_HARD_BYTES) this.large += bytes; else this.bytes += bytes;
+        if (this.bytes > OUTPUT_HARD_BYTES || this.large > LARGE_REPLY_BYTES) this.close(OUTPUT_STALLED_CLOSE_CODE, "output overflow");
         else this.waiting.push(raw);
       } else this.send(raw);
     };
@@ -95,12 +110,16 @@ export class MachineRelay {
   }
   /**
    * A frame as the browser is told it: a frame that names `tokens` anywhere is read, whatever its key
-   * order, and a snapshot among them re-written where a value leaves; the rest pass unread.
+   * order, and a snapshot among them re-written where a value leaves; a watch-only browser's features frame
+   * leaves its `paste_dir`; the rest pass unread.
    */
   private told(raw: string): string {
-    if (!raw.includes('"tokens"')) return raw;
+    const pasteDir = this.readOnly && raw.includes('"paste_dir"');
+    if (!raw.includes('"tokens"') && !pasteDir) return raw;
     let message: ServerMessage;
     try { message = JSON.parse(raw) as ServerMessage; } catch { return raw; }
+    // a watch-only browser is not told the PC's upload folder (server/core/socket.ts), whatever its bridge says
+    if (message.type === "features" && pasteDir) { const { paste_dir: _folder, ...features } = message; return JSON.stringify(features); }
     if (message.type !== "snapshot") return raw;
     const snapshot = this.browserSnapshot(message.snapshot);
     return snapshot === message.snapshot ? raw : JSON.stringify({ ...message, snapshot });
@@ -108,7 +127,9 @@ export class MachineRelay {
   /** One stall-clock sample of both sockets' queues; the 100 ms timer calls it, and tests inject `now`. */
   tick(now = Date.now()): void {
     if (this.closed) return;
-    const buffered = Math.max(this.client?.getBufferedAmount() ?? 0, this.upstream.bufferedAmount);
+    // what queues behind a large frame still draining cannot move before it: that frame's own deadline answers for it
+    const client = this.client?.large?.() ? 0 : this.client?.getBufferedAmount() ?? 0;
+    const buffered = Math.max(client, this.upstream.bufferedAmount);
     const code = this.stall.sample(buffered, now);
     if (code) this.close(code, "terminal transport stalled");
   }
@@ -116,13 +137,16 @@ export class MachineRelay {
     this.client = client;
     if (this.closed) { client.close(1012, "Remote connection ended"); return; }
     for (const raw of this.waiting) this.send(raw);
-    this.waiting = []; this.bytes = 0;
+    this.waiting = []; this.bytes = 0; this.large = 0;
   }
   private send(raw: string): void {
     if (this.closed || !this.client) return;
-    if (this.client.getBufferedAmount() + Buffer.byteLength(raw) > OUTPUT_HARD_BYTES) { this.close(OUTPUT_STALLED_CLOSE_CODE, "output overflow"); return; }
     if (this.client.send(raw) === 0) this.close(OUTPUT_STALLED_CLOSE_CODE, "output delivery failed");
   }
+  /**
+   * Forwards browser frames with scoped resume IDs only for controlling attachments; raw browser
+   * resume IDs and observer resume IDs are stripped. Malformed frames remain upstream's responsibility.
+   */
   message(raw: string | Buffer): void {
     if (this.closed) return;
     if (this.upstream.readyState !== WebSocket.OPEN) { this.close(); return; }
@@ -130,8 +154,8 @@ export class MachineRelay {
     try {
       const message = JSON.parse(text);
       if (message?.type === "attach") {
-        // The remote bridge authenticates this server's shared token, not the browser's device.
-        // Forward only a server-scoped identity; observers cannot recover presentation receipts.
+        // The bridge authenticates this server's shared token, not the browser's device.
+        // Only controlling clients receive a server-scoped receipt identity.
         const id = !this.readOnly && typeof message.receipt_resume_id === "string" ? this.receiptId?.(message.receipt_resume_id) : undefined;
         if (id) message.receipt_resume_id = id;
         else delete message.receipt_resume_id;
@@ -146,7 +170,7 @@ export class MachineRelay {
   close(code = 1000, reason = "Closed"): void {
     if (this.closed) return;
     this.closed = true; clearInterval(this.timer); this.untrack();
-    this.waiting = []; this.bytes = 0;
+    this.waiting = []; this.bytes = 0; this.large = 0;
     const boundedReason = Buffer.from(reason).subarray(0, 100).toString("utf8");
     this.upstream.close(code, boundedReason); this.client?.close(code, boundedReason);
   }

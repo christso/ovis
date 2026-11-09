@@ -1,3 +1,3 @@
-.flock-sidebar { flex: 0 0 auto; padding: var(--space-2) var(--side-gutter) 0; }
+.flock-sidebar { flex: 0 0 auto; padding: 0 0 var(--space-2); }
 .flock-sidebar button { width: 100%; cursor: pointer; }
 .flock-sidebar [aria-current="page"] { color: var(--text); background: var(--side-selected); }

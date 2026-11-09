@@ -6,6 +6,7 @@ import { MachineContext } from "../src/lib/machineContext.tsx";
 import { SettingsProvider } from "../src/lib/settings.ts";
 import { OpenFileContext } from "../src/lib/filePaths.ts";
 import { useWaitingSends } from "../src/components/SentWaiting.tsx";
+import { paneLifetimes } from "../src/lib/paneLifetime.ts";
 import { rememberWaitingSend, waitingBaseline, waitingKey } from "../src/lib/sentWaiting.ts";
 
 declare global {
@@ -23,6 +24,8 @@ declare global {
     };
   }
 }
+
+paneLifetimes.observe([{ id: "local", snapshot: { herdr_lifetime: "chat-fixture-herdr", protocol: 22, version: "fixture", panes: [], tabs: [], workspaces: [], layouts: [], agents: [] } }]);
 
 function SiblingConnection({ connected }: { connected: boolean }) {
   useWaitingSends("local", "sibling-pane", connected);

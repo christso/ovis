@@ -11,7 +11,7 @@ import { bootRelayShell, takeEntryUrl } from "./boot.ts";
 import { RelayAdmissionTimeoutError, RelayUnreachableError, UnsafeRelayDestinationError } from "./channel.ts";
 import { ServerIdentityChangedError } from "./device.ts";
 import { testOffer } from "./device.test.ts";
-import { failureOf, forgedOffer, forgetsDevice, iosBrowserTab, offerOf, shellEntry } from "./shellState.ts";
+import { failureOf, forgedOffer, forgetsDevice, iosBrowserTab, keyMismatch, offerOf, pairsAgainWithoutKey, shellEntry } from "./shellState.ts";
 
 const APP = "https://app.example";
 
@@ -43,6 +43,19 @@ describe("the shell's entry", () => {
     expect(forgedOffer(genuine)).toBe(false);
     expect(forgedOffer({ ...genuine, server_public_key: exportPublicKey(generateKeyPair().publicKey) })).toBe(true);
     expect(forgedOffer({ ...genuine, server_public_key: "not-a-key" })).toBe(true);
+  });
+
+  it("names the key that is not the one the id names, and where that key came from", () => {
+    const own = generateKeyPair().publicKey;
+    const other = generateKeyPair().publicKey;
+    const serverId = deriveServerId(own);
+    const link = (key: Uint8Array) => ({ key: exportPublicKey(key), from: "link" as const });
+    const saved = (key: Uint8Array) => ({ key: exportPublicKey(key), from: "saved" as const });
+    expect(keyMismatch(serverId, [link(own)])).toBeNull();
+    // the saved key and the link's disagree: whichever is not the id's is named, with where it came from
+    expect(keyMismatch(serverId, [saved(own), link(other)])).toEqual({ expected: serverId, received: deriveServerId(other), from: "link" });
+    expect(keyMismatch(serverId, [saved(other), link(own)])).toEqual({ expected: serverId, received: deriveServerId(other), from: "saved" });
+    expect(keyMismatch(serverId, [{ key: "not-a-key", from: "link" }])).toEqual({ expected: serverId, received: null, from: "link" });
   });
 
   it("rebuilds a saved PC's offer without a code", () => {
@@ -150,10 +163,13 @@ describe("the offer fragment", () => {
   const page = (href: string) => {
     const url = new URL(href);
     const replaced: string[] = [];
+    const listeners = new Map<string, () => void>();
     return {
       replaced,
+      listeners,
+      addEventListener: (type: string, listener: () => void) => { listeners.set(type, listener); },
       location: { href, pathname: url.pathname, search: url.search, hash: url.hash },
-      history: { replaceState: (_data: unknown, _unused: string, to: string) => replaced.push(to) },
+      history: { state: null as unknown, replaceState: (_data: unknown, _unused: string, to: string) => replaced.push(to) },
     };
   };
 
@@ -162,9 +178,28 @@ describe("the offer fragment", () => {
     const with_ = page(offer);
     expect(takeEntryUrl(with_)).toBe(offer);
     expect(with_.replaced).toEqual([`/s/${"12".repeat(16)}/`]);
-    const without = page(`${APP}/s/${"12".repeat(16)}/?pane=p1`);
-    expect(takeEntryUrl(without)).toBe(`${APP}/s/${"12".repeat(16)}/?pane=p1`);
-    expect(without.replaced).toEqual([]);
+    const linked = page(`${APP}/s/${"12".repeat(16)}/#pane=p1`);
+    expect(takeEntryUrl(linked)).toBe(`${APP}/s/${"12".repeat(16)}/#pane=p1`);
+    expect(linked.replaced).toEqual([]);
+  });
+
+  it("takes a sign-in's return off the address before the shell loads, and the entry keeps it", () => {
+    const returned = page(`${APP}/#code=secret&state=s1`);
+    expect(takeEntryUrl(returned)).toBe(`${APP}/#code=secret&state=s1`);
+    expect(returned.replaced).toEqual(["/"]);
+  });
+
+  it("moves a query from before the fragment carried it into the fragment, off the next request", () => {
+    const old = page(`${APP}/s/${"12".repeat(16)}/?file=%2Fhome%2Fme%2Fa.md`);
+    expect(takeEntryUrl(old)).toBe(`${APP}/s/${"12".repeat(16)}/?file=%2Fhome%2Fme%2Fa.md`);
+    expect(old.replaced).toEqual([`/s/${"12".repeat(16)}/#file=%2Fhome%2Fme%2Fa.md`]);
+    const offer = encodeOffer(testOffer(), APP);
+    const both = page(`${APP}/s/${"12".repeat(16)}/?pane=p1&view=terminal${offer.slice(offer.indexOf("#"))}`);
+    takeEntryUrl(both);
+    expect(both.replaced).toEqual([`/s/${"12".repeat(16)}/#pane=p1&view=terminal`]);
+    const anchored = page(`${APP}/s/${"12".repeat(16)}/?read=%2Fa.md#auth=x`);
+    takeEntryUrl(anchored);
+    expect(anchored.replaced).toEqual([`/s/${"12".repeat(16)}/#read=%2Fa.md`]);
   });
 
   it("is taken off before boot loads, requests or opens anything, and the shell gets it whole", async () => {
@@ -193,10 +228,40 @@ describe("the offer fragment", () => {
       expect(loaded.replaced).toEqual([`/s/${"12".repeat(16)}/`]);
       expect(await mounted.promise).toBe(offer);
       expect(order).toEqual(["address", "load"]);
+      // And Back onto an older entry that still holds a query moves it into the fragment too.
+      loaded.location.search = "?file=%2Fa.md";
+      loaded.listeners.get("popstate")?.();
+      expect(loaded.replaced.at(-1)).toBe(`/s/${"12".repeat(16)}/#file=%2Fa.md`);
     } finally {
       Object.assign(globalThis, saved);
       // Bun has no window of its own: leave none behind
       if (saved.window === undefined) delete (globalThis as { window?: unknown }).window;
     }
+  });
+});
+
+describe("a link without a code on a phone that holds an old key", () => {
+  const refused = new MuxProtocolError("auth_failed", "auth_failed");
+  it("drops the key and compares digits once, after the PC refused the old key", () => {
+    expect(pairsAgainWithoutKey(refused, { code: false, paired: false, codeless: true })).toBe(true);
+  });
+  it("never for a code, after digits were compared, a second time, or another error", () => {
+    expect(pairsAgainWithoutKey(refused, { code: true, paired: false, codeless: false })).toBe(false);
+    expect(pairsAgainWithoutKey(refused, { code: false, paired: false, codeless: true, compared: true })).toBe(false);
+    expect(pairsAgainWithoutKey(refused, { code: false, paired: false, codeless: true, refreshed: true })).toBe(false);
+    expect(pairsAgainWithoutKey(refused, { code: false, paired: true, codeless: false })).toBe(false);
+    expect(pairsAgainWithoutKey(new MuxProtocolError("timeout", "timeout"), { code: false, paired: false, codeless: true })).toBe(false);
+  });
+});
+
+describe("a link without a code that the PC refused before any digits", () => {
+  const refused = new MuxProtocolError("auth_failed", "auth_failed");
+  it("says the PC is not taking new phones now, not that a code expired", () => {
+    expect(failureOf(refused, { code: false, paired: false, codeless: true })).toBe("pair-unavailable");
+  });
+  it("keeps the code and saved-key screens for the attempts that have them", () => {
+    expect(failureOf(refused, { code: true, paired: false })).toBe("code-expired");
+    expect(failureOf(refused, { code: false, paired: true })).toBe("revoked");
+    expect(failureOf(refused, { code: false, paired: false, codeless: true, compared: true })).toBe("pair-declined");
   });
 });

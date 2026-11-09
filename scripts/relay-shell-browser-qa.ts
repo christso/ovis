@@ -36,9 +36,10 @@ import { herdrRpc, workspaceClose, workspaceCreate } from "../server/herdr/clien
 import { startFakePushService } from "../server/push.fake.ts";
 import type { FakePushService } from "../server/push.fake.ts";
 import { shellContentSecurityPolicy } from "../server/static.ts";
+import { REGIONAL_APPS } from "../shared/relay-regions.ts";
 import type { UpdateService } from "../server/update-api.ts";
 import { MIN_SERVER_VERSION } from "../shared/relay-mux.ts";
-import { noInstalledNotes, noUpdateNotes } from "../shared/update.ts";
+import { noInstalledNotes, noUpdateNotes, INSTALL_ID } from "../shared/update.ts";
 import type { UpdateRequest, UpdateStatus } from "../shared/update.ts";
 import { version as shellVersion } from "../package.json";
 import { exportPublicKey, generateKeyPair, openDaemonSecureChannel } from "../shared/relay-e2ee.ts";
@@ -104,10 +105,15 @@ export async function relayShellQa(tree: RelayServerTree): Promise<void> {
     socket.addEventListener("message", (event) => {
       if (typeof event.data === "string" && event.data.includes('"sync"')) synced.resolve();
     });
-    if (new URL(url).searchParams.has("connection_id")) {
+    const counted = (): void => {
       dataSockets.add(socket);
       socketsChanged.dispatchEvent(new Event("change"));
       socket.addEventListener("close", () => { dataSockets.delete(socket); socketsChanged.dispatchEvent(new Event("change")); });
+    };
+    if (new URL(url).searchParams.has("connection_id")) counted();
+    // a warm socket is a phone's connection from the moment the relay binds it to one
+    else if (new URL(url).searchParams.has("warm")) {
+      socket.addEventListener("message", (event) => { if (typeof event.data === "string" && event.data.includes('"bound"')) counted(); });
     }
     return socket;
   } });
@@ -144,7 +150,13 @@ export async function relayShellQa(tree: RelayServerTree): Promise<void> {
   const shellDir = mkdtempSync(join(tmpdir(), "ovis-relay-shell-qa-site-"));
   const built = Bun.spawnSync([process.execPath, "--bun", join(repo, "node_modules/.bin/vite"), "build", "--mode", "shell", "--outDir", shellDir, "--emptyOutDir", "--logLevel", "warn"], { cwd: repo, stdout: "inherit", stderr: "inherit" });
   if (built.exitCode !== 0) throw new Error(`the shell build failed with exit code ${built.exitCode}`);
-  const site = servePagesSite(shellDir, 0);
+  /** Every request that reached the shell host, path and query as its logs would hold them. */
+  const hostRequests: string[] = [];
+  const site = servePagesSite(shellDir, 0, "127.0.0.1", (request) => {
+    const url = new URL(request.url);
+    const referer = request.headers.get("referer");
+    hostRequests.push(`${request.method} ${url.pathname}${url.search}${referer ? ` referer=${referer}` : ""}`);
+  });
   const origin = `http://127.0.0.1:${site.port}`;
 
   /** A fresh pairing offer from the PC, re-based onto the shell host and named for the screens. */
@@ -464,16 +476,80 @@ export async function relayShellQa(tree: RelayServerTree): Promise<void> {
       }
     }
 
+    // A PC's files, folders and names stay on the phone (#2599): a file opened in the app, in a tab
+    // of its own and as a raw file, a link followed in that tab, and a reload of each, while the
+    // shell host hears of nothing but the PC's id in the path. Only the page's fragment, which no
+    // request carries, says what is open.
+    {
+      const folder = mkdtempSync(join(tmpdir(), "ovis-relay-private-folder-"));
+      writeFileSync(join(folder, "private-notes.md"), "# Private notes\n\nSee [the other notes](other-notes.md).\n");
+      writeFileSync(join(folder, "other-notes.md"), "# Other notes\n");
+      const workspace = await workspaceCreate({ cwd: folder, label: "Private Plans" });
+      const pane = workspace.root_pane.pane_id;
+      const { context, page } = await open({ width: 1440, height: 900 });
+      const from = hostRequests.length;
+      try {
+        await pairFrom(page, await serverOffer());
+        await inApp(page);
+        await page.locator(`.workspace-group[data-workspace=${JSON.stringify(workspace.workspace.workspace_id)}] .pane-select`).first().click();
+        await page.locator(".header-files-button").click();
+        await page.locator(".dir-browser-item.is-file", { hasText: "private-notes.md" }).click();
+        await page.getByRole("heading", { name: "Private notes", exact: true }).waitFor();
+        const raw = await page.getByRole("link", { name: "Open raw file", exact: true }).first().getAttribute("href");
+        assert.ok(raw);
+        const opened = context.waitForEvent("page");
+        await page.getByRole("link", { name: "Open in a new tab", exact: true }).first().click();
+        const reader = await opened;
+        await reader.locator(".file-reader").waitFor();
+        await reader.getByRole("heading", { name: "Private notes", exact: true }).waitFor();
+        await shot(reader, "file-reader");
+        await reader.getByRole("button", { name: /the other notes/ }).click();
+        await reader.getByRole("heading", { name: "Other notes", exact: true }).waitFor();
+        await reader.reload();
+        await reader.getByRole("heading", { name: "Other notes", exact: true }).waitFor();
+        const rawTab = await context.newPage();
+        await rawTab.goto(new URL(raw, scope).href);
+        await rawTab.locator(".file-reader").waitFor();
+        await rawTab.waitForFunction(() => document.title.startsWith("private-notes.md"));
+        await page.reload();
+        await inApp(page);
+        await page.getByRole("heading", { name: "Private notes", exact: true }).waitFor();
+        const addresses = [page.url(), reader.url(), rawTab.url()];
+        const seen = hostRequests.slice(from);
+        const named = [folder, "private-notes", "other-notes", "private-plans", "Private Plans", pane];
+        const leaked = seen.filter((line) => {
+          const url = new URL(line.split(" ")[1] ?? "/", origin);
+          const referer = /referer=(\S+)/.exec(line)?.[1];
+          if (referer && new URL(referer).search !== "") return true;
+          let decoded = line;
+          try { decoded = decodeURIComponent(line.replace(/\+/g, " ")); } catch { /* left as it came */ }
+          return named.some((part) => decoded.includes(part)) || ["read", "file", "machine", "ws", "pane", "cwd", "name"].some((key) => url.searchParams.has(key));
+        });
+        keep("task-16-file-paths.txt", `# requests the shell host received while a PC file was opened in the app, in its own tab, as a raw file, and reloaded (${seen.length})\n# folder: ${folder}\n# page addresses after: ${addresses.join("  ")}\n# leaked: ${leaked.length}\n${seen.join("\n")}\n`);
+        assert.deepEqual(leaked, [], "no request to the shell host names the PC's file, folder, workspace or pane");
+        for (const address of addresses) assert.equal(new URL(address).search, "", `the page's query names nothing: ${address}`);
+        note(`file paths: app viewer, its own tab, a followed link, a raw tab and reloads -> ${seen.length} shell-host requests, none naming the file, folder, workspace or pane; addresses keep it in the fragment`);
+      } finally {
+        const paired = await saved(page, ID);
+        if (paired?.device_id) devices.revoke(paired.device_id);
+        await context.close();
+        await workspaceClose(workspace.workspace.workspace_id);
+        rmSync(folder, { recursive: true, force: true });
+      }
+    }
+
     // (a) nothing saved, no offer: the front page asks for the PC's QR code, both themes, both widths
     for (const [device, width, height] of [["mobile", 390, 844], ["desktop", 1440, 900]] as const) {
       for (const theme of ["light", "dark"] as const) {
         const { context, page } = await open({ width, height, theme });
         const response = await page.goto(`${origin}/`);
-        assert.equal(response?.headers()["content-security-policy"], shellContentSecurityPolicy(), "the front page carries the shell policy");
+        assert.equal(response?.headers()["content-security-policy"], shellContentSecurityPolicy(Object.values(REGIONAL_APPS)), "the front page carries the shell policy");
         assert.equal(await page.evaluate(() => document.documentElement.dataset["theme"]), theme);
         await state(page, "empty").waitFor();
         await page.getByRole("heading", { name: "Scan the QR code on your PC" }).waitFor();
-        assert.equal(await page.locator("main button").count(), 0, "the front page offers no Back");
+        assert.equal(await page.getByRole("button", { name: "Back" }).count(), 0, "the front page offers no Back");
+        // its one action: a PC with no camera pointed at it shows a code to type instead (pairCode.ts)
+        assert.deepEqual(await page.locator("main button").allInnerTexts(), ["Pair with a code"], "the front page offers Pair with a code");
         await shot(page, `empty-${device}-${theme}`);
         await context.close();
       }
@@ -550,16 +626,16 @@ export async function relayShellQa(tree: RelayServerTree): Promise<void> {
       // A same-carrier relay API round trip is a barrier after the rename, not a timed absence check.
       const statusesBefore = await relayStatuses();
       await page.keyboard.press("ControlOrMeta+Shift+Comma");
-      await openSettingsPage(page, "Phone & devices");
+      await openSettingsPage(page, "Devices and PCs");
       await page.getByRole("button", { name: "Rename Renamed QA phone", exact: true }).waitFor();
       // the hosted shell offers no relay at all (a relayed phone can neither pair nor reset there:
-      // relayOffered in components/ConnectPhoneDialog.tsx): no relay state in the Connect a phone row, checked once the page consumed the relay status the group would follow,
+      // relayOffered in components/ConnectPhoneDialog.tsx): no Ovis relay group in More settings, checked once the page consumed the relay status the group would follow,
       // plus two frames for its render
       await page.waitForFunction((seen) => ((window as unknown as { qaRelayStatuses?: number }).qaRelayStatuses ?? 0) > seen, statusesBefore);
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const settings = page.locator(".settings-dialog");
-      assert.equal(await settings.locator('[data-section="devices"]').count(), 1, "the shell's Phone & devices lists the devices");
-      assert.equal(await settings.locator('[data-section="phone"] .relay-status').count(), 0, "the hosted shell's Connect a phone row names no relay state");
+      assert.equal(await settings.locator('[data-section="devices"]').count(), 1, "the shell's Devices and PCs lists the devices");
+      assert.equal(await settings.locator('[data-section="relay"]').count(), 0, "the hosted shell's Devices and PCs has no Ovis relay group");
       assert.equal(await settings.getByRole("switch", { name: "Ovis relay", exact: true }).count(), 0, "no relay switch under the shell");
       note(`settings: Phone & devices in the shell lists the phone and has no relay group (relay statuses consumed: ${await relayStatuses()})`);
       await inApp(page);
@@ -696,12 +772,13 @@ export async function relayShellQa(tree: RelayServerTree): Promise<void> {
     {
       const { context, page, bridge } = await open({ theme: "light" });
       const forged: RelayOffer = { ...(await serverOffer()), server_public_key: exportPublicKey(generateKeyPair().publicKey) };
-      const refused = async (attempt: string): Promise<void> => {
+      /** `from`: sockets before the link, such as the front page's check of the saved PC, which are not the link's */
+      const refused = async (attempt: string, from = 0): Promise<void> => {
         await state(page, "identity-changed").waitFor();
         await page.getByRole("heading", { name: "This link is not Desk PC's" }).waitFor();
         assert.equal(await page.getByRole("button", { name: "Pair", exact: true }).count(), 0, `no Pair on a forged link (${attempt})`);
         assert.equal(await page.getByRole("button", { name: "Forget this PC" }).count(), 0, `nothing to forget on a forged link (${attempt})`);
-        assert.deepEqual(bridge.sockets, [], `a forged link opens no socket (${attempt})`);
+        assert.deepEqual(bridge.sockets.slice(from), [], `a forged link opens no socket (${attempt})`);
       };
       await page.goto(offerUrl(forged));
       await refused("opened");
@@ -717,15 +794,18 @@ export async function relayShellQa(tree: RelayServerTree): Promise<void> {
       // from another page, so the link is a fresh load and not a hash change on this one
       await page.goto(`${origin}/`);
       await state(page, "list").waitFor();
+      // the front page checks the saved PC once, with no session (pcStatus.ts): its socket is the list's, not the link's
+      await page.locator('[data-connection]:not([data-connection="checking"])').first().waitFor();
+      const listed = bridge.sockets.length;
       await page.goto(offerUrl(forged));
-      await refused("with the PC's key saved");
+      await refused("with the PC's key saved", listed);
       assert.notEqual(await saved(page, ID), null, "the key saved from the PC's own pairing stays");
       // a key saved from a forged link by an earlier build: this PC's page warns instead of connecting, and Forget removes it
       await seed(page, [{ server_id: ID, server_public_key: forged.server_public_key, name: "Desk PC", device_id: "forged-device" }]);
       await page.goto(scope);
       await state(page, "identity-changed").waitFor();
       await page.getByRole("heading", { name: "Desk PC has a new identity" }).waitFor();
-      assert.deepEqual(bridge.sockets, [], "a forged saved key never connects");
+      assert.deepEqual(bridge.sockets.slice(listed), [], "a forged saved key never connects");
       await page.getByRole("button", { name: "Forget this PC" }).click();
       await state(page, "forgotten").waitFor();
       assert.equal(await saved(page, ID), null, "Forget removed the forged saved key");
@@ -791,7 +871,7 @@ export async function relayShellQa(tree: RelayServerTree): Promise<void> {
     {
       const { context, page } = await open();
       const response = await page.goto(scope);
-      assert.equal(response?.headers()["content-security-policy"], shellContentSecurityPolicy());
+      assert.equal(response?.headers()["content-security-policy"], shellContentSecurityPolicy(Object.values(REGIONAL_APPS)));
       await state(page, "empty").waitFor();
       const facts = await page.evaluate(async (id) => {
         const registration = await navigator.serviceWorker.ready;
@@ -1060,7 +1140,11 @@ export async function relayShellQa(tree: RelayServerTree): Promise<void> {
           assert.deepEqual(updates.requests, [], "nothing is installed before the tap");
           await page.getByRole("button", { name: "Update now" }).click();
           await bounded(updates.installed, "the PC's update service received the install");
-          assert.deepEqual(updates.requests, [{ command: "install", expected_revision: "b".repeat(40) }], "one install of the release on offer, no check first");
+          // one install of the release on offer, named by it, with the install_id its 202 gave (a cancel names that id)
+          assert.equal(updates.requests.length, 1, "one install of the release on offer, no check first");
+          const [asked] = updates.requests as { command?: string; expected_revision?: string; install_id?: string }[];
+          assert.deepEqual([asked?.command, asked?.expected_revision], ["install", "b".repeat(40)], "one install of the release on offer, no check first");
+          assert.match(asked?.install_id ?? "", INSTALL_ID, "the install carries the id its 202 gave");
           await page.getByText("Step 4 of 5: Building the app").waitFor();
           await shot19(page, "update");
           note(`pc-outdated (managed): WELCOME ${below} < ${MIN_SERVER_VERSION} -> update screen; Update now -> POST /api/updates/install over the relay -> fake service recorded ${JSON.stringify(updates.requests)}; progress from GET /api/updates`);
