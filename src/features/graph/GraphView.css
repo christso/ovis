@@ -17,6 +17,9 @@
 .graph-edge-delegation line { stroke-dasharray: 5 4; stroke: var(--accent); }
 .graph-edge-communication line { stroke-dasharray: 2 4; stroke: var(--accent); }
 .graph-arrowhead { fill: var(--accent); }
+.graph-machine-cloud { pointer-events: none; }
+.graph-machine-cloud path { fill: color-mix(in srgb, var(--machine-colour) 9%, transparent); stroke: color-mix(in srgb, var(--machine-colour) 32%, transparent); stroke-width: 1; }
+.graph-machine-cloud text { fill: var(--text-dim); font-family: var(--font-ui); font-weight: 600; paint-order: stroke; stroke: var(--bg); stroke-linejoin: round; }
 .graph-muted { opacity: 0.22; }
 .graph-edge.graph-related line { stroke: var(--accent); stroke-width: 2.5; }
 .graph-node { cursor: pointer; }
