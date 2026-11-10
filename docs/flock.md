@@ -1,6 +1,8 @@
 # Work and session registry
 
-Flock opens a force-directed graph of recorded repositories, worktrees, sessions and agent tabs.
+Flock opens a force-directed graph of native tabs, including tabs inside the worktree workspaces
+nested beneath a workspace in the sidebar. Each tab appears once, even with several split panes
+or agents. Repository, branch, checkout and session information appears in its details.
 Ovis's native Agents section remains the single agent list and keeps its existing filters. The
 old Table view and association/work-renaming/Move controls are retired from navigation; the
 registry, existing associations and migration APIs remain intact. Legacy `page=table` links open
@@ -13,9 +15,9 @@ labels and launcher metadata without reading transcripts or inferring session id
 moves linked neighbours; the simulation stops when settled. Fit/Reset are intentional framing
 actions, and polling does not move an idle graph.
 
-Each logical session has its own ID and a current execution ID. An execution records the machine,
+The retained registry gives each logical session its own ID and a current execution ID. An execution records the machine,
 Herdr lifetime, pane, agent kind and native session ID. A later execution can belong to the same
-logical session on another machine; its earlier executions remain separate nodes. This records an
+logical session on another machine; its earlier executions remain in the registry. This records an
 association only. It does not transfer or restore anything.
 
 A registered execution is live only when its entire binding matches the connected machine's roster.
@@ -25,8 +27,15 @@ shows **Identity unavailable**. Native Workspace/Agents controls remain availabl
 requires either exact current Herdr occupancy or independently verified native ownership.
 Repository and branch metadata appear only when known. Live branch labels reuse the sidebar's
 Git reader. A recorded checkout is physical metadata, not an inferred global repository identity
-or a promise that it still exists on disk. Graph coalesces observations of the same concrete
-machine/path/repository while keeping execution and session IDs separate.
+or a promise that it still exists on disk. Graph uses exact machine, daemon, tab and pane/terminal membership to distinguish tabs. Agent
+occupant identity also guards navigation; metadata names never authorize a target. Old selections
+do not follow a logical session to a different tab after a move.
+
+Workspace focus follows the sidebar’s native worktree grouping, including its nearest preceding
+main-checkout workspace rule. A workspace filter includes its horizontal tabs and the tabs in its
+nested worktrees. A worktree’s sole numbered tab uses the sidebar workspace name; several or
+explicitly named worktree tabs include workspace context. There are no extra workspace, branch or
+checkout container nodes. Repository colors and the legend come from metadata.
 
 The manager serving the configured roster owns `flock.json` in its Ovis state directory. The writer
 is `server/flock.ts`; the shared contract and pure roster projection live in `shared/flock.ts` and
@@ -76,8 +85,10 @@ execution bindings resolve endpoints to logical sessions, preserving links throu
 Native receipt identity is independent of its capture machine, so replay after copying a rollout
 does not count another message. The first capture's machine provenance is retained. Older stored
 duplicate captures remain readable and are counted once in the graph.
-An endpoint without an unambiguous logical association remains an observed native session or
-Herdr occupancy, with no assumed live terminal target or root-agent status.
+Recorded endpoints map to their current represented tabs. Parallel endpoint pairs between two tabs
+combine into one directed relationship with summed receipt counts; same-tab activity adds no extra
+node or link. An endpoint without one unambiguous represented tab remains an unavailable historical
+node, with no assumed live terminal target or root-agent status.
 
 Capture currently supports Codex's durable completed `SubAgentActivity` receipts with an own-thread
 ID, native target ID and a successful `started` or `interacted` activity. The source reader follows

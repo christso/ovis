@@ -17,7 +17,7 @@ export const DEFAULT_GRAPH_STATE: GraphState = {
   groupMachine: false, positions: {}, viewport: { x: 160, y: 100, k: 1 },
 };
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-const str = (value: unknown) => typeof value === "string" ? value.slice(0, 1000) : "";
+const str = (value: unknown, limit = 1000) => typeof value === "string" ? value.slice(0, limit) : "";
 const finite = (value: unknown, fallback: number, max = 1e6) => typeof value === "number" && Number.isFinite(value) ? Math.max(-max, Math.min(max, value)) : fallback;
 
 /** A new isolated key; future versions are refused by readers and writers, never overwritten. */
@@ -33,8 +33,8 @@ export function sanitizeGraphState(raw: unknown): GraphState | null {
     }
   }
   return {
-    version: 1, layout: "force", selected: str(value.selected), groupMachine: value.groupMachine === true, positions,
-    filters: { search: str(filters.search), machine: str(filters.machine), focus: str(filters.focus), status: GRAPH_STATUSES.some((status) => status === str(filters.status)) ? str(filters.status) : "", showCompleted: filters.showCompleted === true, communication: filters.communication === "all" || filters.communication === "none" ? filters.communication : "recent" },
+    version: 1, layout: "force", selected: str(value.selected, 64_000), groupMachine: value.groupMachine === true, positions,
+    filters: { search: str(filters.search), machine: str(filters.machine), focus: str(filters.focus, 64_000), status: GRAPH_STATUSES.some((status) => status === str(filters.status)) ? str(filters.status) : "", showCompleted: filters.showCompleted === true, communication: filters.communication === "all" || filters.communication === "none" ? filters.communication : "recent" },
     viewport: { x: finite(viewport.x, 160), y: finite(viewport.y, 100), k: Math.max(0.08, finite(viewport.k, 1, 4)) },
   };
 }

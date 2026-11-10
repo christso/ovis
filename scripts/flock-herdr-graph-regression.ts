@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
 import roster from "../site/demo/fixtures/machines.json";
 import type { HerdrCoordinationEndpoint } from "../shared/flock.ts";
-import { flockHerdrEndpointKey } from "../shared/flock-relationships.ts";
+import { flockInventory } from "../shared/flock-inventory.ts";
+import { graphTabs } from "../src/features/graph/graphTabs.ts";
 import type { Machine } from "../shared/machines.ts";
 import { handleFlockRequest } from "../server/flock.ts";
 import { moveFlowFixture } from "../server/session-move/flow.fixture.ts";
@@ -64,7 +65,7 @@ try {
     if (process.env["FLOCK_GRAPH_CASE"] && process.env["FLOCK_GRAPH_CASE"] !== `${width}-${theme}`) continue;
     const flow = await moveFlowFixture();
     const session = flow.registry.sessions[0]!, sourceExecution = flow.registry.executions[0]!;
-    const logicalId = `session:${session.id}`;
+
     const parent: HerdrCoordinationEndpoint = { server_id: "fixture-source-server", boot_id: "fixture-source-boot", terminal_id: "owned-terminal-source", agent_instance_id: "fixture-source-occupancy", agent: "codex", pane_id: "owned:p0", name: "Coordinator" };
     const worker: HerdrCoordinationEndpoint = { ...parent, terminal_id: "owned-worker-terminal", agent_instance_id: "fixture-worker-occupancy", agent: "claude", pane_id: "owned:p1", name: "Review worker" };
     let workerOccupancy = worker.agent_instance_id;
@@ -76,12 +77,17 @@ try {
       const raw = machine.snapshot!, pane = { ...template, ...raw.panes[0]!, tab_id: "owned-tab" };
       const source = machine.id === "owned-source";
       const agents = source ? [...(pane.agent ? [parent] : []), { ...worker, agent_instance_id: workerOccupancy }] : pane.agent ? [destination] : [];
-      const panes = source ? [pane, { ...pane, pane_id: worker.pane_id, terminal_id: worker.terminal_id, agent: worker.agent, agent_status: "idle" as const, agent_session: null, label: worker.name }] : [pane];
+      const panes = source ? [pane, { ...pane, pane_id: worker.pane_id, terminal_id: worker.terminal_id, tab_id: "worker-tab", agent: worker.agent, agent_status: "idle" as const, agent_session: null, label: worker.name }] : [pane];
       return { ...machine, snapshot: { ...base.snapshot!, ...raw,
-        workspaces: [{ ...base.snapshot!.workspaces[0]!, ...raw.workspaces[0] }], tabs: [{ ...base.snapshot!.tabs[0]!, workspace_id: "owned-workspace", tab_id: "owned-tab" }], panes,
+        workspaces: [{ ...base.snapshot!.workspaces[0]!, ...raw.workspaces[0] }], tabs: [{ ...base.snapshot!.tabs[0]!, workspace_id: "owned-workspace", tab_id: "owned-tab", label: "coordinator" }, ...(source ? [{ ...base.snapshot!.tabs[0]!, workspace_id: "owned-workspace", tab_id: "worker-tab", label: "review" }] : [])], panes,
         flock_coordination: { version: 1 as const, server_id: source ? parent.server_id : destination.server_id, boot_id: source ? parent.boot_id : destination.boot_id, agents, receipts: source ? receipts : [], cursor: null },
       } };
     })];
+    const tabId = (machineId: string, nativeTab = "owned-tab") => {
+      const sources = machines();
+      return graphTabs(sources, {}, undefined, flockInventory(flow.flock.read(), sources)).find((tab) => tab.machine.id === machineId && tab.panes[0]?.tab_id === nativeTab)!.node.id;
+    };
+    let selectedTabId = tabId("owned-source");
     const mobile = width < 700, viewport = { width, height: 844 };
     const context = await browser.newContext({ viewport, locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(mobile ? { isMobile: true, hasTouch: true } : {}), ...(videoDirectory ? { recordVideo: { dir: videoDirectory, size: viewport } } : {}) });
     await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme })), theme);
@@ -109,15 +115,15 @@ try {
     let stage = "initial graph";
     try {
       await page.goto(`${server.url.origin}/herdr-web-ui/demo/app/?page=graph&machine=owned-source&pane=owned%3Ap0`);
-      const node = page.locator(`[data-graph-node="${logicalId}"]`);
-      await node.waitFor(); await inspect(page, logicalId, mobile);
+      const node = () => page.locator(`[data-graph-node=${JSON.stringify(selectedTabId)}]`);
+      await node().waitFor(); await inspect(page, selectedTabId, mobile);
       await page.locator(".graph-edge-delegation").waitFor({ state: "attached" });
       assert.equal(await page.locator(".graph-edge-communication").count(), 1);
       assert.equal(flow.flock.read().observations?.length, 3, "the Flock handler imports the receipt fixtures through the production store");
       assert.ok((flow.flock.read().herdr_associations ?? []).some((item) => item.endpoint.agent_instance_id === parent.agent_instance_id && item.native_session_id === sourceExecution.native_session_id), "fresh source proof associates Herdr occupancy with the logical session");
 
       stage = "Graph runtime targets";
-      const workerId = `herdr:${flockHerdrEndpointKey(worker)}`;
+      const workerId = tabId("owned-source", "worker-tab");
       await inspect(page, workerId, mobile);
       const openWorkspace = page.getByRole("button", { name: "Open in Workspace", exact: true });
       assert.equal(await openWorkspace.isDisabled(), false, "Graph can open an exactly proven Herdr-only agent");
@@ -126,21 +132,21 @@ try {
       await openFlock(page);
       await inspect(page, workerId, mobile);
       workerOccupancy = "fixture-worker-replacement";
-      await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === true);
-      assert.equal(await openWorkspace.isDisabled(), true, "a historic relationship cannot open the replacement occupant");
+      await page.locator(".graph-selection-hint").filter({ hasText: "unavailable" }).waitFor();
+      assert.equal(await openWorkspace.count(), 0, "a historic relationship cannot open the replacement occupant");
       assert.equal(page.url().includes("page=graph"), true);
       workerOccupancy = worker.agent_instance_id;
       await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === false);
-      await inspect(page, logicalId, mobile);
+      await inspect(page, selectedTabId, mobile);
       const steady = await page.evaluate(async (id) => {
-        const selected = document.querySelector(`[data-graph-node="${id}"]`)!, svg = document.querySelector(".graph-surface")!, group = svg.querySelector(":scope > g")!;
+        const selected = document.querySelector(`[data-graph-node=${CSS.escape(id)}]`)!, svg = document.querySelector(".graph-surface")!, group = svg.querySelector(":scope > g")!;
         const state = (window as unknown as { flockProof: { reads: number } }).flockProof;
         const reads = state.reads, transform = group.getAttribute("transform"), nodeTransform = selected.getAttribute("transform");
         const began = performance.now(); let frames = 0, changes = 0;
         await new Promise<void>((resolve, reject) => {
           const frame = () => {
             frames++;
-            if (document.querySelector(".graph-surface") !== svg || document.querySelector(`[data-graph-node="${id}"]`) !== selected || group.getAttribute("transform") !== transform || selected.getAttribute("transform") !== nodeTransform) changes++;
+            if (document.querySelector(".graph-surface") !== svg || document.querySelector(`[data-graph-node=${CSS.escape(id)}]`) !== selected || group.getAttribute("transform") !== transform || selected.getAttribute("transform") !== nodeTransform) changes++;
             if (state.reads >= reads + 3) resolve();
             else if (performance.now() - began > 15000) reject(new Error("Graph did not perform three scheduled registry reads"));
             else requestAnimationFrame(frame);
@@ -148,7 +154,7 @@ try {
           requestAnimationFrame(frame);
         });
         return { frames, changes, reads: state.reads - reads };
-      }, logicalId);
+      }, selectedTabId);
       assert.ok(steady.frames > 10); assert.equal(steady.changes, 0, "routine source reads do not remount or move the selected graph");
       assert.equal(flow.flock.read().observations?.length, 3, "polling does not create another receipt");
 
@@ -185,10 +191,13 @@ try {
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
 
       stage = "Graph after move";
-      await openFlock(page); await node.waitFor();
-      assert.equal(await node.getAttribute("aria-pressed"), "true", "selection survives an owned backend migration");
+      await openFlock(page);
+      await page.locator(".graph-selection-hint").filter({ hasText: "unavailable" }).waitFor();
+      assert.equal(await openWorkspace.count(), 0, "the old tab occupant cannot redirect after a move");
+      selectedTabId = tabId("owned-destination");
+      await node().waitFor(); await inspect(page, selectedTabId, mobile);
       assert.equal(await page.locator(".graph-surface > g").getAttribute("transform"), viewportBeforeMove, "an intentional topology change preserves the viewport");
-      await page.locator(`[data-graph-node="execution:${flow.flock.read().sessions[0]!.current_execution_id}"]`).waitFor();
+      assert.equal(await node().getAttribute("aria-pressed"), "true");
       assert.equal(await page.locator(".graph-edge-delegation").count(), 1);
       assert.equal(await page.locator(".graph-edge-communication").count(), 1);
       assert.equal(flow.flock.read().observations?.length, 3, "historic relationships survive source exit and transfer without duplication");
@@ -198,9 +207,9 @@ try {
       await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".graph-details button.btn-primary")?.disabled === false, undefined, { timeout: 20000 });
       await openWorkspace.click();
       await page.waitForURL((url) => url.searchParams.get("machine") === "owned-destination" && url.searchParams.get("pane") === "owned:p0" && !url.searchParams.has("page"));
-      await openFlock(page); await node.waitFor();
-      assert.equal(await node.getAttribute("aria-pressed"), "true");
-      assert.ok(await node.getAttribute("transform"));
+      await openFlock(page); await node().waitFor();
+      assert.equal(await node().getAttribute("aria-pressed"), "true");
+      assert.ok(await node().getAttribute("transform"));
       if (mobile && await details.getAttribute("aria-expanded") === "false") await details.click();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), "the integrated graph has no horizontal overflow");
       const controls = await page.evaluate(() => (window as unknown as { flockProof: { controls: string[] } }).flockProof.controls);

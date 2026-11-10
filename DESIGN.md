@@ -4688,30 +4688,37 @@ session identity remain separate.
 
 D3 force links pull connected nodes, repulsion separates clusters and collision keeps circles
 apart. Radius grows with distinct visible neighbours; parallel edges and recorded event counts
-cannot inflate it. Repository colour follows actual checkout/execution/session membership,
+cannot inflate it. Repository colour follows reported checkout membership,
 never communication or delegation. Known native `repo_name` metadata supplies a common colour
 across machines with different root paths; recorded roots supply the fallback identity. Unknown
 repository membership stays neutral. Colour grouping does not merge identities. Status uses its
 own small icon, and stale sources have a dashed outline. A compact legend names the repositories.
 
-Physical checkouts share a node only when machine, concrete path and recorded repository match.
-Branch labels do not establish physical identity. Sessions, work items and executions retain their
-own IDs, including equal names. Live execution and observed endpoint labels reuse native custom
-tab labels, existing automatic tab labels and `display_agent` launcher metadata. Explicit logical
-aliases remain authoritative. Reading labels never scans a transcript or writes native names.
-Visible labels stay at 12 screen pixels across zoom levels. Ordinary labels shorten at distant
-zoom and avoid overlapping already placed labels; selection and direct neighbours take priority.
-Complete names remain available through SVG titles, accessible names and the inspector.
+Native tabs are the visible units, including horizontal tabs inside the worktree workspaces that
+Ovis's sidebar nests beneath a workspace. Split panes and agents in the same tab share one node.
+Repository, branch, physical checkout, agent and logical-session facts appear in the inspector,
+rather than additional nodes. Workspace focus uses the sidebar's `worktreeGroups` membership and
+includes the parent's tabs and its nested worktrees; workspace groups are filter choices without
+rendered container nodes. A worktree with one numbered tab takes its sidebar workspace name.
+Several or explicitly named worktree tabs include the workspace name alongside the tab name.
+Other names follow Ovis's native tab strip, including its existing automatic labels.
 
-Explicit native tab names precede pane labels, while registered logical aliases retain their
-identity. Tabs with no recognized agent appear as terminal-tab nodes, using native names and
-reported checkout membership. Active-agent tabs retain their existing execution/session nodes.
-This follows Ovis's native tab strip and Zed's project/thread distinction. Opening a terminal-tab
-node requires the same connected machine, daemon lifetime and exact pane/terminal set; an old
-selection cannot open a replacement terminal or a subsequently started agent. No agent status,
-delegation or native session identity is inferred from a terminal tab.
-Label collision handling gives explicitly named tabs priority over generic repository and
-checkout labels, while selection and direct neighbours remain first.
+This adapts [Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel), where recognizable threads are
+grouped by project and worktrees provide isolation. Ovis follows its own native tab and sidebar
+names because a terminal tab can contain several agent panes. No Zed code or pixels are copied.
+Repository colors and the legend use reported metadata directly, including common native repository
+names across machines; communication and delegation do not establish repository membership.
+Recorded endpoints map onto their represented tabs; parallel endpoint pairs combine into one
+counted relationship. Same-tab activity produces no duplicate node or self-link. Unrepresented
+historical endpoints remain unavailable, without a terminal action.
+
+Tab identity includes machine, workspace, daemon lifetime, native tab, exact pane/terminal set and
+agent occupant identity. Renames, order and status changes keep the identity. Open resolves the
+current exact target; an agent tab still needs verified native ownership or current Herdr occupancy,
+and a mixed tab never substitutes a shell when agent proof is missing. Old selections become
+unavailable when their occupant changes and never follow a logical session to a different tab.
+Visible labels stay at 12 screen pixels across zoom levels, with explicitly named tabs prioritized
+at label collisions. Complete names remain in SVG titles, accessible names and the inspector.
 
 Dragging fixes one node temporarily and reheats the connected simulation. Release, pointer
 cancellation, lost capture, pinch takeover and unmount release fixed coordinates. The simulation
@@ -4742,8 +4749,8 @@ and communication remain separate from containment; counts and timestamps descri
 successful operations, not a complete delivery history. Communication defaults to the last
 24 hours with all/hidden alternatives. A current verified Herdr occupancy can open its exact
 agent even without native adoption support. Replacement agents get distinct identities;
-historical endpoints cannot authorize a replacement. Logical-session Open resolves only its
-current execution. A previous live execution is never substituted for a missing current one.
+historical endpoints cannot authorize a replacement. Recorded logical-session relationships resolve through the current execution; historical
+executions never substitute a live target when the current one is missing.
 Source contracts and coverage limits are in `docs/flock.md`.
 
 The graph exposes only Open in Workspace. The former association, work-renaming and Move controls

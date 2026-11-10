@@ -1,106 +1,74 @@
 import type { FlockRegistry } from "../../../shared/flock.ts";
-import { flockTarget, type FlockRow } from "../../../shared/flock-inventory.ts";
+import { flockBinding, flockTarget, sameFlockBinding, type FlockRow } from "../../../shared/flock-inventory.ts";
 import type { Machine, PaneTarget } from "../../../shared/machines.ts";
 import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
-import { knownStatus } from "../../lib/status.ts";
-import { flockHerdrEndpointKey, flockRelationships, flockRowRelationshipIds } from "../../../shared/flock-relationships.ts";
-import { graphExecutionLabel, graphExecutionName } from "./graphNames.ts";
-import { graphTerminalTabs } from "./graphTabs.ts";
+import { flockRelationships, flockRowRelationshipIds } from "../../../shared/flock-relationships.ts";
+import { graphTabs, graphWorkspaceGroups } from "./graphTabs.ts";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
-const executionId = (row: FlockRow) => {
-  if (row.execution) return `execution:${row.execution.id}`;
-  const binding = row.binding;
-  if (binding) return `observed:${JSON.stringify([row.id, binding.machine_id, binding.herdr_lifetime, binding.pane_id, binding.agent, binding.native_session_id])}`;
-  return `observed:${JSON.stringify([row.id, null, row.herdr_endpoint ? flockHerdrEndpointKey(row.herdr_endpoint) : null])}`;
-};
-const freshness = (row: FlockRow): GraphNode["freshness"] => flockTarget(row) ? "live" : row.availability;
-function endpointRowIndex(registry: FlockRegistry, rows: readonly FlockRow[]): Map<string, FlockRow[]> {
-  const index = new Map<string, FlockRow[]>();
-  for (const row of rows) for (const id of flockRowRelationshipIds(registry, row)) {
-    const matches = index.get(id);
-    if (matches) matches.push(row); else index.set(id, [row]);
-  }
-  return index;
+type Tab = ReturnType<typeof graphTabs>[number];
+function rowTab(row: FlockRow, tabs: readonly Tab[]): Tab | undefined {
+  return tabs.find((tab) => tab.machine.id === row.machine_id && tab.panes.some((pane) => {
+    if (row.binding && pane.agent_session?.kind === "id" && row.binding.native_session_id !== pane.agent_session.value) return false;
+    if (row.pane) return pane.pane_id === row.pane.pane_id && pane.terminal_id === row.pane.terminal_id && pane.agent === row.pane.agent;
+    const binding = flockBinding(tab.machine, pane);
+    return binding && row.binding && sameFlockBinding(binding, row.binding);
+  }));
 }
 
-/** A rendering adapter over the ONE shared inventory. Paths label physical metadata only. */
 export function graphInventory(registry: FlockRegistry | null, rows: readonly FlockRow[], machines: readonly Machine[] = [], labels: Readonly<Record<string, string>> = {}, t: Translate = defaultTranslate): GraphData {
-  const nodes = new Map<string, GraphNode>();
-  const edges: GraphEdge[] = [];
-  const addEdge = (source: string, target: string, kind: GraphEdge["kind"], evidence: string) => edges.push({ id: JSON.stringify([source, target, kind]), source, target, kind, evidence });
-  for (const work of registry?.works ?? []) nodes.set(`work:${work.id}`, { id: `work:${work.id}`, kind: "work", label: work.name });
-  for (const session of registry?.sessions ?? []) {
-    const current = rows.find((row) => row.execution?.id === session.current_execution_id && row.session?.id === session.id);
-    nodes.set(`session:${session.id}`, { id: `session:${session.id}`, kind: "session", label: session.name,
-      status: current?.availability === "live" ? knownStatus(current.status) : "unknown", freshness: current ? freshness(current) : "unavailable" });
-    if (session.work_id) addEdge(`session:${session.id}`, `work:${session.work_id}`, "work-session", `session.work_id: ${session.work_id}`);
-  }
-  const checkouts = new Map((registry?.checkouts ?? []).map((checkout) => [checkout.id, checkout]));
-  for (const row of rows) if (row.checkout) checkouts.set(row.checkout.id, row.checkout);
-  const tabs = registry ? graphTerminalTabs(machines, labels, t) : [];
-  for (const tab of tabs) for (const checkout of tab.checkouts) checkouts.set(checkout.id, checkout);
-  const checkoutIds = new Map<string, string>();
-  for (const checkout of checkouts.values()) {
-    checkoutIds.set(checkout.id, `checkout:${JSON.stringify([checkout.machine_id, checkout.path, checkout.repository])}`);
-  }
-  for (const checkout of checkouts.values()) {
-    const id = checkoutIds.get(checkout.id)!;
-    if (nodes.has(id)) continue;
-    nodes.set(id, { id, kind: "checkout", label: checkout.branch || checkout.path, machineId: checkout.machine_id, detail: checkout.path });
-    if (checkout.repository) {
-      const repositoryId = `repository:${JSON.stringify([checkout.machine_id, checkout.repository])}`;
-      const worktree = machines.find((machine) => machine.id === checkout.machine_id)?.snapshot?.workspaces.find((workspace) => workspace.worktree?.repo_root === checkout.repository && workspace.worktree.repo_name)?.worktree;
-      const name = worktree?.repo_name || checkout.repository.split(/[\\/]/).filter(Boolean).at(-1) || checkout.repository;
-      nodes.set(repositoryId, { id: repositoryId, kind: "repository", label: name, repositoryKey: worktree?.repo_name || checkout.repository, machineId: checkout.machine_id, detail: checkout.repository });
-      addEdge(id, repositoryId, "checkout-in-repository", `checkout.repository: ${checkout.repository}`);
-    }
-  }
-  for (const row of rows) {
-    if (!row.execution && row.session) continue;
-    const id = executionId(row);
-    nodes.set(id, { id, kind: "execution", ...graphExecutionLabel(row, machines, labels, t), machineId: row.machine_id, status: flockTarget(row) ? knownStatus(row.pane?.agent_status ?? row.status) : "unknown", freshness: freshness(row),
-      detail: row.execution ? `${row.execution.agent} · ${row.execution.native_session_id}` : row.pane?.agent ?? "" });
-    if (row.session) addEdge(id, `session:${row.session.id}`, "session-execution", `execution.session_id: ${row.session.id}`);
-    if (row.checkout) addEdge(id, checkoutIds.get(row.checkout.id)!, "execution-in-checkout", row.execution ? `execution.checkout_id: ${row.execution.checkout_id}` : `inventory.checkout: ${row.checkout.path}`);
-  }
+  if (!registry) return { nodes: [], edges: [], groups: [] };
+  const tabs = graphTabs(machines, labels, t, rows);
+  const nodes = new Map<string, GraphNode>(tabs.map((tab) => [tab.node.id, tab.node]));
   for (const tab of tabs) {
-    nodes.set(tab.node.id, tab.node);
-    const linked = new Set<string>();
-    for (const checkout of tab.checkouts) {
-      const target = checkoutIds.get(checkout.id)!;
-      if (!linked.has(target)) addEdge(tab.node.id, target, "tab-in-checkout", `inventory.tab: ${checkout.path}`);
-      linked.add(target);
+    const agent = tab.panes.find((pane) => pane.agent);
+    if (tab.node.freshness === "live" && agent && !rows.some((row) => row.machine_id === tab.machine.id && row.pane?.pane_id === agent.pane_id && row.pane.terminal_id === agent.terminal_id && rowTab(row, [tab]) === tab && flockTarget(row))) {
+      tab.node.freshness = "unsupported"; tab.node.status = "unknown";
     }
   }
-  const relations = registry ? flockRelationships(registry) : [];
-  const rowsByEndpoint = registry && relations.length ? endpointRowIndex(registry, rows) : new Map<string, FlockRow[]>();
-  for (const relation of relations) {
-    for (const endpoint of [relation.source, relation.target]) {
-      if (nodes.has(endpoint.id)) continue;
-      const matches = rowsByEndpoint.get(endpoint.id) ?? [], current = matches.length === 1 ? matches[0] : undefined;
-      const live = current && flockTarget(current) !== null;
-      nodes.set(endpoint.id, { id: endpoint.id, kind: "session", label: live ? graphExecutionName(current, machines, labels, t) : endpoint.label, machineId: endpoint.machine_id, detail: endpoint.native_session_id,
-        status: live ? knownStatus(current.pane?.agent_status ?? current.status) : "unknown", freshness: live ? "live" : current?.availability ?? "unavailable" });
-      if (current && !current.session) addEdge(executionId(current), endpoint.id, "session-execution", endpoint.herdr ? `Herdr ${endpoint.herdr.agent_instance_id}` : `native_session_id: ${endpoint.native_session_id}`);
+  const endpoints = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const tab = rowTab(row, tabs);
+    if (!tab) continue;
+    tab.node.detail = [...new Set([...tab.node.detail?.split("\n") ?? [], row.session?.name, row.work?.name, row.execution?.id, row.execution?.native_session_id, row.checkout?.branch, row.checkout?.path].filter(Boolean))].join("\n");
+    if (row.session && row.execution?.id !== row.session.current_execution_id) continue;
+    for (const endpoint of flockRowRelationshipIds(registry, row, machines)) {
+      const ids = endpoints.get(endpoint) ?? new Set<string>();
+      ids.add(tab.node.id); endpoints.set(endpoint, ids);
     }
-    edges.push({ id: `observed:${relation.id}`, source: relation.source.id, target: relation.target.id, kind: relation.kind,
-      evidence: `${relation.sources.join("+")}.${relation.kind}`, eventCount: relation.count, lastObservedAt: relation.last_at, sources: relation.sources });
   }
-  return { nodes: [...nodes.values()], edges: edges.filter((edge) => nodes.has(edge.source) && nodes.has(edge.target)) };
+  const resolve = (endpoint: ReturnType<typeof flockRelationships>[number]["source"]): string => {
+    const represented = endpoints.get(endpoint.id);
+    if (represented?.size === 1) return [...represented][0]!;
+    if (!nodes.has(endpoint.id)) nodes.set(endpoint.id, { id: endpoint.id, kind: "session", label: endpoint.label,
+      machineId: endpoint.machine_id, detail: endpoint.native_session_id, status: "unknown", freshness: "unavailable" });
+    return endpoint.id;
+  };
+  const edges = new Map<string, GraphEdge>();
+  for (const relation of flockRelationships(registry)) {
+    const source = resolve(relation.source), target = resolve(relation.target);
+    if (source === target) continue;
+    const id = JSON.stringify([source, target, relation.kind]);
+    const previous = edges.get(id);
+    if (previous) {
+      previous.eventCount = (previous.eventCount ?? 0) + relation.count;
+      if (Date.parse(relation.last_at) > Date.parse(previous.lastObservedAt!)) previous.lastObservedAt = relation.last_at;
+      previous.sources = [...new Set([...previous.sources ?? [], ...relation.sources])];
+      previous.evidence = `${previous.sources.join("+")}.${relation.kind}`;
+    } else edges.set(id, { id, source, target, kind: relation.kind, evidence: `${relation.sources.join("+")}.${relation.kind}`,
+      eventCount: relation.count, lastObservedAt: relation.last_at, sources: relation.sources });
+  }
+  return { nodes: [...nodes.values()], edges: [...edges.values()], groups: graphWorkspaceGroups(machines, tabs) };
 }
 
-/** Resolve at action time. A live previous execution never substitutes for a missing current one. */
+/** Rebuild the exact tab/occupant identity at action time; no historical node can open its replacement. */
 export function graphTarget(registry: FlockRegistry | null, rows: readonly FlockRow[], id: string, machines: readonly Machine[] = []): PaneTarget | null {
   if (!registry) return null;
-  if (id.startsWith("tab:")) return graphTerminalTabs(machines).find((tab) => tab.node.id === id)?.target ?? null;
-  if (id.startsWith("native:") || id.startsWith("herdr:")) {
-    const endpoint = flockRelationships(registry).flatMap((relation) => [relation.source, relation.target]).find((endpoint) => endpoint.id === id);
-    const matches = endpoint ? rows.filter((row) => flockRowRelationshipIds(registry, row).includes(endpoint.id)) : [];
-    return endpoint && matches.length === 1 ? flockTarget(matches[0]!) : null;
-  }
-  const session = registry.sessions.find((session) => `session:${session.id}` === id);
-  const row = session ? rows.find((row) => row.execution?.id === session.current_execution_id && row.session?.id === session.id)
-    : rows.find((row) => (!row.session || row.execution) && executionId(row) === id);
-  return row ? flockTarget(row) : null;
+  const tab = graphTabs(machines, {}, defaultTranslate, rows).find((tab) => tab.node.id === id);
+  if (!tab || tab.node.freshness !== "live") return null;
+  const agent = tab.panes.find((pane) => pane.agent);
+  if (!agent) return { machine_id: tab.machine.id, pane_id: tab.panes[0]!.pane_id };
+  const candidates = rows.filter((row) => row.machine_id === tab.machine.id && row.pane?.pane_id === agent.pane_id && row.pane.terminal_id === agent.terminal_id && rowTab(row, [tab]) === tab);
+  const targets = candidates.map(flockTarget).filter((target) => target !== null);
+  return targets.length > 0 && targets.every((target) => target.machine_id === tab.machine.id && target.pane_id === agent.pane_id) ? targets[0]! : null;
 }
