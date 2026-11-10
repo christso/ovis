@@ -40,7 +40,7 @@ export interface GraphActivity {
 }
 export interface GraphGroup { id: string; label: string; machineId: string; nodeIds: readonly string[] }
 export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[]; groups?: readonly GraphGroup[] }
-export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean; communication?: "recent" | "all" | "none" }
+export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean; communication?: "recent" | "all" | "none"; hiddenKinds?: readonly GraphKind[] }
 
 const RELATIONS = new Set<GraphRelation>(["worktree-in-workspace", "tab-in-workspace", "tab-in-worktree", "delegation", "communication"]);
 
@@ -75,7 +75,7 @@ export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.
     }
   }
   const words = filters.search.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
-  const allowed = (node: GraphNode) => (filters.showCompleted || node.kind !== "tab" || node.status !== "done") && (!focused || focused.has(node.id));
+  const allowed = (node: GraphNode) => !filters.hiddenKinds?.includes(node.kind) && (filters.showCompleted || node.kind !== "tab" || node.status !== "done") && (!focused || focused.has(node.id));
   const kept = new Set(data.nodes.filter((node) => allowed(node)
     && (!filters.status || (node.status ?? "unknown") === filters.status)
     && (!filters.machine || node.machineId === filters.machine)

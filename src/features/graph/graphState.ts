@@ -1,5 +1,5 @@
-import { GRAPH_STATUSES } from "./graphLabels.ts";
-import type { GraphFilters } from "./graphModel.ts";
+import { GRAPH_KINDS, GRAPH_STATUSES } from "./graphLabels.ts";
+import type { GraphFilters, GraphKind } from "./graphModel.ts";
 import type { Positions, Viewport } from "./graphLayout.ts";
 
 export interface GraphState {
@@ -13,6 +13,7 @@ export interface GraphState {
   viewport: Viewport;
 }
 export const GRAPH_STORAGE_KEY = "ovis:graph:v2";
+const KINDS_STORAGE_KEY = "ovis:graph:kinds:v1";
 export const DEFAULT_GRAPH_STATE: GraphState = {
   version: 2, layout: "force", selected: "", filters: { search: "", status: "", machine: "", focus: "", showCompleted: false, communication: "recent" },
   groupMachine: false, legendOpen: true, positions: {}, viewport: { x: 160, y: 100, k: 1 },
@@ -20,6 +21,11 @@ export const DEFAULT_GRAPH_STATE: GraphState = {
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const str = (value: unknown, limit = 1000) => typeof value === "string" ? value.slice(0, limit) : "";
 const finite = (value: unknown, fallback: number, max = 1e6) => typeof value === "number" && Number.isFinite(value) ? Math.max(-max, Math.min(max, value)) : fallback;
+const hiddenKinds = (value: unknown): GraphKind[] => GRAPH_KINDS.filter((kind) => Array.isArray(value) && value.includes(kind));
+function readKinds(raw: unknown): GraphKind[] | null {
+  const value = record(raw);
+  return value.version === 1 && Array.isArray(value.hiddenKinds) ? hiddenKinds(value.hiddenKinds) : null;
+}
 
 /** A new isolated key; future versions are refused by readers and writers, never overwritten. */
 export function sanitizeGraphState(raw: unknown): GraphState | null {
@@ -43,7 +49,7 @@ export function sanitizeGraphState(raw: unknown): GraphState | null {
 /** Only graph-owned query fields change; normal Ovis selection and view location stay owned by App. */
 export function graphLocation(url: URL, state: GraphState): URL {
   const next = new URL(url);
-  for (const [key, value] of Object.entries({ gn: state.selected, gq: state.filters.search, gs: state.filters.status, gm: state.filters.machine, gf: state.filters.focus, gc: state.filters.showCompleted ? "1" : "", gg: state.groupMachine ? "1" : "", gcomm: state.filters.communication === "all" || state.filters.communication === "none" ? state.filters.communication : "" })) {
+  for (const [key, value] of Object.entries({ gn: state.selected, gq: state.filters.search, gs: state.filters.status, gm: state.filters.machine, gf: state.filters.focus, gc: state.filters.showCompleted ? "1" : "", gg: state.groupMachine ? "1" : "", gcomm: state.filters.communication === "all" || state.filters.communication === "none" ? state.filters.communication : "", gk: hiddenKinds(state.filters.hiddenKinds).join(",") })) {
     if (value) next.searchParams.set(key, value); else next.searchParams.delete(key);
   }
   next.searchParams.set("graph", "1");
@@ -52,7 +58,9 @@ export function graphLocation(url: URL, state: GraphState): URL {
 export function readGraphLocation(url: URL, fallback: GraphState): GraphState {
   if (url.searchParams.get("graph") !== "1") return fallback;
   const p = url.searchParams;
-  return sanitizeGraphState({ ...fallback, selected: p.get("gn"), groupMachine: p.get("gg") === "1", filters: { search: p.get("gq"), status: p.get("gs"), machine: p.get("gm"), focus: p.get("gf"), showCompleted: p.get("gc") === "1", communication: p.get("gcomm") } })!;
+  const state = sanitizeGraphState({ ...fallback, selected: p.get("gn"), groupMachine: p.get("gg") === "1", filters: { search: p.get("gq"), status: p.get("gs"), machine: p.get("gm"), focus: p.get("gf"), showCompleted: p.get("gc") === "1", communication: p.get("gcomm") } })!;
+  const kinds = hiddenKinds(p.get("gk")?.split(","));
+  return kinds.length ? { ...state, filters: { ...state.filters, hiddenKinds: kinds } } : state;
 }
 
 /** V1 stays intact for old tabs and rollback. Only the first V2 read derives its filters/selection. */
@@ -73,13 +81,23 @@ export function loadGraphState(storage: Pick<Storage, "getItem">): { state: Grap
       }
     }
   } catch { /* A disabled or unreadable store leaves the view usable. */ }
+  try {
+    const kinds = readKinds(JSON.parse(storage.getItem(KINDS_STORAGE_KEY) ?? "null"));
+    if (kinds?.length) state = { ...state, filters: { ...state.filters, hiddenKinds: kinds } };
+  } catch {}
   return { state, saved };
 }
 
 export function saveGraphState(storage: Pick<Storage, "getItem" | "setItem">, state: GraphState): void {
+  // Old tabs rewrite v2 whole, so keep the new preference in a store they never write.
+  try {
+    const text = storage.getItem(KINDS_STORAGE_KEY);
+    if (text === null || readKinds(JSON.parse(text)) !== null) storage.setItem(KINDS_STORAGE_KEY, JSON.stringify({ version: 1, hiddenKinds: hiddenKinds(state.filters.hiddenKinds) }));
+  } catch {}
   try {
     const text = storage.getItem(GRAPH_STORAGE_KEY);
     if (text !== null && sanitizeGraphState(JSON.parse(text)) === null) return;
-    storage.setItem(GRAPH_STORAGE_KEY, JSON.stringify(state));
+    const { hiddenKinds: _hidden, ...filters } = state.filters;
+    storage.setItem(GRAPH_STORAGE_KEY, JSON.stringify({ ...state, filters }));
   } catch {}
 }

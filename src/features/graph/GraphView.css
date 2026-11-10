@@ -87,7 +87,10 @@
 .graph-kind-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; max-height: 64px; overflow-y: auto; padding-bottom: 8px; font-size: 12px; color: var(--text-dim); }
 .graph-kind-legend[hidden] { display: none; }
 @media (max-width: 700px) { .graph-canvas { min-height: 220px; } .graph-legend-toggle { min-height: 44px; } }
-.graph-kind-legend span { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.graph-kind-legend button { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; min-height: 32px; padding: 0 4px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.graph-kind-legend button:hover { background: var(--bg-hover); }
+.graph-kind-legend button[aria-pressed="false"] { opacity: 0.4; text-decoration: line-through; }
+@media (max-width: 700px) { .graph-kind-legend button { min-height: 44px; } }
 .graph-kind-legend i { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
 .graph-recorded-activity { border-top: 1px solid var(--border); margin-top: 12px; }

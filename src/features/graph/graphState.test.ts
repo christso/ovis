@@ -44,3 +44,27 @@ test("unknown and damaged v2 records stay byte-for-byte intact, even with valid 
     expect(storage.getItem(LEGACY_KEY)).toBe(legacy);
   }
 });
+
+test("kind visibility survives an old tab saving the graph record", () => {
+  const storage = store();
+  saveGraphState(storage, { ...DEFAULT_GRAPH_STATE, filters: { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["worktree"] } });
+  const kinds = storage.getItem("ovis:graph:kinds:v1");
+  expect(JSON.parse(kinds!)).toEqual({ version: 1, hiddenKinds: ["worktree"] });
+  expect(JSON.parse(storage.getItem(GRAPH_STORAGE_KEY)!).filters.hiddenKinds).toBeUndefined();
+  storage.setItem(GRAPH_STORAGE_KEY, JSON.stringify({ ...DEFAULT_GRAPH_STATE, selected: "old-tab-selection" }));
+  expect(storage.getItem("ovis:graph:kinds:v1")).toBe(kinds);
+  expect(loadGraphState(storage).state.filters.hiddenKinds).toEqual(["worktree"]);
+  saveGraphState(storage, { ...loadGraphState(storage).state, filters: DEFAULT_GRAPH_STATE.filters });
+  expect(loadGraphState(storage).state.filters.hiddenKinds ?? []).toEqual([]);
+});
+
+test("kind preferences ignore unknown entries and preserve unreadable future records", () => {
+  const storage = store({ "ovis:graph:kinds:v1": JSON.stringify({ version: 1, hiddenKinds: ["future", "tab", "tab", "workspace"] }) });
+  expect(loadGraphState(storage).state.filters.hiddenKinds).toEqual(["workspace", "tab"]);
+  for (const bytes of ['{"version":99,"future":"keep"}', '{"version":', '{"version":1,"hiddenKinds":"tab"}']) {
+    const damaged = store({ "ovis:graph:kinds:v1": bytes });
+    expect(loadGraphState(damaged).state.filters.hiddenKinds ?? []).toEqual([]);
+    saveGraphState(damaged, { ...DEFAULT_GRAPH_STATE, filters: { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["tab"] } });
+    expect(damaged.getItem("ovis:graph:kinds:v1")).toBe(bytes);
+  }
+});

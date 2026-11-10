@@ -4703,6 +4703,15 @@ dashed outline. The three-type legend sits below the canvas, with a keyboard-acc
 whose state survives reloads. Hierarchy springs are shorter and stronger than communication
 springs; root hubs repel enough to separate work contexts without inventing repository affinity.
 
+The legend entries are native toggle buttons: visible types are pressed, hidden types are faded
+and crossed out. Entries come from the inventory, so hiding every type never removes the controls
+needed to restore them. Hiding a type removes its nodes and incident links before layout and
+connection sizing; tabs under a hidden worktree stay independent, with no invented workspace
+links. The existing force simulation reheats for the changed topology and settles again, retaining
+the user's viewport. Reduced motion settles without animation. This follows Folio's graph type
+filters rather than Zed's project/thread list; the graph needs independent type visibility while
+preserving the native workspace hierarchy. No Folio or Zed code or assets are copied.
+
 Group by machine adds a soft, translucent cloud behind each machine's visible nodes, with a
 machine-name label and a stable background colour. Node fills retain their type colours.
 The padded rounded boundary follows current node positions and sizes through dragging and force
@@ -4761,6 +4770,11 @@ then refits while retaining selection, filters and optional machine grouping.
 
 Graph state uses `ovis:graph:v2`: selection, filters, grouping, legend visibility, settled positions
 and viewport. Migration preserves v1 bytes, selection and filters while reclustering once.
+Type visibility uses its own `ovis:graph:kinds:v1` record so an older tab rewriting the v2 graph
+record cannot erase it. Its shape is `{ version: 1, hiddenKinds: [...] }`, and unknown or damaged
+records remain untouched. Only the new Graph client reads and writes it; older clients ignore it,
+and rollback still reads the unchanged v2 layout record. No HTTP or WebSocket contract carries
+this browser-local preference. Copied links include hidden types in the graph-owned `gk` field.
 Unknown future versions and unparseable JSON are never overwritten. Simulation frames remain
 local to the renderer; only settled layouts and completed gestures are persisted. Shareable query
 fields leave Ovis's pane/view location intact. A saved viewport wins over automatic framing;
