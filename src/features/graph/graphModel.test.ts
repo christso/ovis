@@ -26,6 +26,23 @@ const fixture: GraphData = {
 };
 
 describe("Graph projection", () => {
+  it("hides node types and their incident links without reconnecting children", () => {
+    const view = projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["worktree"] });
+    expect(view.nodes.map((node) => node.id)).toEqual(["repo", "session", "execution", "sibling", "sibling-execution", "unrelated"]);
+    expect(view.edges.map((edge) => edge.id)).toEqual(["d"]);
+    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["workspace"] }).edges.map((edge) => edge.id)).toEqual(["a", "c", "e"]);
+    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["tab"] }).edges.map((edge) => edge.id)).toEqual(["b"]);
+    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["workspace", "worktree", "tab"] }).nodes).toEqual([]);
+    expect(projectGraph(fixture, DEFAULT_GRAPH_STATE.filters).edges.map((edge) => edge.id)).toEqual(["a", "b", "c", "d", "e"]);
+  });
+  it("never reintroduces hidden ancestors for matching or focused tabs", () => {
+    const filters = { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["worktree" as const] };
+    expect(projectGraph(fixture, { ...filters, search: "prune" }).nodes.map((node) => node.id)).toEqual(["session"]);
+    const focused = projectGraph(fixture, { ...filters, focus: "repo" });
+    expect(focused.nodes.some((node) => node.kind === "worktree")).toBe(false);
+    expect(focused.nodes.some((node) => node.id === "session")).toBe(true);
+    expect(focused.edges.map((edge) => edge.id)).toEqual(["d"]);
+  });
   it("filters communication by recent activity without treating messages as containment", () => {
     const now = Date.parse("2026-11-08T00:00:00Z");
     const data = { ...fixture, edges: [...fixture.edges,
@@ -70,7 +87,7 @@ describe("Graph projection", () => {
 
 describe("Graph location and viewport", () => {
   it("round trips selection, filters and optional grouping without changing unrelated URL state", () => {
-    const state = { ...DEFAULT_GRAPH_STATE, selected: `tab:${"split-pane/native-identity /?&".repeat(100)}`, filters: { ...DEFAULT_GRAPH_STATE.filters, search: "tree & leaf", focus: "repo", machine: "north", status: "blocked", showCompleted: true, communication: "all" as const }, groupMachine: true };
+    const state = { ...DEFAULT_GRAPH_STATE, selected: `tab:${"split-pane/native-identity /?&".repeat(100)}`, filters: { ...DEFAULT_GRAPH_STATE.filters, search: "tree & leaf", focus: "repo", machine: "north", status: "blocked", showCompleted: true, communication: "all" as const, hiddenKinds: ["worktree" as const] }, groupMachine: true };
     const url = graphLocation(new URL("https://ovis.invalid/?view=graph&pane=w7%3Ap2"), state);
     expect(readGraphLocation(url, DEFAULT_GRAPH_STATE)).toEqual(state);
     expect(url.searchParams.get("pane")).toBe("w7:p2");

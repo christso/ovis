@@ -3,7 +3,7 @@ import { ChevronDown, Focus, Link, Minus, Plus, RotateCcw, SlidersHorizontal } f
 import { useT } from "../../lib/i18n.ts";
 import { copyText } from "../../lib/clipboard.ts";
 import { useMediaQuery } from "../../lib/useMediaQuery.ts";
-import { projectGraph, type GraphData, type GraphEdge, type GraphFilters } from "./graphModel.ts";
+import { projectGraph, type GraphData, type GraphEdge, type GraphFilters, type GraphKind } from "./graphModel.ts";
 import { fitGraph, zoomAt, type Viewport } from "./graphLayout.ts";
 import { GRAPH_KINDS, GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
 import { useGraphSimulation } from "./useGraphSimulation.ts";
@@ -41,13 +41,13 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const filtersId = useId(), detailsId = useId(), legendId = useId();
-  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent"].filter(Boolean).length;
+  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent", ...(state.filters.hiddenKinds ?? [])].filter(Boolean).length;
   const host = useRef<HTMLDivElement>(null);
   const fitted = useRef(saved);
   const [reset, setReset] = useState(0);
   const view = useMemo(() => projectGraph(data, state.filters), [data, state.filters]);
   const { positions, move, endDrag, layoutReset } = useGraphSimulation(view, state.positions, state.groupMachine, reset, (settled) => setState((previous) => ({ ...previous, positions: { ...previous.positions, ...settled } })));
-  const kinds = GRAPH_KINDS.filter((kind) => view.nodes.some((node) => node.kind === kind));
+  const kinds = GRAPH_KINDS.filter((kind) => data.nodes.some((node) => node.kind === kind));
   const selected = data.nodes.find((node) => node.id === state.selected);
   const selectedCanOpen = useMemo(() => !!selected && canOpenNode(selected.id), [selected?.id, canOpenNode]);
   const activity = selected?.activity ?? [];
@@ -70,6 +70,10 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   });
 
   const filter = (patch: Partial<GraphFilters>) => setState((previous) => ({ ...previous, filters: { ...previous.filters, ...patch } }));
+  const toggleKind = (kind: GraphKind) => setState((previous) => {
+    const hidden = previous.filters.hiddenKinds ?? [];
+    return { ...previous, filters: { ...previous.filters, hiddenKinds: hidden.includes(kind) ? hidden.filter((value) => value !== kind) : [...hidden, kind] } };
+  });
   const zoom = (factor: number) => {
     const box = host.current?.querySelector("svg.graph-surface")?.getBoundingClientRect();
     if (box) updateViewport(zoomAt(viewport, factor, box.width / 2, box.height / 2));
@@ -125,7 +129,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           <button type="button" className="graph-legend-toggle" aria-expanded={state.legendOpen} aria-controls={legendId} onClick={() => setState((previous) => ({ ...previous, legendOpen: !previous.legendOpen }))}>
             <ChevronDown size={16} aria-hidden="true" />{t("Legend")}
           </button>
-          <div className="graph-kind-legend" id={legendId} hidden={!state.legendOpen}>{kinds.map((kind) => <span key={kind}><i style={{ background: graphNodeColour(kind) }} />{graphKindLabel(t, kind)}</span>)}</div>
+          <div className="graph-kind-legend" id={legendId} hidden={!state.legendOpen}>{kinds.map((kind) => <button type="button" key={kind} aria-pressed={!state.filters.hiddenKinds?.includes(kind)} onClick={() => toggleKind(kind)}><i aria-hidden="true" style={{ background: graphNodeColour(kind) }} />{graphKindLabel(t, kind)}</button>)}</div>
         </div>}
       </div>
       <aside className="graph-details" aria-label={t("Graph details")}>
