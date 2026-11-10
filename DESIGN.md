@@ -109,6 +109,9 @@ Only tokens overridden by `[data-theme="light"]` have a light value. Both column
 | Syntax/type | `--syntax-type` | `#6cb8d6` | `#155a72` |
 | Syntax/variable | `--syntax-variable` | `#e0c08f` | `#7a5418` |
 | Syntax/meta | `--syntax-meta` | `#b49dd6` | `#5d4791` |
+| Graph/workspace | `--graph-workspace` | `#3b82f6` | `#2563eb` |
+| Graph/worktree | `--graph-worktree` | `#f97316` | `#c2410c` |
+| Graph/tab | `--graph-tab` | `#22c55e` | `#15803d` |
 | Alert/background | `--droplet-bg` | `#000` | `#000` |
 | Alert/text | `--droplet-text` | `#f5f5f7` | `#f5f5f7` |
 | Alert/dim text | `--droplet-text-dim` | `rgba(245, 245, 247, 0.62)` | `rgba(245, 245, 247, 0.62)` |
@@ -4689,11 +4692,13 @@ written; no Folio code or assets are copied. The containment and thread distinct
 session identity remain separate.
 
 D3 force links pull connected nodes, repulsion separates clusters and collision keeps circles
-apart. Radius grows with distinct visible communication neighbours; containment, delegation,
-self-links, parallel edges and recorded event counts cannot inflate it. Hidden communication links
-do not contribute. This communication-specific sizing differs from Zed's project-grouped thread
-list because Graph also shows relationships between tabs. Node fills identify workspace, worktree
-and tab, using existing theme roles. Status uses its own small icon, and stale sources have a
+apart. Radius grows with distinct visible connections of every type: direct tabs, worktrees,
+communication and delegation. Parallel links, replies, self-links and recorded event counts cannot
+inflate it. Hidden links do not contribute. This connection-based sizing differs from Zed's
+project-grouped thread list because Graph also shows relationships between nodes. Node fills
+identify workspace (blue), worktree (orange) and tab (green). Dedicated theme tokens keep these
+hues across palettes, with darker light-mode shades and no text-colour blending, following the
+requested Folio-style category contrast. Status uses its own small icon, and stale sources have a
 dashed outline. The three-type legend sits below the canvas, with a keyboard-accessible disclosure
 whose state survives reloads. Hierarchy springs are shorter and stronger than communication
 springs; root hubs repel enough to separate work contexts without inventing repository affinity.
@@ -4754,8 +4759,8 @@ instead of animating it. Pan, pointer-centred wheel zoom, touch pan/pinch and ke
 retain the viewport until explicit Fit or Reset. Reset rebuilds and settles a natural layout,
 then refits while retaining selection, filters and optional machine grouping.
 
-Graph state uses `ovis:graph:v1`: selection, filters, grouping, settled positions and viewport.
-The force-layout marker migrates old column positions once while keeping selection and filters.
+Graph state uses `ovis:graph:v2`: selection, filters, grouping, legend visibility, settled positions
+and viewport. Migration preserves v1 bytes, selection and filters while reclustering once.
 Unknown future versions and unparseable JSON are never overwritten. Simulation frames remain
 local to the renderer; only settled layouts and completed gestures are persisted. Shareable query
 fields leave Ovis's pane/view location intact. A saved viewport wins over automatic framing;

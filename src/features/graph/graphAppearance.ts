@@ -8,14 +8,14 @@ export function machineColour(key: string): string {
 }
 
 const NODE_COLOURS: Record<GraphKind, string> = {
-  workspace: "var(--syntax-string)", worktree: "var(--syntax-number)", tab: "color-mix(in srgb, var(--syntax-type) 60%, var(--syntax-string))",
+  workspace: "var(--graph-workspace)", worktree: "var(--graph-worktree)", tab: "var(--graph-tab)",
 };
-export const graphNodeColour = (kind: GraphKind): string => `color-mix(in srgb, ${NODE_COLOURS[kind]} 70%, var(--text-strong))`;
+export const graphNodeColour = (kind: GraphKind): string => NODE_COLOURS[kind];
 
 export function graphAppearance(data: GraphData) {
   const neighbours = new Map(data.nodes.map((node) => [node.id, new Set<string>()]));
   for (const edge of data.edges) {
-    if (edge.kind === "communication" && edge.source !== edge.target) { neighbours.get(edge.source)?.add(edge.target); neighbours.get(edge.target)?.add(edge.source); }
+    if (edge.source !== edge.target) { neighbours.get(edge.source)?.add(edge.target); neighbours.get(edge.target)?.add(edge.source); }
   }
   return new Map(data.nodes.map((node) => {
     const degree = neighbours.get(node.id)!.size;
