@@ -12,10 +12,12 @@ registry, existing associations and migration APIs remain intact. Legacy `page=t
 Graph. Open in Workspace resolves the selected node's verified current target without focusing
 Herdr or sending input.
 
-Colours identify the three node types: workspace, worktree and tab. The legend sits below the
+Colours identify the three node types: blue for workspace, orange for worktree and green for tab.
+These hues stay consistent across palettes, with darker shades in light mode. The legend sits below the
 canvas and can be collapsed; that preference survives reloads. Short, strong hierarchy links
 keep each workspace's worktrees and tabs together, while weaker communication links connect
-clusters. Node radius counts only distinct visible communication neighbours. Names use native
+clusters. Node radius counts distinct visible connections of every type: hierarchy, communication and
+delegation. More direct tabs and worktrees make their parent hub larger. Names use native
 workspace/tab labels and launcher metadata without reading transcripts or inferring session
 identity. Dragging moves linked neighbours; the simulation stops when settled. Fit/Reset are
 intentional framing actions, and polling does not move an idle graph.

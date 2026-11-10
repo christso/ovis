@@ -23,6 +23,7 @@ const PAIRS: readonly { fg: string; bg: string; floor: number }[] = [
   { fg: "danger-text", bg: "bg", floor: TEXT_FLOOR },
   { fg: "danger-text", bg: "bg-panel", floor: TEXT_FLOOR },
   ...["status-working", "status-blocked", "status-done"].map((fg) => ({ fg, bg: "bg-panel", floor: INDICATOR_FLOOR })),
+  ...["graph-workspace", "graph-worktree", "graph-tab"].flatMap((fg) => ["bg", "bg-panel"].map((bg) => ({ fg, bg, floor: INDICATOR_FLOOR }))),
   ...["bg", "bg-panel", "bg-elevated"].map((bg) => ({ fg: "notice", bg, floor: TEXT_FLOOR })),
   // the chat's code blocks sit on the panels, the source viewer's on --bg (sourceTheme.ts)
   ...["syntax-function", "syntax-keyword", "syntax-string", "syntax-number", "syntax-type", "syntax-variable", "syntax-meta"]

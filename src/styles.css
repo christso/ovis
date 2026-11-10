@@ -101,6 +101,11 @@
   --syntax-variable: #e0c08f;
   --syntax-meta: #b49dd6;
 
+  /* Graph node types keep the same hues across palettes. */
+  --graph-workspace: #3b82f6;
+  --graph-worktree: #f97316;
+  --graph-tab: #22c55e;
+
   /* type (comfortable density; compact overrides below) */
   --font-ui: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Malgun Gothic", sans-serif;
   /* "JetBrains Mono Web" is the bundled face (fonts/fonts.css): after the icon font, which draws
@@ -306,6 +311,9 @@
   --syntax-type: #155a72;
   --syntax-variable: #7a5418;
   --syntax-meta: #5d4791;
+  --graph-workspace: #2563eb;
+  --graph-worktree: #c2410c;
+  --graph-tab: #15803d;
 }
 
 /* Charcoal in light: plain paper with ink for the accent and the cursor */

@@ -393,7 +393,13 @@ try {
     const originalTheme = await page.evaluate(() => ({ theme: document.documentElement.getAttribute("data-theme"), palette: document.documentElement.getAttribute("data-palette") }));
     for (const entry of SUPPORTED_ENTRIES) {
       await page.evaluate(({ id, mode }) => { document.documentElement.setAttribute("data-theme", mode); document.documentElement.setAttribute("data-palette", id); }, entry);
-      assert.equal(new Set([await colour("repo"), await colour("checkout"), await colour("session")]).size, 3, `three node type colours remain distinct in ${entry.id}/${entry.mode}`);
+      const fills = [await colour("repo"), await colour("checkout"), await colour("session")];
+      const channels = fills.map((fill) => fill.match(/[\d.]+/g)!.map(Number));
+      const [blue, orange, green] = channels as [number[], number[], number[]];
+      assert.ok(blue[2]! > blue[1]! * 1.2 && blue[2]! > blue[0]! * 1.5, `workspace stays blue in ${entry.id}/${entry.mode}`);
+      assert.ok(orange[0]! > orange[1]! && orange[1]! > orange[2]! * 2, `worktree stays orange in ${entry.id}/${entry.mode}`);
+      assert.ok(green[1]! > green[0]! * 1.5 && green[1]! > green[2]! * 1.2, `tab stays green in ${entry.id}/${entry.mode}`);
+      assert.deepEqual(await page.locator(".graph-kind-legend i").evaluateAll((dots) => dots.map((dot) => getComputedStyle(dot).backgroundColor)), fills, "legend swatches match node fills");
     }
     await page.evaluate(({ theme, palette }) => {
       for (const [name, value] of [["data-theme", theme], ["data-palette", palette]]) {
@@ -401,13 +407,13 @@ try {
       }
     }, originalTheme);
     const radius = (id: string) => page.locator(`[data-graph-node="${id}"]`).getAttribute("data-radius").then(Number);
-    assert.equal(await radius("checkout"), await radius("repo"), "containment links do not inflate nodes");
+    assert.ok(await radius("checkout") > await radius("repo"), "a worktree with two tabs and a workspace link is larger than a workspace with one visible worktree");
     await page.getByRole("button", { name: "Add communication", exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('[data-graph-node="session"]')?.getAttribute("data-degree") === "2");
-    assert.ok(await radius("session") > await radius("execution"), "two communication neighbours make a larger node than one");
+    await page.waitForFunction(() => document.querySelector('[data-graph-node="session"]')?.getAttribute("data-degree") === "3");
+    assert.ok(await radius("session") > await radius("execution"), "hierarchy and communication connections both increase node size");
     assert.equal(await radius("execution"), await radius("offline"), "replies and event counts do not inflate nodes");
     await page.getByRole("combobox", { name: "Communication links", exact: true }).selectOption("none");
-    assert.equal(await radius("session"), await radius("repo"), "hidden communication links do not inflate nodes");
+    assert.equal(await radius("session"), await radius("repo"), "hiding communication retains hierarchy connections");
     await page.getByRole("combobox", { name: "Communication links", exact: true }).selectOption("recent");
     const box = (await node.locator(".graph-node-disc").boundingBox())!;
     const before = await neighbour.getAttribute("transform");
@@ -487,7 +493,7 @@ try {
       return changed;
     }, cloudsBeforePoll);
     assert.equal(cloudDrift, false, "settled clouds do not jitter or restart on identical membership polls");
-    console.log("PASS animated graph: node type colours, communication-neighbour radius, connected drag, topology continuity, settled polling, deferred persistence, reset/reload");
+    console.log("PASS animated graph: node type colours, all-connection radius, connected drag, topology continuity, settled polling, deferred persistence, reset/reload");
   } finally { await motion.close(); }
 
   const dense = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce", locale: "en-US" });
