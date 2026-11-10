@@ -15,6 +15,12 @@ labels and launcher metadata without reading transcripts or inferring session id
 moves linked neighbours; the simulation stops when settled. Fit/Reset are intentional framing
 actions, and polling does not move an idle graph.
 
+**Group by machine** also draws a translucent, named cloud behind each machine's visible tabs.
+The clouds follow the tabs as they move, while node colours continue to identify repositories.
+Filtering updates each cloud and removes empty ones; Fit includes the cloud boundaries. Clouds
+do not block selection, dragging or panning. Dragging tabs across a cluster can overlap clouds
+without changing which machine a tab belongs to.
+
 The retained registry gives each logical session its own ID and a current execution ID. An execution records the machine,
 Herdr lifetime, pane, agent kind and native session ID. A later execution can belong to the same
 logical session on another machine; its earlier executions remain in the registry. This records an

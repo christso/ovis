@@ -8,6 +8,7 @@ import { fitGraph, zoomAt, type Viewport } from "./graphLayout.ts";
 import { GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
 import { useGraphSimulation } from "./useGraphSimulation.ts";
 import { graphAppearance } from "./graphAppearance.ts";
+import { graphMachineClouds } from "./graphMachineClouds.ts";
 import { GraphSurface } from "./GraphSurface.tsx";
 import { useGraphState } from "./useGraphState.ts";
 import "./GraphView.css";
@@ -58,7 +59,9 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
     const surface = host.current?.querySelector("svg.graph-surface");
     if (!surface) return;
     const box = surface.getBoundingClientRect();
-    updateViewport(fitGraph(view.nodes.flatMap((node) => positions[node.id] ? [positions[node.id]!] : []), box.width, box.height));
+    const points = view.nodes.flatMap((node) => positions[node.id] ? [positions[node.id]!] : []);
+    if (state.groupMachine) for (const cloud of graphMachineClouds(view.nodes, positions, graphAppearance(view))) points.push({ x: cloud.left, y: cloud.top }, { x: cloud.right, y: cloud.bottom });
+    updateViewport(fitGraph(points, box.width, box.height));
   };
   useEffect(() => {
     if (layoutReset !== reset || fitted.current || !view.nodes.length || !view.nodes.every((node) => positions[node.id])) return;
@@ -106,7 +109,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
     <div className="graph-body">
       <div className="graph-stage">
         <div className="graph-repository-legend" aria-label={t("Repository")}>{repositories.map((node) => <span key={node.id}><i style={{ background: appearance.get(node.id)!.colour }} />{node.repositoryName ?? node.label}</span>)}</div>
-        <GraphSurface nodes={view.nodes} edges={view.edges} positions={positions} viewport={viewport} selected={state.selected}
+        <GraphSurface nodes={view.nodes} edges={view.edges} positions={positions} viewport={viewport} selected={state.selected} groupMachine={state.groupMachine} machineNames={machineNames}
           onSelect={(selected) => setState((previous) => ({ ...previous, selected }))} onViewport={updateViewport}
           onMove={move} onEndMove={endDrag} onFit={fit} />
         {!view.nodes.length && <p className="graph-empty" role="status">{view.focusMissing ? t("This graph focus is unavailable.") : t("No graph nodes match these filters.")}</p>}

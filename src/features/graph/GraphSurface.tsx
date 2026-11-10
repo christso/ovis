@@ -3,12 +3,15 @@ import { Circle, CircleCheck, CircleHelp, CirclePause, LoaderCircle, OctagonAler
 import { useT } from "../../lib/i18n.ts";
 import { graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
 import type { GraphData, GraphNode } from "./graphModel.ts";
-import { graphAppearance } from "./graphAppearance.ts";
+import { graphAppearance, repositoryColour } from "./graphAppearance.ts";
+import { graphMachineClouds } from "./graphMachineClouds.ts";
 import { zoomAt, type Point, type Positions, type Viewport } from "./graphLayout.ts";
 
 const STATUS_ICON = { waiting: LoaderCircle, working: LoaderCircle, blocked: OctagonAlert, done: CircleCheck, idle: CirclePause, unknown: CircleHelp };
 
 export interface SurfaceProps extends GraphData {
+  groupMachine: boolean;
+  machineNames?: ReadonlyMap<string, string>;
   positions: Positions;
   viewport: Viewport;
   selected: string;
@@ -19,7 +22,7 @@ export interface SurfaceProps extends GraphData {
   onEndMove(): void;
 }
 
-export function GraphSurface({ nodes, edges, positions, viewport, selected, onSelect, onViewport, onMove, onFit, onEndMove }: SurfaceProps) {
+export function GraphSurface({ nodes, edges, positions, viewport, selected, groupMachine, machineNames, onSelect, onViewport, onMove, onFit, onEndMove }: SurfaceProps) {
   const t = useT();
   const svgRef = useRef<SVGSVGElement>(null);
   const arrowId = useId();
@@ -36,6 +39,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
   }, []);
   const [hovered, setHovered] = useState<string | null>(null);
   const appearance = useMemo(() => graphAppearance({ nodes, edges }), [nodes, edges]);
+  const clouds = useMemo(() => groupMachine ? graphMachineClouds(nodes, positions, appearance) : [], [groupMachine, nodes, positions, appearance]);
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const highlighted = hovered && byId.has(hovered) ? hovered : byId.has(selected) ? selected : null;
   const neighbours = new Set(highlighted ? [highlighted] : []);
@@ -64,6 +68,21 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
     const box = { left: centre - width / 2, right: centre + width / 2, top, bottom: top + 15 };
     if (node.id !== highlighted && occupied.some((placed) => box.left < placed.right + 5 && box.right > placed.left - 5 && box.top < placed.bottom + 4 && box.bottom > placed.top - 4)) continue;
     occupied.push(box); labels.set(node.id, { text, x: (centre - screenX) / viewport.k });
+  }
+  const cloudLabels = new Map<string, { text: string; x: number; y: number }>();
+  for (const cloud of clouds) {
+    const name = machineNames?.get(cloud.machineId) ?? cloud.machineId;
+    const limit = Math.max(8, Math.min(32, Math.floor((cloud.right - cloud.left) * viewport.k / 7), Math.floor((surfaceWidth - 24) / 7)));
+    const text = name.length > limit ? `${name.slice(0, limit - 1)}…` : name;
+    const width = text.length * 7, screenX = viewport.x + (cloud.left + cloud.right) / 2 * viewport.k;
+    const centre = screenX >= 0 && screenX <= surfaceWidth ? Math.max(width / 2 + 12, Math.min(surfaceWidth - width / 2 - 12, screenX)) : screenX;
+    const candidates = [0, 20, 40, 60].map((offset) => {
+      const baseline = viewport.y + cloud.top * viewport.k - 8 - offset;
+      return { left: centre - width / 2, right: centre + width / 2, top: baseline - 12, bottom: baseline + 3 };
+    });
+    const box = candidates.find((candidate) => candidate.top >= 4 && !occupied.some((placed) => candidate.left < placed.right + 5 && candidate.right > placed.left - 5 && candidate.top < placed.bottom + 4 && candidate.bottom > placed.top - 4)) ?? candidates[0]!;
+    occupied.push(box);
+    cloudLabels.set(cloud.machineId, { text, x: (centre - viewport.x) / viewport.k, y: (box.bottom - 3 - viewport.y) / viewport.k });
   }
   const localPoint = (event: { clientX: number; clientY: number }) => {
     const box = svgRef.current!.getBoundingClientRect();
@@ -144,6 +163,16 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, onSe
     onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onPointerLeave={() => setHovered(null)} onLostPointerCapture={() => { onEndMove(); onViewport(viewport); gesture.current = null; pointers.current.clear(); pinch.current = null; }} onKeyDown={keyDown}>
     <defs><marker id={arrowId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" className="graph-arrowhead" /></marker></defs>
     <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
+      {clouds.map((cloud) => {
+        const name = machineNames?.get(cloud.machineId) ?? cloud.machineId;
+        const label = cloudLabels.get(cloud.machineId)!;
+        return <g key={cloud.machineId} data-machine-cloud={cloud.machineId} className="graph-machine-cloud" aria-hidden="true"
+          style={{ "--machine-colour": repositoryColour(`machine:${cloud.machineId}`) } as CSSProperties}>
+          <title>{name}</title>
+          <path d={cloud.path} vectorEffect="non-scaling-stroke" />
+          <text x={label.x} y={label.y} textAnchor="middle" style={{ fontSize: 12 / viewport.k, strokeWidth: 4 / viewport.k }}>{label.text}</text>
+        </g>;
+      })}
       {edges.map((edge) => {
         const a = positions[edge.source], b = positions[edge.target];
         if (!a || !b) return null;

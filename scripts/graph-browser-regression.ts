@@ -185,10 +185,39 @@ try {
         await page.waitForFunction((before) => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== before, transformBeforeWheel);
       }
       const ungrouped = await page.locator('[data-graph-node="offline"]').getAttribute("transform");
+      stage = "machine clouds";
+      assert.equal(await page.locator("[data-machine-cloud]").count(), 0);
+      const nodeColour = await node.locator(".graph-node-disc").evaluate((disc) => getComputedStyle(disc).fill);
       await options(true); await page.getByLabel("Group by machine", { exact: true }).check(); await options(false);
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
       const grouped = await page.locator('[data-graph-node="offline"]').getAttribute("transform");
       assert.notEqual(grouped, ungrouped, "machine grouping has an explicit alternative layout");
+      const northCloud = page.locator('[data-machine-cloud="north"]');
+      await northCloud.waitFor();
+      assert.equal(await page.locator("[data-machine-cloud]").count(), 2, "only known machines get clouds");
+      assert.equal(await northCloud.locator("title").textContent(), "North garden");
+      assert.ok("North garden".startsWith((await northCloud.locator("text").textContent())!.replace(/…$/, "")), "compact cloud labels retain the machine-name prefix");
+      const cloudBounds = (await northCloud.locator("path").boundingBox())!, surfaceBounds = (await surface.boundingBox())!;
+      assert.ok(cloudBounds.x >= surfaceBounds.x && cloudBounds.y >= surfaceBounds.y && cloudBounds.x + cloudBounds.width <= surfaceBounds.x + surfaceBounds.width && cloudBounds.y + cloudBounds.height <= surfaceBounds.y + surfaceBounds.height, "Fit frames the cloud boundary");
+      assert.equal(await northCloud.locator("path").evaluate((path) => getComputedStyle(path).pointerEvents), "none");
+      assert.equal(await node.locator(".graph-node-disc").evaluate((disc) => getComputedStyle(disc).fill), nodeColour, "cloud colours preserve repository node colours");
+      assert.ok(await northCloud.evaluate((cloud) => cloud.compareDocumentPosition(document.querySelector(".graph-edge")!) & Node.DOCUMENT_POSITION_FOLLOWING), "clouds paint behind links and nodes");
+      assert.ok(await page.evaluate(() => {
+        const boxes = [...document.querySelectorAll(".graph-node-label")].map((label) => label.getBoundingClientRect());
+        return [...document.querySelectorAll(".graph-machine-cloud text")].every((label) => {
+          const box = label.getBoundingClientRect();
+          return boxes.every((node) => box.right <= node.left || box.left >= node.right || box.bottom <= node.top || box.top >= node.bottom);
+        });
+      }), "machine names do not crowd tab labels");
+      await screenshot("machine-clouds");
+      await options(true); await page.getByRole("combobox", { name: "Machine", exact: true }).selectOption("south"); await options(false);
+      await northCloud.waitFor({ state: "detached" });
+      assert.equal(await page.locator("[data-machine-cloud]").count(), 1, "filters remove empty machine clouds");
+      await options(true); await page.getByRole("combobox", { name: "Machine", exact: true }).selectOption("");
+      await page.getByLabel("Group by machine", { exact: true }).uncheck(); await options(false);
+      assert.equal(await page.locator("[data-machine-cloud]").count(), 0, "ungrouping removes clouds");
+      await options(true); await page.getByLabel("Group by machine", { exact: true }).check(); await options(false);
+      await page.getByRole("button", { name: "Fit graph", exact: true }).click();
 
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), "no horizontal overflow");
       await page.getByRole("button", { name: "Long labels", exact: true }).click();
@@ -397,6 +426,25 @@ try {
     const savedReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
     await page.reload(); await node.waitFor();
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!).positions), savedReset.positions, "settled reset survives reload without a simulation restart");
+    await page.getByLabel("Group by machine", { exact: true }).check(); await settled();
+    const cloud = page.locator('[data-machine-cloud="north"] path');
+    const cloudBefore = await cloud.getAttribute("d"), cloudNode = (await node.locator(".graph-node-disc").boundingBox())!;
+    await page.mouse.move(cloudNode.x + cloudNode.width / 2, cloudNode.y + cloudNode.height / 2); await page.mouse.down();
+    await page.mouse.move(cloudNode.x + cloudNode.width / 2 + 100, cloudNode.y + cloudNode.height / 2 - 80, { steps: 8 });
+    await page.waitForFunction((before) => document.querySelector('[data-machine-cloud="north"] path')?.getAttribute("d") !== before, cloudBefore);
+    await page.mouse.up(); await settled();
+    await page.getByRole("button", { name: "Live update", exact: true }).click(); await settled();
+    const cloudsBeforePoll = await page.locator("[data-machine-cloud] path").evaluateAll((paths) => paths.map((path) => path.getAttribute("d")));
+    await page.getByRole("button", { name: "Live update", exact: true }).click();
+    const cloudDrift = await page.evaluate(async (before) => {
+      let changed = false;
+      for (let frame = 0; frame < 24; frame++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        changed ||= JSON.stringify([...document.querySelectorAll("[data-machine-cloud] path")].map((path) => path.getAttribute("d"))) !== JSON.stringify(before);
+      }
+      return changed;
+    }, cloudsBeforePoll);
+    assert.equal(cloudDrift, false, "settled clouds do not jitter or restart on identical membership polls");
     console.log("PASS animated graph: repository colours, communication-neighbour radius, connected drag, topology continuity, settled polling, deferred persistence, reset/reload");
   } finally { await motion.close(); }
 
