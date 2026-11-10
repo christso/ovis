@@ -12,7 +12,7 @@ export function graphAppearance(data: GraphData) {
   const repositories = new Map<string, Set<string>>();
   for (const node of data.nodes) if (node.repositoryKey || node.kind === "repository") repositories.set(node.id, new Set([node.repositoryKey ?? node.label]));
   for (const edge of data.edges) {
-    if (edge.source !== edge.target) { neighbours.get(edge.source)?.add(edge.target); neighbours.get(edge.target)?.add(edge.source); }
+    if (edge.kind === "communication" && edge.source !== edge.target) { neighbours.get(edge.source)?.add(edge.target); neighbours.get(edge.target)?.add(edge.source); }
   }
   const memberships = data.edges.filter((edge) => edge.kind !== "delegation" && edge.kind !== "communication" && edge.kind !== "work-session");
   for (let pass = 0; pass < data.nodes.length; pass++) {

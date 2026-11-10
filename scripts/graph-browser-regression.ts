@@ -358,7 +358,15 @@ try {
     assert.equal(await colour("repo"), await colour("checkout"));
     assert.equal(await colour("checkout"), await colour("execution"));
     assert.notEqual(await colour("repo"), await colour("harbour"));
-    assert.ok(Number(await page.locator('[data-graph-node="checkout"]').getAttribute("data-radius")) > Number(await page.locator('[data-graph-node="repo"]').getAttribute("data-radius")));
+    const radius = (id: string) => page.locator(`[data-graph-node="${id}"]`).getAttribute("data-radius").then(Number);
+    assert.equal(await radius("checkout"), await radius("repo"), "containment links do not inflate nodes");
+    await page.getByRole("button", { name: "Add communication", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('[data-graph-node="session"]')?.getAttribute("data-degree") === "2");
+    assert.ok(await radius("session") > await radius("execution"), "two communication neighbours make a larger node than one");
+    assert.equal(await radius("execution"), await radius("checkout"), "replies and event counts do not inflate nodes");
+    await page.getByRole("combobox", { name: "Communication links", exact: true }).selectOption("none");
+    assert.equal(await radius("session"), await radius("repo"), "hidden communication links do not inflate nodes");
+    await page.getByRole("combobox", { name: "Communication links", exact: true }).selectOption("recent");
     const box = (await node.locator(".graph-node-disc").boundingBox())!;
     const before = await neighbour.getAttribute("transform");
     const storedBefore = await page.evaluate(() => localStorage.getItem("ovis:graph:v1"));
@@ -437,7 +445,7 @@ try {
       return changed;
     }, cloudsBeforePoll);
     assert.equal(cloudDrift, false, "settled clouds do not jitter or restart on identical membership polls");
-    console.log("PASS animated graph: repository colours, distinct-neighbour radius, connected drag, topology continuity, settled polling, deferred persistence, reset/reload");
+    console.log("PASS animated graph: repository colours, communication-neighbour radius, connected drag, topology continuity, settled polling, deferred persistence, reset/reload");
   } finally { await motion.close(); }
 
   const dense = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce", locale: "en-US" });

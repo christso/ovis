@@ -4687,8 +4687,10 @@ written; no Folio code or assets are copied. The containment and thread distinct
 session identity remain separate.
 
 D3 force links pull connected nodes, repulsion separates clusters and collision keeps circles
-apart. Radius grows with distinct visible neighbours; parallel edges and recorded event counts
-cannot inflate it. Repository colour follows reported checkout membership,
+apart. Radius grows with distinct visible communication neighbours; containment, delegation,
+self-links, parallel edges and recorded event counts cannot inflate it. Hidden communication links
+do not contribute. This communication-specific sizing differs from Zed's project-grouped thread
+list because Flock also shows relationships between tabs. Repository colour follows reported checkout membership,
 never communication or delegation. Known native `repo_name` metadata supplies a common colour
 across machines with different root paths; recorded roots supply the fallback identity. Unknown
 repository membership stays neutral. Colour grouping does not merge identities. Status uses its
