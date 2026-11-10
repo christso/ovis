@@ -15,6 +15,7 @@ export interface GraphNode {
   detail?: string;
   repositoryKey?: string;
   repositoryName?: string;
+  activity?: readonly GraphActivity[];
 }
 export interface GraphEdge {
   id: string;
@@ -26,6 +27,16 @@ export interface GraphEdge {
   eventCount?: number;
   lastObservedAt?: string;
   sources?: readonly ("codex" | "herdr")[];
+}
+export interface GraphActivity {
+  id: string;
+  endpointId: string;
+  label: string;
+  kind: "delegation" | "communication";
+  direction: "incoming" | "outgoing";
+  eventCount: number;
+  lastObservedAt: string;
+  sources: readonly ("codex" | "herdr")[];
 }
 export interface GraphGroup { id: string; label: string; machineId: string; nodeIds: readonly string[] }
 export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[]; groups?: readonly GraphGroup[] }

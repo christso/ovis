@@ -3,7 +3,7 @@ import { ChevronDown, Focus, Link, Minus, Plus, RotateCcw, SlidersHorizontal } f
 import { useT } from "../../lib/i18n.ts";
 import { copyText } from "../../lib/clipboard.ts";
 import { useMediaQuery } from "../../lib/useMediaQuery.ts";
-import { projectGraph, type GraphData, type GraphFilters } from "./graphModel.ts";
+import { projectGraph, type GraphData, type GraphEdge, type GraphFilters } from "./graphModel.ts";
 import { fitGraph, zoomAt, type Viewport } from "./graphLayout.ts";
 import { GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
 import { useGraphSimulation } from "./useGraphSimulation.ts";
@@ -20,6 +20,11 @@ export interface GraphViewProps {
   /** Shared inventory/API error, shown alongside retained stale data. */
   error?: string | null;
   machineNames?: ReadonlyMap<string, string>;
+}
+
+function RecordedEvents({ value }: { value: Pick<GraphEdge, "eventCount" | "lastObservedAt" | "sources"> & { evidence?: string } }) {
+  const t = useT();
+  return <small>{value.eventCount ? <>{t("{count} recorded events", { count: value.eventCount })} · {t("Last activity")}: <time dateTime={value.lastObservedAt}>{new Date(value.lastObservedAt!).toLocaleString()}</time> · {value.sources?.map((source) => source === "herdr" ? "Herdr" : "Codex").join(" · ") ?? value.evidence}</> : value.evidence}</small>;
 }
 
 export default function GraphView({ data, onOpenNode, canOpenNode, error, machineNames }: GraphViewProps) {
@@ -44,6 +49,8 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const appearance = useMemo(() => graphAppearance(data), [data]);
   const repositories = [...new Map(data.nodes.filter((node) => node.repositoryKey || node.kind === "repository").map((node) => [appearance.get(node.id)!.repository, node])).values()];
   const selected = data.nodes.find((node) => node.id === state.selected);
+  const activity = selected?.activity ?? [];
+  const relatedSessions = new Set(activity.map((item) => item.endpointId)).size;
   const focusGroups = data.groups ?? [];
   const focusNodes = data.nodes.filter((node) => ["repository", "session", "work", "tab"].includes(node.kind) || node.id === state.filters.focus);
   const machines = [...new Set(data.nodes.flatMap((node) => node.machineId ? [node.machineId] : []))].sort();
@@ -130,8 +137,16 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           <ul className="graph-relations">{view.edges.filter((edge) => edge.evidence.trim() && (edge.source === selected.id || edge.target === selected.id)).map((edge) => {
             const neighbour = data.nodes.find((node) => node.id === (edge.source === selected.id ? edge.target : edge.source));
             if (!neighbour) return null;
-            return <li key={edge.id}>{graphRelationLabel(t, edge.kind)} {edge.source === selected.id ? "→" : "←"}<button type="button" className="btn btn-ghost" onClick={() => setState((previous) => ({ ...previous, selected: neighbour.id }))}>{neighbour.label}</button><small>{edge.eventCount ? <>{t("{count} recorded events", { count: edge.eventCount })} · {t("Last activity")}: <time dateTime={edge.lastObservedAt}>{new Date(edge.lastObservedAt!).toLocaleString()}</time> · {edge.sources?.map((source) => source === "herdr" ? "Herdr" : "Codex").join(" · ") ?? edge.evidence}</> : edge.evidence}</small></li>;
+            return <li key={edge.id}>{graphRelationLabel(t, edge.kind)} {edge.source === selected.id ? "→" : "←"}<button type="button" className="btn btn-ghost" onClick={() => setState((previous) => ({ ...previous, selected: neighbour.id }))}>{neighbour.label}</button><RecordedEvents value={edge} /></li>;
           })}</ul>
+          {activity.length > 0 && <details className="graph-recorded-activity">
+            <summary>{t("Recorded agent activity")}<small>{t("Related agent sessions: {count}", { count: relatedSessions })}</small></summary>
+            <p>{t("These sessions have no verified tab to open.")}</p>
+            <ul className="graph-relations">{activity.map((item) => <li key={item.id}>
+              {graphRelationLabel(t, item.kind)} {item.direction === "outgoing" ? "→" : "←"} {item.label}
+              <RecordedEvents value={item} />
+            </li>)}</ul>
+          </details>}
         </>}
         <p className="graph-help">{t("Drag to pan or move nodes. Pinch or scroll to zoom. Use arrow keys to pan, +/− to zoom and 0 to fit.")}</p>
         <p className="graph-help">{t("Links show recorded relationships only. Delegation and dependencies are absent when the source does not report them.")}</p>

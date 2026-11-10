@@ -33,6 +33,9 @@ import { RUNTIME_MOVE_ZH } from "./i18n/runtime-move.zh.ts";
  * Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Recorded agent activity": "已记录的智能体活动",
+  "Related agent sessions: {count}": "{count} 个相关智能体会话",
+  "These sessions have no verified tab to open.": "这些会话没有可打开的已验证标签页。",
   "Queued messages": "排队的消息",
   "View only": "仅查看",
   "Not pasted: the file's path holds a line break, which the terminal would take as Enter.": "未粘贴：文件路径中含有换行，终端会将其当作 Enter。",

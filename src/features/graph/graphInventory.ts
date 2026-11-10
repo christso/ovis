@@ -2,9 +2,15 @@ import type { FlockRegistry } from "../../../shared/flock.ts";
 import { flockBinding, flockTarget, sameFlockBinding, type FlockRow } from "../../../shared/flock-inventory.ts";
 import type { Machine, PaneTarget } from "../../../shared/machines.ts";
 import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
-import { flockRelationships, flockRowRelationshipIds } from "../../../shared/flock-relationships.ts";
+import { flockRelationships, flockRowRelationshipIds, type FlockRelationship } from "../../../shared/flock-relationships.ts";
 import { graphTabs, graphWorkspaceGroups } from "./graphTabs.ts";
-import type { GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
+import type { GraphActivity, GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
+
+function appendReceipts(record: Pick<GraphEdge, "eventCount" | "lastObservedAt" | "sources">, relation: FlockRelationship): void {
+  record.eventCount = (record.eventCount ?? 0) + relation.count;
+  if (Date.parse(relation.last_at) > Date.parse(record.lastObservedAt!)) record.lastObservedAt = relation.last_at;
+  record.sources = [...new Set([...record.sources ?? [], ...relation.sources])];
+}
 
 type Tab = ReturnType<typeof graphTabs>[number];
 function rowTab(row: FlockRow, tabs: readonly Tab[]): Tab | undefined {
@@ -37,27 +43,38 @@ export function graphInventory(registry: FlockRegistry | null, rows: readonly Fl
       ids.add(tab.node.id); endpoints.set(endpoint, ids);
     }
   }
-  const resolve = (endpoint: ReturnType<typeof flockRelationships>[number]["source"]): string => {
-    const represented = endpoints.get(endpoint.id);
-    if (represented?.size === 1) return [...represented][0]!;
-    if (!nodes.has(endpoint.id)) nodes.set(endpoint.id, { id: endpoint.id, kind: "session", label: endpoint.label,
-      machineId: endpoint.machine_id, detail: endpoint.native_session_id, status: "unknown", freshness: "unavailable" });
-    return endpoint.id;
+  const resolve = (id: string): string | null => {
+    const represented = endpoints.get(id);
+    return represented?.size === 1 ? [...represented][0]! : null;
   };
+  const activity = new Map<string, Map<string, GraphActivity>>();
   const edges = new Map<string, GraphEdge>();
   for (const relation of flockRelationships(registry)) {
-    const source = resolve(relation.source), target = resolve(relation.target);
+    const source = resolve(relation.source.id), target = resolve(relation.target.id);
+    if (!source || !target) {
+      const tabId = source ?? target;
+      if (!tabId) continue;
+      const endpoint = source ? relation.target : relation.source;
+      const direction = source ? "outgoing" : "incoming";
+      const id = JSON.stringify([endpoint.id, relation.kind, direction]);
+      const records = activity.get(tabId) ?? new Map<string, GraphActivity>();
+      const previous = records.get(id);
+      if (previous) appendReceipts(previous, relation);
+      else records.set(id, { id, endpointId: endpoint.id, label: endpoint.label, kind: relation.kind, direction,
+        eventCount: relation.count, lastObservedAt: relation.last_at, sources: relation.sources });
+      activity.set(tabId, records);
+      continue;
+    }
     if (source === target) continue;
     const id = JSON.stringify([source, target, relation.kind]);
     const previous = edges.get(id);
     if (previous) {
-      previous.eventCount = (previous.eventCount ?? 0) + relation.count;
-      if (Date.parse(relation.last_at) > Date.parse(previous.lastObservedAt!)) previous.lastObservedAt = relation.last_at;
-      previous.sources = [...new Set([...previous.sources ?? [], ...relation.sources])];
-      previous.evidence = `${previous.sources.join("+")}.${relation.kind}`;
+      appendReceipts(previous, relation);
+      previous.evidence = `${previous.sources!.join("+")}.${relation.kind}`;
     } else edges.set(id, { id, source, target, kind: relation.kind, evidence: `${relation.sources.join("+")}.${relation.kind}`,
       eventCount: relation.count, lastObservedAt: relation.last_at, sources: relation.sources });
   }
+  for (const [tabId, records] of activity) nodes.get(tabId)!.activity = [...records.values()];
   return { nodes: [...nodes.values()], edges: [...edges.values()], groups: graphWorkspaceGroups(machines, tabs) };
 }
 

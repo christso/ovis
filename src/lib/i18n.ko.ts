@@ -29,6 +29,9 @@ import { RUNTIME_MOVE_KO } from "./i18n/runtime-move.ko.ts";
  * braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Recorded agent activity": "기록된 에이전트 활동",
+  "Related agent sessions: {count}": "관련 에이전트 세션 {count}개",
+  "These sessions have no verified tab to open.": "이 세션에는 열 수 있는 확인된 탭이 없습니다.",
   "Queued messages": "대기 메시지",
   "View only": "보기 전용",
   "Not pasted: the file's path holds a line break, which the terminal would take as Enter.": "붙여넣지 않았습니다: 파일 경로에 줄바꿈이 있어 터미널이 Enter로 받아들입니다.",

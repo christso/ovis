@@ -87,8 +87,12 @@ does not count another message. The first capture's machine provenance is retain
 duplicate captures remain readable and are counted once in the graph.
 Recorded endpoints map to their current represented tabs. Parallel endpoint pairs between two tabs
 combine into one directed relationship with summed receipt counts; same-tab activity adds no extra
-node or link. An endpoint without one unambiguous represented tab remains an unavailable historical
-node, with no assumed live terminal target or root-agent status.
+node or link. An endpoint without one unambiguous represented tab never adds a graph node. Its direct activity
+with a represented tab appears in that tab’s collapsible **Recorded agent activity** details,
+including related-session count, direction, receipts, timestamps and sources. These read-only
+records have no navigation controls and make no claim about current liveness or parentage. Records
+with neither endpoint mapped to a tab remain in the registry without being attributed to a tab.
+Communication-link filters affect graph links; the details retain all recorded activity.
 
 Capture currently supports Codex's durable completed `SubAgentActivity` receipts with an own-thread
 ID, native target ID and a successful `started` or `interacted` activity. The source reader follows
