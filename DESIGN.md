@@ -4710,7 +4710,14 @@ Repository colors and the legend use reported metadata directly, including commo
 names across machines; communication and delegation do not establish repository membership.
 Recorded endpoints map onto their represented tabs; parallel endpoint pairs combine into one
 counted relationship. Same-tab activity produces no duplicate node or self-link. Unrepresented
-historical endpoints remain unavailable, without a terminal action.
+agent sessions appear as recorded activity in the directly related tab’s inspector, behind a
+native details disclosure with a related-session count. They add no graph nodes, focus choices or
+terminal actions. Incoming and outgoing receipts retain their direction, counts, timestamps and
+sources; communication does not imply delegation. An activity record with no represented endpoint
+is retained in the registry without inventing a tab association. This follows the separation
+between current project threads and archived history in Zed’s Agent Panel; the graph retains
+Ovis’s native tab/worktree names. Communication-link filters affect graph edges, while the
+inspector’s recorded activity remains an archive.
 
 Tab identity includes machine, workspace, daemon lifetime, native tab, exact pane/terminal set and
 agent occupant identity. Renames, order and status changes keep the identity. Open resolves the

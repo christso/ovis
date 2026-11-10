@@ -80,3 +80,7 @@
 .graph-repository-legend { position: absolute; z-index: 1; top: 12px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; pointer-events: none; font-size: 12px; color: var(--text-dim); }
 .graph-repository-legend span { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .graph-repository-legend i { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+.graph-recorded-activity { border-top: 1px solid var(--border); margin-top: 12px; }
+.graph-recorded-activity summary { cursor: pointer; min-height: 44px; padding: 8px 0; }
+.graph-recorded-activity summary small { display: block; color: var(--text-dim); }

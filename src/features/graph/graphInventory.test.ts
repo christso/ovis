@@ -116,7 +116,7 @@ describe("workspace tabs in Flock", () => {
     expect(graphInventory(null, [], state.machines).nodes).toEqual([]);
     expect(graphTarget(null, [], data.nodes[0]!.id, state.machines)).toBeNull();
   });
-  it("maps native receipts onto tabs and retains only unrepresented historical endpoints", () => {
+  it("keeps mapped tab links and moves unrepresented endpoint activity into details", () => {
     const state = source();
     const parent = agent(state, 0), child = agent(state, 1), absent = "00000000-0000-4000-8000-000000000009";
     const native = (pane: typeof parent) => pane.agent_session!.value;
@@ -126,12 +126,13 @@ describe("workspace tabs in Flock", () => {
       { id: "closed-child", kind: "delegation", source: "codex", machine_id: state.machine.id, source_native_session_id: native(parent), target_native_session_id: absent, occurred_at: "2026-11-10T00:02:00Z" },
     ];
     const data = state.graph(), obsidian = data.nodes.find((node) => node.label === "obsidian")!, phone = data.nodes.find((node) => node.label === "phone")!;
-    expect(data.nodes).toHaveLength(4);
+    expect(data.nodes).toHaveLength(3);
+    expect(data.nodes.every((node) => node.kind === "tab")).toBe(true);
     expect(data.edges.find((edge) => edge.kind === "communication")).toMatchObject({ source: obsidian.id, target: phone.id, eventCount: 2, sources: ["codex"] });
-    expect(data.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(2);
-    const historical = data.nodes.find((node) => node.kind !== "tab")!;
-    expect(historical.freshness).toBe("unavailable");
-    expect(graphTarget(state.registry, state.rows(), historical.id, state.machines)).toBeNull();
+    expect(data.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
+    expect(obsidian.activity).toHaveLength(1);
+    expect(obsidian.activity![0]).toMatchObject({ label: "Codex 00000000", kind: "delegation", direction: "outgoing", eventCount: 1, lastObservedAt: "2026-11-10T00:02:00Z", sources: ["codex"] });
+    expect(phone.activity).toBeUndefined();
   });
   it("folds multiple endpoint pairs into one counted tab relationship and omits same-tab links", () => {
     const state = source(["obsidian", "phone"]);
@@ -197,8 +198,9 @@ it("does not attach a historical session's recorded relationship using only a pu
   state.registry.observations = [{ id: "earlier-message", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: binding.native_session_id, target_native_session_id: "00000000-0000-4000-8000-000000000009", occurred_at: "2026-11-10T00:00:00Z" }];
   state.snapshot.flock_bindings = [];
   const data = state.graph();
-  expect(data.edges[0]!.source).toBe("session:historical");
-  expect(data.nodes.find((node) => node.id === "session:historical")?.freshness).toBe("unavailable");
+  expect(data.edges).toEqual([]);
+  expect(data.nodes).toHaveLength(1);
+  expect(data.nodes[0]!.activity).toBeUndefined();
   expect(graphTarget(state.registry, state.rows(), data.nodes.find((node) => node.kind === "tab")!.id, state.machines)).toBeNull();
 });
 
@@ -220,4 +222,22 @@ it("retains proven native identity through optional coordination changes while g
   expect(graphTarget(state.registry, state.rows(), herdrOnlyId, state.machines)).not.toBeNull();
   endpoint.agent_instance_id = "replacement-with-unverified-native-hint";
   expect(graphTarget(state.registry, state.rows(), herdrOnlyId, state.machines)).toBeNull();
+});
+
+
+it("counts recorded activity once per endpoint pair, retaining direction without drawing ghost nodes", () => {
+  const state = source(["shared-action"]); agent(state, 0);
+  const pane = state.snapshot.panes[0]!;
+  state.snapshot.panes.push({ ...pane, pane_id: "split-agent", terminal_id: "split-terminal" }); agent(state, 1);
+  const missing = "01a1a426-0000-4000-8000-000000000000";
+  state.registry.observations = [0, 1].map((index) => ({ id: `send-${index}`, kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: state.snapshot.panes[index]!.agent_session!.value, target_native_session_id: missing, occurred_at: `2026-11-10T00:0${index}:00Z` }));
+  state.registry.observations.push(structuredClone(state.registry.observations[0]!));
+  state.registry.observations.push({ id: "reply", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: missing, target_native_session_id: pane.agent_session!.value, occurred_at: "2026-11-10T00:02:00Z" });
+  const data = state.graph();
+  expect(data.nodes.map((node) => node.label)).toEqual(["shared-action"]);
+  expect(data.edges).toEqual([]);
+  expect(data.nodes[0]!.activity).toHaveLength(2);
+  expect(data.nodes[0]!.activity!.find((item) => item.direction === "outgoing")).toMatchObject({ label: "Codex 01a1a426", kind: "communication", eventCount: 2, lastObservedAt: "2026-11-10T00:01:00Z", sources: ["codex"] });
+  expect(data.nodes[0]!.activity!.find((item) => item.direction === "incoming")?.eventCount).toBe(1);
+  expect(new Set(data.nodes[0]!.activity!.map((item) => item.endpointId)).size).toBe(1);
 });

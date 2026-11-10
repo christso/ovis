@@ -26,14 +26,14 @@ const original = structuredClone(fixture.machines[0]) as Machine;
 const chosen = original.snapshot!.panes.find((pane) => pane.agent === "codex")!;
 const chosenTab = original.snapshot!.tabs.find((tab) => tab.tab_id === chosen.tab_id)!;
 const chosenWorkspace = original.snapshot!.workspaces.find((workspace) => workspace.workspace_id === chosen.workspace_id)!;
-chosenTab.label = "obsidian"; chosenWorkspace.label = "infra";
+chosenTab.label = "shared-action"; chosenWorkspace.label = "infra";
 chosenWorkspace.worktree = { repo_key: "infra", repo_name: "infra", repo_root: "/fictional/infra", checkout_path: "/fictional/infra", is_linked_worktree: false };
 chosenWorkspace.tokens = { branch: "main" };
 original.snapshot!.tabs = [chosenTab]; original.snapshot!.workspaces = [chosenWorkspace];
 original.snapshot!.panes = [chosen]; original.snapshot!.herdr_lifetime = `demo-${original.id}`;
 // Explicit fictional proof stands in for the native reader; the ordinary roster below omits it.
 chosen.terminal_id = "graph-terminal-local";
-const nativeSourceId = "11111111-1111-4111-8111-111111111111", nativeChildId = "22222222-2222-4222-8222-222222222222";
+const nativeSourceId = "11111111-1111-4111-8111-111111111111", nativeChildId = "01a1a426-0000-4000-8000-000000000001";
 original.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: chosen.terminal_id, agent: chosen.agent!, native_session_id: nativeSourceId }];
 chosen.agent_session = { agent: chosen.agent!, kind: "id", source: "fixture", value: nativeSourceId }; chosen.agent_status = "working";
 original.snapshot!.flock_observations = ["delegation", "communication", "communication"].map((kind, index) => ({ id: `graph-receipt-${index}`, kind: kind as "delegation" | "communication", source_native_session_id: nativeSourceId, target_native_session_id: nativeChildId, occurred_at: new Date(Date.now() - 60_000 * (3 - index)).toISOString(), source: "codex" }));
@@ -121,6 +121,13 @@ try {
       if (mobile && await button.getAttribute("aria-expanded") !== String(open)) await button.click();
     };
     const inspect = async (id: string) => { await options(true); await page.getByRole("combobox", { name: "Inspect node", exact: true }).selectOption(id); await options(false); };
+    const showActivity = async () => {
+      const disclosure = page.getByRole("button", { name: "Details and help", exact: true });
+      if (mobile && await disclosure.getAttribute("aria-expanded") !== "true") await disclosure.click();
+      const activity = page.locator(".graph-recorded-activity");
+      if (await activity.getAttribute("open") === null) await activity.locator("summary").click();
+      return activity;
+    };
     let stage = "initial";
     try {
       await page.goto(`${base}?pane=${encodeURIComponent(chosen.pane_id)}&view=terminal`);
@@ -186,18 +193,27 @@ try {
       assert.equal(new URL(page.url()).searchParams.get("pane"), beforePane);
       await page.getByText(/Inventory is incomplete for:.*Graph awaiting inventory/).waitFor();
       await inspect(selectedTabId);
-      await page.locator(".graph-edge-delegation").waitFor({ state: "attached" });
-      assert.equal(await page.locator(".graph-edge-communication").count(), 1, "repeated native sends update one connection");
-      assert.ok(await page.locator(".graph-edge-delegation line").getAttribute("marker-end"), "observed delegation shows direction");
+      assert.equal(await page.locator(".graph-edge-delegation, .graph-edge-communication").count(), 0, "unmapped agent activity never adds graph links or nodes");
+      assert.equal(await page.locator(".graph-surface [data-graph-node]").count(), 6, "only native workspace tabs appear in the whole graph");
+      await options(true);
+      assert.equal(await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").filter({ hasText: "Codex 01a1a426" }).count(), 0, "unmapped sessions cannot be selected as nodes");
+      await options(false);
+      const activity = await showActivity();
+      await activity.getByText("Related agent sessions: 1", { exact: true }).waitFor();
+      await activity.getByText("These sessions have no verified tab to open.", { exact: true }).waitFor();
+      await activity.locator("li").filter({ hasText: "Recorded delegation → Codex 01a1a426" }).waitFor();
+      await activity.locator("li").filter({ hasText: "2 recorded events" }).waitFor();
+      assert.equal(await activity.locator("button, a").count(), 0, "recorded history has no nonfunctional navigation controls");
+      if (process.env.UI_EVIDENCE_DIR) {
+        const path = join(process.env.UI_EVIDENCE_DIR, "graph-app-mobile"); mkdirSync(path, { recursive: true });
+        await activity.screenshot({ path: join(path, `${width}-${height}-${theme}-recorded-activity.png`) });
+      }
       await options(true);
       const communication = page.getByRole("combobox", { name: "Communication links", exact: true });
       await communication.selectOption("none"); assert.equal(await page.locator(".graph-edge-communication").count(), 0);
-      await communication.selectOption("all"); assert.equal(await page.locator(".graph-edge-communication").count(), 1);
+      await communication.selectOption("all"); assert.equal(await page.locator(".graph-edge-communication").count(), 0);
       await communication.selectOption("recent"); await options(false);
-      await inspect(`native:${JSON.stringify([original.id, "codex", nativeChildId])}`);
-      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true, "an observed child without a proven pane cannot open a terminal");
-      await inspect(selectedTabId);
-      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isEnabled(), true, "shared proof-backed source authorizes the live target");
+      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isEnabled(), true, "the represented tab keeps its verified target");
       const proofs = machines[0]!.snapshot!.flock_bindings!;
       machines[0]!.snapshot!.flock_bindings = [];
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -251,7 +267,8 @@ try {
       assert.equal(await node().getAttribute("aria-pressed"), "true", "a tab selection stays with its physical source after a logical move");
       selectedTabId = remoteId; await inspect(selectedTabId);
       assert.equal(store.read().observations?.length, 3, "replaying the copied rollout on its destination does not import receipts twice");
-      assert.equal(await page.locator(".graph-edge-communication").count(), 1, "the logical connection survives a move without duplicate links");
+      assert.equal(await page.locator(".graph-edge-communication").count(), 0, "recorded history stays outside the graph after a move");
+      await (await showActivity()).locator("li").filter({ hasText: "2 recorded events" }).waitFor();
       assert.equal(await node().getAttribute("aria-pressed"), "true", "the destination tab can be explicitly selected");
       if (width >= 980) {
         const withFile = new URL(page.url()); withFile.searchParams.delete("page"); withFile.searchParams.set("file", "README.md");

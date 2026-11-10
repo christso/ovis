@@ -31,6 +31,9 @@ import { RUNTIME_MOVE_JA } from "./i18n/runtime-move.ja.ts";
  * in English. Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Recorded agent activity": "記録されたエージェントの活動",
+  "Related agent sessions: {count}": "関連するエージェントセッション {count} 件",
+  "These sessions have no verified tab to open.": "これらのセッションには、開くことができる確認済みのタブがありません。",
   "Queued messages": "キュー内のメッセージ",
   "View only": "表示のみ",
   "Not pasted: the file's path holds a line break, which the terminal would take as Enter.": "貼り付けていません: ファイルのパスに改行があり、ターミナルが Enter として受け取ります。",
