@@ -14,6 +14,7 @@ export interface GraphNode {
   freshness?: "live" | "stale" | "disconnected" | "unavailable" | "unsupported";
   detail?: string;
   repositoryKey?: string;
+  repositoryName?: string;
 }
 export interface GraphEdge {
   id: string;
@@ -26,7 +27,8 @@ export interface GraphEdge {
   lastObservedAt?: string;
   sources?: readonly ("codex" | "herdr")[];
 }
-export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[] }
+export interface GraphGroup { id: string; label: string; machineId: string; nodeIds: readonly string[] }
+export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[]; groups?: readonly GraphGroup[] }
 export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean; communication?: "recent" | "all" | "none" }
 
 const RELATIONS = new Set<GraphRelation>(["execution-in-checkout", "tab-in-checkout", "checkout-in-repository", "delegation", "communication", "session-execution", "work-session"]);
@@ -46,7 +48,8 @@ export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.
   }
   let focused: Set<string> | null = null;
   if (filters.focus) {
-    focused = new Set(byId.has(filters.focus) ? [filters.focus] : []);
+    const group = data.groups?.find((group) => group.id === filters.focus);
+    focused = new Set(group ? group.nodeIds : byId.has(filters.focus) ? [filters.focus] : []);
     for (const adjacency of [children, parents]) {
       const queue = [...focused];
       for (let at = 0; at < queue.length; at++) {
@@ -75,6 +78,6 @@ export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.
   return {
     nodes: data.nodes.filter((node) => kept.has(node.id)),
     edges: edges.filter((edge) => kept.has(edge.source) && kept.has(edge.target)),
-    focusMissing: !!filters.focus && !byId.has(filters.focus),
+    focusMissing: !!filters.focus && !byId.has(filters.focus) && !data.groups?.some((group) => group.id === filters.focus),
   };
 }

@@ -42,8 +42,9 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const view = useMemo(() => projectGraph(data, state.filters), [data, state.filters]);
   const { positions, move, endDrag, layoutReset } = useGraphSimulation(view, state.positions, state.groupMachine, reset, (settled) => setState((previous) => ({ ...previous, positions: { ...previous.positions, ...settled } })));
   const appearance = useMemo(() => graphAppearance(data), [data]);
-  const repositories = [...new Map(data.nodes.filter((node) => node.kind === "repository").map((node) => [appearance.get(node.id)!.repository, node])).values()];
+  const repositories = [...new Map(data.nodes.filter((node) => node.repositoryKey || node.kind === "repository").map((node) => [appearance.get(node.id)!.repository, node])).values()];
   const selected = data.nodes.find((node) => node.id === state.selected);
+  const focusGroups = data.groups ?? [];
   const focusNodes = data.nodes.filter((node) => ["repository", "session", "work", "tab"].includes(node.kind) || node.id === state.filters.focus);
   const machines = [...new Set(data.nodes.flatMap((node) => node.machineId ? [node.machineId] : []))].sort();
   const fit = () => {
@@ -77,7 +78,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
         <option value="">{t("All machines")}</option>{state.filters.machine && !machines.includes(state.filters.machine) && <option value={state.filters.machine}>{state.filters.machine}</option>}{machines.map((id) => <option key={id} value={id}>{machineNames?.get(id) ?? id}</option>)}
       </select></label>
       <label>{t("Focus graph")}<select aria-label={t("Focus graph")} value={state.filters.focus} onChange={(event) => filter({ focus: event.target.value })}>
-        <option value="">{t("Whole graph")}</option>{state.filters.focus && !focusNodes.some((node) => node.id === state.filters.focus) && <option value={state.filters.focus}>{t("This graph focus is unavailable.")}</option>}{focusNodes.map((node) => <option key={node.id} value={node.id}>{node.label}{node.machineId ? ` · ${machineNames?.get(node.machineId) ?? node.machineId}` : ""}</option>)}
+        <option value="">{t("Whole graph")}</option>{state.filters.focus && !focusNodes.some((node) => node.id === state.filters.focus) && !focusGroups.some((group) => group.id === state.filters.focus) && <option value={state.filters.focus}>{t("This graph focus is unavailable.")}</option>}{focusGroups.map((group) => <option key={group.id} value={group.id}>{group.label} · {machineNames?.get(group.machineId) ?? group.machineId}</option>)}{focusNodes.map((node) => <option key={node.id} value={node.id}>{node.label}{node.machineId ? ` · ${machineNames?.get(node.machineId) ?? node.machineId}` : ""}</option>)}
       </select></label>
       <label>{t("Communication links")}<select aria-label={t("Communication links")} value={state.filters.communication ?? "recent"} onChange={(event) => filter({ communication: event.target.value as GraphFilters["communication"] })}>
         <option value="recent">{t("Last 24 hours")}</option><option value="all">{t("All recorded activity")}</option><option value="none">{t("Hidden")}</option>
@@ -97,7 +98,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
     {error && <p className="graph-warning" role="status">{error}</p>}
     <div className="graph-body">
       <div className="graph-stage">
-        <div className="graph-repository-legend" aria-label={t("Repository")}>{repositories.map((node) => <span key={node.id}><i style={{ background: appearance.get(node.id)!.colour }} />{node.label}</span>)}</div>
+        <div className="graph-repository-legend" aria-label={t("Repository")}>{repositories.map((node) => <span key={node.id}><i style={{ background: appearance.get(node.id)!.colour }} />{node.repositoryName ?? node.label}</span>)}</div>
         <GraphSurface nodes={view.nodes} edges={view.edges} positions={positions} viewport={viewport} selected={state.selected}
           onSelect={(selected) => setState((previous) => ({ ...previous, selected }))} onViewport={updateViewport}
           onMove={move} onEndMove={endDrag} onFit={fit} />

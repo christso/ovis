@@ -3,150 +3,221 @@ import type { FlockRegistry } from "../../../shared/flock.ts";
 import { flockBinding, flockInventory } from "../../../shared/flock-inventory.ts";
 import type { Machine } from "../../../shared/machines.ts";
 import fixture from "../../../site/demo/fixtures/machines.json";
-import type { GraphRelation } from "./graphModel.ts";
 import { graphInventory, graphTarget } from "./graphInventory.ts";
+import { projectGraph } from "./graphModel.ts";
+import { DEFAULT_GRAPH_STATE } from "./graphState.ts";
 
-function source() {
-  const local = structuredClone(fixture.machines[0]) as Machine;
-  const pane = local.snapshot!.panes.find((pane) => pane.agent === "codex")!;
-  local.snapshot!.panes = [pane]; local.snapshot!.herdr_lifetime = "garden-lifetime";
-  pane.terminal_id = "garden-terminal";
-  local.snapshot!.flock_bindings = [{ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: pane.agent!, native_session_id: "native-garden" }];
-  pane.agent_session = { agent: pane.agent!, kind: "id", source: "fixture", value: "native-garden" };
-  const remote = structuredClone(local); remote.id = "garden-remote"; remote.name = "Remote garden";
-  const checkout = { id: "checkout-local", machine_id: local.id, path: "/fictional/checkout", repository: "/fictional/orchard", branch: "leaves" };
-  const registry: FlockRegistry = { version: 1, revision: 1, works: [{ id: "work", name: "Garden work" }], sessions: [{ id: "session", name: "Prune", work_id: "work", current_execution_id: "new" }],
-    checkouts: [checkout, { ...checkout, id: "checkout-remote", machine_id: remote.id }],
-    executions: [{ ...flockBinding(local, pane)!, id: "old", session_id: "session", checkout_id: checkout.id, created_at: "2026-11-07T00:00:00Z" },
-      { ...flockBinding(remote, remote.snapshot!.panes[0]!)!, id: "new", session_id: "session", checkout_id: "checkout-remote", created_at: "2026-11-07T00:01:00Z" }] };
-  return { registry, machines: [local, remote], pane };
+function source(names = ["obsidian", "phone", "social"]) {
+  const machine = structuredClone(fixture.machines[0]) as Machine;
+  const snapshot = machine.snapshot!;
+  const pane = snapshot.panes[0]!, tab = snapshot.tabs.find((tab) => tab.tab_id === pane.tab_id)!;
+  const workspace = snapshot.workspaces.find((workspace) => workspace.workspace_id === pane.workspace_id)!;
+  workspace.label = "infra";
+  workspace.tokens = { branch: "main" };
+  workspace.worktree = { repo_key: "infra", repo_name: "infra", repo_root: "/fictional/infra", checkout_path: "/fictional/infra", is_linked_worktree: false };
+  snapshot.workspaces = [workspace]; snapshot.herdr_lifetime = "fixture-lifetime";
+  snapshot.tabs = names.map((name, index) => ({ ...tab, tab_id: `tab-${index}`, label: name, number: index + 1, agent_status: "idle" }));
+  snapshot.panes = snapshot.tabs.map((tab, index) => ({ ...pane, pane_id: `pane-${index}`, tab_id: tab.tab_id, terminal_id: `terminal-${index}`, agent: null, agent_session: null, agent_status: "idle", cwd: "/fictional/infra" }));
+  snapshot.agents = []; snapshot.flock_bindings = [];
+  const registry: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], executions: [], checkouts: [] };
+  const machines = [machine];
+  const rows = () => flockInventory(registry, machines);
+  const graph = () => graphInventory(registry, rows(), machines);
+  return { machine, snapshot, workspace, registry, machines, rows, graph };
+}
+function agent(state: ReturnType<typeof source>, index: number, native = `00000000-0000-4000-8000-00000000000${index}`) {
+  const pane = state.snapshot.panes[index]!;
+  pane.agent = "codex"; pane.agent_status = "working";
+  pane.agent_session = { agent: "codex", kind: "id", source: "fixture", value: native };
+  state.snapshot.flock_bindings!.push({ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: pane.agent, native_session_id: native });
+  return pane;
 }
 
-describe("shared inventory to Graph", () => {
-  it("keeps known repository names and colour identity across unavailable checkout observations", () => {
-    const { registry, machines } = source();
-    const checkout = registry.checkouts[0]!;
-    registry.checkouts = [checkout, { ...checkout, id: "historical-checkout", path: "/fictional/old-checkout" }];
-    machines[0]!.snapshot!.workspaces[0]!.worktree = { checkout_path: checkout.path, repo_root: checkout.repository!, repo_name: "Orchard", repo_key: "orchard", is_linked_worktree: true };
-    for (const checkouts of [registry.checkouts, [...registry.checkouts].reverse()]) {
-      const repository = graphInventory({ ...registry, checkouts }, [], machines).nodes.find((node) => node.kind === "repository")!;
-      expect(repository.label).toBe("Orchard");
-      expect(repository.repositoryKey).toBe("Orchard");
+describe("workspace tabs in Flock", () => {
+  it("shows infra's three named tabs without repository, branch or execution duplicates", () => {
+    const state = source(); agent(state, 0);
+    const data = state.graph();
+    expect(data.nodes.map((node) => node.label)).toEqual(["obsidian", "phone", "social"]);
+    expect(data.nodes.every((node) => node.kind === "tab")).toBe(true);
+    expect(data.edges).toEqual([]);
+    const focus = data.groups!.find((group) => group.label === "infra")!;
+    expect(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, focus: focus.id }).nodes.map((node) => node.label)).toEqual(["obsidian", "phone", "social"]);
+    expect(data.nodes[0]!.detail).toContain("main");
+    expect(data.nodes[0]!.detail).toContain("/fictional/infra");
+    expect(data.nodes[0]!.detail).toContain("codex");
+    expect(data.nodes[0]!.detail!.split("\n").filter((line) => line === "/fictional/infra")).toHaveLength(1);
+  });
+  it("includes nested sidebar worktrees and their horizontal tabs under the correct parent", () => {
+    const state = source(["obsidian"]);
+    const { snapshot, workspace } = state;
+    const child = { ...workspace, workspace_id: "phone-worktree", label: "phone", worktree: { ...workspace.worktree!, checkout_path: "/fictional/phone", is_linked_worktree: true } };
+    const secondRoot = { ...workspace, workspace_id: "other-infra", label: "other infra" };
+    const secondChild = { ...child, workspace_id: "social-worktree", label: "social" };
+    snapshot.workspaces.push(child, secondRoot, secondChild);
+    for (const [index, workspace] of [child, secondChild].entries()) {
+      const tab = { ...snapshot.tabs[0]!, workspace_id: workspace.workspace_id, tab_id: `child-tab-${index}`, label: "1", number: 1 };
+      snapshot.tabs.push(tab);
+      snapshot.panes.push({ ...snapshot.panes[0]!, workspace_id: workspace.workspace_id, tab_id: tab.tab_id, pane_id: `child-pane-${index}`, terminal_id: `child-terminal-${index}` });
     }
+    let data = state.graph();
+    const focus = (label: string) => projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, focus: data.groups!.find((group) => group.label === label)!.id }).nodes.map((node) => node.label);
+    expect(focus("infra")).toEqual(["obsidian", "phone"]);
+    expect(focus("phone")).toEqual(["phone"]);
+    expect(focus("other infra")).toEqual(["social"]);
+    expect(data.nodes).toHaveLength(3);
+    const phone = snapshot.tabs.find((tab) => tab.workspace_id === child.workspace_id)!;
+    phone.label = "review";
+    snapshot.tabs.push({ ...phone, tab_id: "phone-test", label: "test", number: 2 });
+    snapshot.panes.push({ ...snapshot.panes.find((pane) => pane.workspace_id === child.workspace_id)!, tab_id: "phone-test", pane_id: "phone-test-pane", terminal_id: "phone-test-terminal" });
+    data = state.graph();
+    expect(focus("phone")).toEqual(["phone · review", "phone · test"]);
+    expect(data.nodes).toHaveLength(4);
   });
-  it("keeps a proven native execution selected across optional coordination loss and recovery", () => {
-    const { machines, pane } = source();
-    const machine = machines[0]!;
-    const registry: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
-    const current = () => flockInventory(registry, [machine]);
-    const selected = graphInventory(registry, current()).nodes.find((node) => node.kind === "execution")!;
-    const endpoint = { server_id: "server", boot_id: "boot", terminal_id: pane.terminal_id, agent_instance_id: "occupancy", agent: pane.agent!, pane_id: pane.pane_id, name: "Native worker" };
-    const page = { version: 1 as const, server_id: "server", boot_id: "boot", agents: [endpoint], receipts: [], cursor: null };
-    for (const coordination of [page, undefined, page]) {
-      machine.snapshot!.flock_coordination = coordination;
-      const rows = current();
-      expect(graphInventory(registry, rows).nodes.find((node) => node.kind === "execution")?.id).toBe(selected.id);
-      expect(graphTarget(registry, rows, selected.id)).toEqual({ machine_id: machine.id, pane_id: pane.pane_id });
-    }
-    machine.snapshot!.flock_bindings![0]!.native_session_id = "replacement-native";
-    expect(graphTarget(registry, current(), selected.id)).toBeNull();
+  it("represents mixed and multi-agent split panes once, retaining details and guarded opening", () => {
+    const state = source(["obsidian"]), pane = agent(state, 0);
+    state.snapshot.panes.push({ ...pane, pane_id: "split-shell", terminal_id: "split-shell-terminal", agent: null, agent_session: null });
+    const data = state.graph();
+    expect(data.nodes).toHaveLength(1);
+    const selected = data.nodes[0]!.id;
+    expect(graphTarget(state.registry, state.rows(), selected, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: pane.pane_id });
+    state.snapshot.flock_bindings = [];
+    expect(state.graph().nodes[0]!.id).toBe(selected);
+    expect(graphTarget(state.registry, state.rows(), selected, state.machines)).toBeNull();
   });
+  it("keeps names separate from identity and rejects replacement terminals, occupants and pane sets", () => {
+    const state = source(["obsidian"]), pane = agent(state, 0);
+    const selected = state.graph().nodes[0]!.id;
+    state.snapshot.tabs[0]!.label = "renamed";
+    state.snapshot.panes.reverse();
+    expect(state.graph().nodes[0]!.id).toBe(selected);
+    const open = () => graphTarget(state.registry, state.rows(), selected, state.machines);
+    expect(open()).not.toBeNull();
+    state.machine.state = "disconnected"; expect(open()).toBeNull();
+    state.machine.state = "connected"; pane.restore_error = "fixture error"; expect(open()).toBeNull();
+    delete pane.restore_error;
+    pane.terminal_id = "replacement"; expect(open()).toBeNull();
+    pane.terminal_id = "terminal-0";
+    pane.agent_session!.value = "replacement-native";
+    state.snapshot.flock_bindings![0]!.native_session_id = "replacement-native";
+    expect(open()).toBeNull();
+    pane.agent_session!.value = "00000000-0000-4000-8000-000000000000";
+    state.snapshot.flock_bindings![0]!.native_session_id = pane.agent_session!.value;
+    expect(open()).not.toBeNull();
+    state.snapshot.panes.push({ ...pane, pane_id: "new-split", terminal_id: "new-split-terminal" });
+    expect(open()).toBeNull();
+  });
+  it("keeps equal labels on separate machines distinct and unknown registry non-targetable", () => {
+    const state = source(["phone"]);
+    const remote = structuredClone(state.machine); remote.id = "remote";
+    state.machines.push(remote);
+    const data = state.graph();
+    expect(data.nodes).toHaveLength(2);
+    expect(data.nodes[0]!.id).not.toBe(data.nodes[1]!.id);
+    expect(graphInventory(null, [], state.machines).nodes).toEqual([]);
+    expect(graphTarget(null, [], data.nodes[0]!.id, state.machines)).toBeNull();
+  });
+  it("maps native receipts onto tabs and retains only unrepresented historical endpoints", () => {
+    const state = source();
+    const parent = agent(state, 0), child = agent(state, 1), absent = "00000000-0000-4000-8000-000000000009";
+    const native = (pane: typeof parent) => pane.agent_session!.value;
+    state.registry.observations = [
+      { id: "launch", kind: "delegation", source: "codex", machine_id: state.machine.id, source_native_session_id: native(parent), target_native_session_id: native(child), occurred_at: "2026-11-10T00:00:00Z" },
+      ...["message-1", "message-2"].map((id) => ({ id, kind: "communication" as const, source: "codex" as const, machine_id: state.machine.id, source_native_session_id: native(parent), target_native_session_id: native(child), occurred_at: "2026-11-10T00:01:00Z" })),
+      { id: "closed-child", kind: "delegation", source: "codex", machine_id: state.machine.id, source_native_session_id: native(parent), target_native_session_id: absent, occurred_at: "2026-11-10T00:02:00Z" },
+    ];
+    const data = state.graph(), obsidian = data.nodes.find((node) => node.label === "obsidian")!, phone = data.nodes.find((node) => node.label === "phone")!;
+    expect(data.nodes).toHaveLength(4);
+    expect(data.edges.find((edge) => edge.kind === "communication")).toMatchObject({ source: obsidian.id, target: phone.id, eventCount: 2, sources: ["codex"] });
+    expect(data.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(2);
+    const historical = data.nodes.find((node) => node.kind !== "tab")!;
+    expect(historical.freshness).toBe("unavailable");
+    expect(graphTarget(state.registry, state.rows(), historical.id, state.machines)).toBeNull();
+  });
+  it("folds multiple endpoint pairs into one counted tab relationship and omits same-tab links", () => {
+    const state = source(["obsidian", "phone"]);
+    agent(state, 0); agent(state, 1);
+    const third = { ...state.snapshot.panes[0]!, pane_id: "third", terminal_id: "third-terminal" };
+    state.snapshot.panes.push(third); agent(state, 2);
+    state.registry.observations = [[0, 1], [2, 1], [0, 2]].map(([from, to], index) => ({ id: `message-${index}`, kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: state.snapshot.panes[from!]!.agent_session!.value, target_native_session_id: state.snapshot.panes[to!]!.agent_session!.value, occurred_at: "2026-11-10T00:00:00Z" }));
+    const data = state.graph();
+    expect(data.nodes).toHaveLength(2);
+    expect(data.edges).toHaveLength(1);
+    expect(data.edges[0]!.eventCount).toBe(2);
+  });
+  it("uses the logical session's current tab for receipts without duplicating its execution", () => {
+    const state = source(["obsidian", "phone"]), pane = agent(state, 0), second = agent(state, 1);
+    const binding = flockBinding(state.machine, pane)!;
+    state.registry.sessions = [{ id: "logical", name: "Logical alias", work_id: null, current_execution_id: "current" }];
+    state.registry.executions = [{ ...binding, id: "current", session_id: "logical", checkout_id: null, created_at: "2026-11-10T00:00:00Z" }];
+    state.registry.observations = [{ id: "message", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: binding.native_session_id, target_native_session_id: second.agent_session!.value, occurred_at: "2026-11-10T00:00:00Z" }];
+    const data = state.graph();
+    expect(data.nodes.map((node) => node.label)).toEqual(["obsidian", "phone"]);
+    expect(data.nodes[0]!.detail).toContain("Logical alias");
+    expect(data.edges).toHaveLength(1);
+    expect(data.edges[0]!.source).toBe(data.nodes[0]!.id);
+    expect(graphTarget(state.registry, state.rows(), "session:logical", state.machines)).toBeNull();
+  });
+});
 
-  it("shows Herdr delegation and messages to a live agent without treating its occupancy as a native session", () => {
-    const { registry, machines, pane } = source();
-    const machine = machines[0]!;
-    const childPane = { ...pane, pane_id: "w2:p1", terminal_id: "child-terminal", agent: "claude", label: "Review worker" };
-    machine.snapshot!.panes.push(childPane);
-    const parent = { server_id: "server-one", boot_id: "boot-one", terminal_id: pane.terminal_id, agent_instance_id: "parent-occupancy", agent: "codex", pane_id: pane.pane_id, name: "Coordinator" };
-    const child = { ...parent, terminal_id: childPane.terminal_id, agent_instance_id: "child-occupancy", agent: "claude", pane_id: childPane.pane_id, name: "Review worker" };
-    Object.assign(machine.snapshot!, { flock_coordination: { version: 1, server_id: parent.server_id, boot_id: parent.boot_id, agents: [parent, child], receipts: [], cursor: null } });
-    Object.assign(registry, {
-      herdr_associations: [{ endpoint: parent, machine_id: machine.id, native_session_id: "native-garden" }, { endpoint: structuredClone(child), machine_id: machine.id, native_session_id: null }],
-      observations: ["delegation", "communication", "communication"].map((kind, index) => ({ source: "herdr", id: `herdr-operation-${index}`, kind, source_endpoint: parent, target_endpoint: structuredClone(child), occurred_at: "2026-11-08T00:00:00Z", machine_id: machine.id })),
-    });
-    const rows = flockInventory(registry, machines), data = graphInventory(registry, rows);
-    const delegation = data.edges.find((edge) => edge.kind === "delegation")!;
-    const communication = data.edges.find((edge) => edge.kind === "communication")!;
-    expect(delegation.source).toBe("session:session");
-    expect(communication.source).toBe(delegation.source);
-    expect(communication.target).toBe(delegation.target);
-    expect(communication.eventCount).toBe(2);
-    expect(delegation.evidence).toBe("herdr.delegation");
-    const worker = data.nodes.find((node) => node.id === delegation.target)!;
-    expect(worker.label).toBe("Review worker · claude");
-    expect(worker.freshness).toBe("live");
-    expect(graphTarget(registry, rows, worker.id)).toEqual({ machine_id: machine.id, pane_id: childPane.pane_id });
-    expect(rows.find((row) => row.pane?.terminal_id === childPane.terminal_id)?.binding).toBeNull();
-    const execution = data.nodes.find((node) => node.kind === "execution" && node.label === "Review worker · claude")!;
-    expect(graphTarget(registry, rows, execution.id)).toEqual({ machine_id: machine.id, pane_id: childPane.pane_id });
+it("guards Herdr-only occupants using private inventory rows when the ordinary roster omits proofs", () => {
+  const state = source(["obsidian", "phone"]);
+  const pane = state.snapshot.panes[0]!; pane.agent = "claude";
+  const endpoint = { server_id: "server", boot_id: "boot", terminal_id: pane.terminal_id, agent_instance_id: "occupant", agent: pane.agent, pane_id: pane.pane_id, name: "Review worker" };
+  state.snapshot.flock_coordination = { version: 1, server_id: "server", boot_id: "boot", agents: [endpoint], receipts: [], cursor: null };
+  const raw = () => state.machines.map((machine) => ({ ...machine, snapshot: { ...machine.snapshot!, flock_bindings: undefined, flock_coordination: undefined } }));
+  const selected = graphInventory(state.registry, state.rows(), raw()).nodes[0]!.id;
+  const open = () => graphTarget(state.registry, state.rows(), selected, raw());
+  expect(open()).toEqual({ machine_id: state.machine.id, pane_id: pane.pane_id });
+  endpoint.agent_instance_id = "replacement";
+  expect(open()).toBeNull();
+  endpoint.agent_instance_id = "occupant";
+  expect(open()).not.toBeNull();
+  state.snapshot.flock_coordination = undefined;
+  expect(open()).toBeNull();
+});
 
-    child.agent_instance_id = "replacement-occupancy";
-    const replaced = flockInventory(registry, machines);
-    expect(graphTarget(registry, replaced, worker.id)).toBeNull();
-    expect(graphTarget(registry, replaced, execution.id)).toBeNull();
-    expect(graphInventory(registry, replaced).nodes.find((node) => node.id === worker.id)?.freshness).toBe("unavailable");
-    child.agent_instance_id = "child-occupancy";
-    machine.state = "disconnected";
-    expect(graphTarget(registry, flockInventory(registry, machines), worker.id)).toBeNull();
-  });
-  it("projects observed coordination onto logical sessions and keeps unbound native children unavailable", () => {
-    const { registry, machines } = source();
-    const own = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222";
-    for (const execution of registry.executions) execution.native_session_id = own;
-    for (const machine of machines) machine.snapshot!.flock_bindings![0]!.native_session_id = own;
-    Object.assign(registry, { observations: ["delegation", "communication", "communication"].map((kind, index) => ({ id: `call-${index}`, kind, source_native_session_id: own, target_native_session_id: child, occurred_at: "2026-11-08T00:00:00Z", source: "codex", machine_id: machines[0]!.id })) });
-    const rows = flockInventory(registry, machines), data = graphInventory(registry, rows);
-    const edges = data.edges.filter((edge) => edge.kind === "delegation" || edge.kind === "communication");
-    expect(edges).toHaveLength(2);
-    expect(edges.every((edge) => edge.source === "session:session")).toBe(true);
-    expect(edges.find((edge) => edge.kind === "communication")?.eventCount).toBe(2);
-    const childNode = data.nodes.find((node) => node.detail === child)!;
-    expect(childNode.freshness).toBe("unavailable");
-    expect(graphTarget(registry, rows, childNode.id)).toBeNull();
-    expect(graphTarget(registry, rows, "session:session")?.machine_id).toBe("garden-remote");
-  });
-  it("uses recorded associations, scopes repository metadata to machine and preserves logical identity", () => {
-    const { registry, machines } = source();
-    const data = graphInventory(registry, flockInventory(registry, machines));
-    expect(data.nodes.filter((node) => node.kind === "repository")).toHaveLength(2);
-    expect(data.nodes.find((node) => node.id === "session:session")?.machineId).toBeUndefined();
-    expect(data.edges.map((edge) => edge.kind).sort()).toEqual((["checkout-in-repository", "checkout-in-repository", "execution-in-checkout", "execution-in-checkout", "session-execution", "session-execution", "work-session"] as GraphRelation[]).sort());
-    expect(data.edges.every((edge) => edge.evidence.length > 0)).toBe(true);
-    registry.sessions[0]!.current_execution_id = "old";
-    expect(graphInventory(registry, flockInventory(registry, machines)).nodes.find((node) => node.kind === "session")?.id).toBe("session:session");
-  });
-  it("opens only current execution for a logical session and exact requested execution for execution nodes", () => {
-    const { registry, machines, pane } = source(); const rows = flockInventory(registry, machines);
-    expect(graphTarget(registry, rows, "session:session")).toEqual({ machine_id: "garden-remote", pane_id: pane.pane_id });
-    expect(graphTarget(registry, rows, "execution:old")).toEqual({ machine_id: machines[0]!.id, pane_id: pane.pane_id });
-    for (const id of ["work:work", "checkout:checkout-local", "session:missing", "execution:missing"]) expect(graphTarget(registry, rows, id)).toBeNull();
-    machines[1]!.state = "disconnected";
-    expect(graphTarget(registry, flockInventory(registry, machines), "session:session")).toBeNull();
-    // A previous execution stays live; it must not silently become this session's target.
-    expect(graphTarget(registry, flockInventory(registry, machines), "execution:old")).not.toBeNull();
-    machines[1]!.state = "connected"; machines[1]!.snapshot!.flock_bindings![0]!.native_session_id = "reused-native";
-    expect(graphTarget(registry, flockInventory(registry, machines), "session:session")).toBeNull();
-  });
-  it("does not redirect an old unadopted execution selection to a replacement native session", () => {
-    const { machines } = source();
-    const empty: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
-    const before = graphInventory(empty, flockInventory(empty, machines));
-    const selected = before.nodes.find((node) => node.kind === "execution" && node.machineId === machines[0]!.id)!;
-    expect(graphTarget(empty, flockInventory(empty, machines), selected.id)).not.toBeNull();
-    machines[0]!.snapshot!.flock_bindings![0]!.native_session_id = "replacement-native";
-    const next = flockInventory(empty, machines);
-    expect(graphInventory(empty, next).nodes.some((node) => node.id === selected.id)).toBe(false);
-    expect(graphTarget(empty, next, selected.id)).toBeNull();
-  });
-  it("shows unsupported/unknown sources honestly and never supplies a stale terminal", () => {
-    const { registry, machines } = source();
-    machines[1]!.snapshot = null; machines[0]!.snapshot!.flock_bindings = [];
-    const rows = flockInventory(registry, machines), data = graphInventory(registry, rows);
-    expect(data.nodes.find((node) => node.id === "session:session")?.freshness).toBe("unavailable");
-    expect(data.nodes.find((node) => node.freshness === "unsupported")).toBeDefined();
-    for (const node of data.nodes) expect(graphTarget(registry, rows, node.id)).toBeNull();
-    const missing = graphInventory(null, rows);
-    expect(missing.edges.some((edge) => edge.kind === "delegation")).toBe(false);
-    expect(graphTarget(null, rows, "execution:old")).toBeNull();
-  });
+it("rejects an old private binding when the ordinary roster reports a replacement native session", () => {
+  const state = source(["obsidian"]); agent(state, 0);
+  const verified = state.rows();
+  const ordinary = structuredClone(state.machines);
+  ordinary[0]!.snapshot!.flock_bindings = undefined;
+  const selected = graphInventory(state.registry, verified, ordinary).nodes[0]!.id;
+  ordinary[0]!.snapshot!.panes[0]!.agent_session!.value = "replacement-native";
+  const replacement = graphInventory(state.registry, verified, ordinary).nodes[0]!;
+  expect(replacement.id).not.toBe(selected);
+  expect(replacement.freshness).toBe("unsupported");
+  expect(graphTarget(state.registry, verified, selected, ordinary)).toBeNull();
+  expect(graphTarget(state.registry, verified, replacement.id, ordinary)).toBeNull();
+});
+
+it("does not attach a historical session's recorded relationship using only a public native hint", () => {
+  const state = source(["obsidian"]), pane = agent(state, 0), binding = flockBinding(state.machine, pane)!;
+  state.registry.sessions = [{ id: "historical", name: "Earlier conversation", work_id: null, current_execution_id: "earlier" }];
+  state.registry.executions = [{ ...binding, id: "earlier", session_id: "historical", checkout_id: null, created_at: "2026-11-10T00:00:00Z" }];
+  state.registry.observations = [{ id: "earlier-message", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: binding.native_session_id, target_native_session_id: "00000000-0000-4000-8000-000000000009", occurred_at: "2026-11-10T00:00:00Z" }];
+  state.snapshot.flock_bindings = [];
+  const data = state.graph();
+  expect(data.edges[0]!.source).toBe("session:historical");
+  expect(data.nodes.find((node) => node.id === "session:historical")?.freshness).toBe("unavailable");
+  expect(graphTarget(state.registry, state.rows(), data.nodes.find((node) => node.kind === "tab")!.id, state.machines)).toBeNull();
+});
+
+it("retains proven native identity through optional coordination changes while guarding Herdr-only occupants", () => {
+  const state = source(["obsidian"]), pane = agent(state, 0);
+  const endpoint = { server_id: "server", boot_id: "boot", terminal_id: pane.terminal_id, agent_instance_id: "first-occupant", agent: pane.agent!, pane_id: pane.pane_id, name: "Worker" };
+  const coordination = { version: 1 as const, server_id: "server", boot_id: "boot", agents: [endpoint], receipts: [], cursor: null };
+  const nativeId = state.graph().nodes[0]!.id;
+  for (const current of [coordination, undefined, coordination]) {
+    state.snapshot.flock_coordination = current;
+    expect(state.graph().nodes[0]!.id).toBe(nativeId);
+    expect(graphTarget(state.registry, state.rows(), nativeId, state.machines)).not.toBeNull();
+  }
+  endpoint.agent_instance_id = "resumed-native-occupant";
+  expect(state.graph().nodes[0]!.id).toBe(nativeId);
+  expect(graphTarget(state.registry, state.rows(), nativeId, state.machines)).not.toBeNull();
+  state.snapshot.flock_bindings = [];
+  const herdrOnlyId = state.graph().nodes[0]!.id;
+  expect(graphTarget(state.registry, state.rows(), herdrOnlyId, state.machines)).not.toBeNull();
+  endpoint.agent_instance_id = "replacement-with-unverified-native-hint";
+  expect(graphTarget(state.registry, state.rows(), herdrOnlyId, state.machines)).toBeNull();
 });

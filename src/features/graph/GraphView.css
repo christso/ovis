@@ -42,6 +42,7 @@
 .graph-selection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .graph-selection-actions button { margin: 0; }
 .graph-detail-path, .graph-relations { overflow-wrap: anywhere; }
+.graph-detail-path { white-space: pre-line; }
 .graph-relations { padding-left: 18px; }
 .graph-relations small { display: block; color: var(--text-dim); margin: 5px 0 12px; }
 .graph-help { color: var(--text-dim); font-size: 12px; line-height: 1.6; }

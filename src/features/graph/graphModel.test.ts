@@ -70,7 +70,7 @@ describe("Graph projection", () => {
 
 describe("Graph location and viewport", () => {
   it("round trips selection, filters and optional grouping without changing unrelated URL state", () => {
-    const state = { ...DEFAULT_GRAPH_STATE, selected: "session:special /?&", filters: { ...DEFAULT_GRAPH_STATE.filters, search: "tree & leaf", focus: "repo", machine: "north", status: "blocked", showCompleted: true, communication: "all" as const }, groupMachine: true };
+    const state = { ...DEFAULT_GRAPH_STATE, selected: `tab:${"split-pane/native-identity /?&".repeat(100)}`, filters: { ...DEFAULT_GRAPH_STATE.filters, search: "tree & leaf", focus: "repo", machine: "north", status: "blocked", showCompleted: true, communication: "all" as const }, groupMachine: true };
     const url = graphLocation(new URL("https://ovis.invalid/?view=graph&pane=w7%3Ap2"), state);
     expect(readGraphLocation(url, DEFAULT_GRAPH_STATE)).toEqual(state);
     expect(url.searchParams.get("pane")).toBe("w7:p2");
