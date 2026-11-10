@@ -4696,6 +4696,17 @@ across machines with different root paths; recorded roots supply the fallback id
 repository membership stays neutral. Colour grouping does not merge identities. Status uses its
 own small icon, and stale sources have a dashed outline. A compact legend names the repositories.
 
+Group by machine adds a soft, translucent cloud behind each machine's visible nodes, with a
+machine-name label and a stable background colour. Node fills retain their repository colours.
+The padded rounded boundary follows current node positions and sizes through dragging and force
+motion, including single-node groups. Clouds are SVG backgrounds under links and nodes and accept
+no pointer or keyboard input. Filters remove empty clouds; explicit Fit includes their bounds.
+Clouds share the nodes' frames and viewport, so settled polls and reduced motion add no animation.
+This extends the project grouping in [Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel) to
+machine membership in Ovis's cross-machine graph, with soft envelopes in place of rigid lanes.
+The existing grouping force remains; dragging members between clusters can overlap their clouds
+without changing machine identity.
+
 Native tabs are the visible units, including horizontal tabs inside the worktree workspaces that
 Ovis's sidebar nests beneath a workspace. Split panes and agents in the same tab share one node.
 Repository, branch, physical checkout, agent and logical-session facts appear in the inspector,
