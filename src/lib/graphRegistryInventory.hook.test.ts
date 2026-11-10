@@ -1,20 +1,20 @@
 import { afterAll, afterEach, beforeAll, expect, it } from "bun:test";
 import { createElement } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
-import type { FlockRegistry, HerdrCoordinationEndpoint } from "../../shared/flock.ts";
+import type { GraphRegistry, HerdrCoordinationEndpoint } from "../../shared/graph-registry.ts";
 import type { Machine } from "../../shared/machines.ts";
-import { useFlockInventory } from "./flockInventory.ts";
+import { useGraphRegistryInventory } from "./graphRegistryInventory.ts";
 
 const actDescriptor = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 let renderer: ReactTestRenderer | null = null;
-let rows: ReturnType<typeof useFlockInventory> = [];
+let rows: ReturnType<typeof useGraphRegistryInventory> = [];
 let machines: Machine[], sources: Machine[];
-const registry: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
+const registry: GraphRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
 const endpoint: HerdrCoordinationEndpoint = { server_id: "server", boot_id: "boot", terminal_id: "terminal", agent_instance_id: "occupancy", agent: "claude", pane_id: "w1:p1", name: "Worker" };
 const machine = (): Machine => ({ id: "fixture", name: "Fixture", kind: "local", enabled: true, state: "connected", error: null,
   snapshot: { protocol: 1, version: "fixture", agents: [], layouts: [], workspaces: [], tabs: [], herdr_lifetime: "lifetime",
     panes: [{ terminal_id: "terminal", pane_id: "w1:p1", workspace_id: "w1", tab_id: "w1:t1", agent: "claude", agent_status: "idle", focused: false, revision: 0 }] } });
-function Probe() { rows = useFlockInventory(registry, machines, sources); return null; }
+function Probe() { rows = useGraphRegistryInventory(registry, machines, sources); return null; }
 beforeAll(() => Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true }));
 afterEach(async () => { await act(async () => renderer?.unmount()); renderer = null; });
 afterAll(() => { if (actDescriptor) Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", actDescriptor); else Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT"); });

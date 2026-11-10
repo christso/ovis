@@ -1,10 +1,10 @@
 import type { SessionMovePlan, SessionMoveRequest } from "../../shared/session-move.ts";
-import type { FlockExecution } from "../../shared/flock.ts";
-import { sameFlockBinding } from "../../shared/flock-inventory.ts";
+import type { GraphExecution } from "../../shared/graph-registry.ts";
+import { sameGraphBinding } from "../../shared/graph-registry-inventory.ts";
 import type { SessionSnapshot } from "../../shared/protocol.ts";
 import type { MachineManager } from "../machines.ts";
-import type { FlockStore } from "../flock.ts";
-import { readFlockSource } from "../flock-source.ts";
+import type { GraphRegistryStore } from "../graph-registry.ts";
+import { readGraphSource } from "../graph-source.ts";
 import { codexCompatibility, type CodexMoveRuntime } from "./codex.ts";
 import { digest, MoveRefused } from "./files.ts";
 import { MoveJournal } from "./journal.ts";
@@ -16,12 +16,12 @@ import { MOVE_CHUNK_BYTES, MoveTransport } from "./transport.ts";
 export class MoveCoordinator {
   readonly moves: SessionMoves;
   private readonly transport: MoveTransport;
-  constructor(stateDir: string, private readonly flock: FlockStore, private readonly machines: MachineManager, private readonly localSnapshot: () => Promise<SessionSnapshot>, readonly node: MoveNode, private readonly codexHome?: string) {
+  constructor(stateDir: string, private readonly graphRegistry: GraphRegistryStore, private readonly machines: MachineManager, private readonly localSnapshot: () => Promise<SessionSnapshot>, readonly node: MoveNode, private readonly codexHome?: string) {
     this.transport = new MoveTransport(machines, (request) => node.call(request));
     this.moves = new SessionMoves(new MoveJournal(stateDir), this.ports());
   }
-  private source(request: SessionMoveRequest): FlockExecution {
-    const registry = this.flock.read(), session = registry.sessions.find((item) => item.id === request.session_id);
+  private source(request: SessionMoveRequest): GraphExecution {
+    const registry = this.graphRegistry.read(), session = registry.sessions.find((item) => item.id === request.session_id);
     const execution = registry.executions.find((item) => item.id === request.source_execution_id && item.session_id === session?.id);
     if (!session || !execution || session.current_execution_id !== execution.id || execution.agent !== "codex") throw new MoveRefused("source_changed", "The logical session no longer selects this Codex execution");
     if (!registry.checkouts.some((checkout) => checkout.id === execution.checkout_id)) throw new MoveRefused("source_checkout_unknown", "The source execution has no recorded checkout");
@@ -44,7 +44,7 @@ export class MoveCoordinator {
         const bundle = await this.call(source.machine_id, id, "source", { pane_id: source.pane_id, thread_id: source.native_session_id, lifetime: source.herdr_lifetime, untracked_files: request.untracked_files }) as TransferBundle;
         const capabilities = await Promise.all([this.call(source.machine_id, id, "capabilities"), this.call(request.destination_machine_id, id, "capabilities")]);
         codexCompatibility(capabilities[0] as CodexMoveRuntime, capabilities[1] as CodexMoveRuntime);
-        const checkout = this.flock.read().checkouts.find((item) => item.id === source.checkout_id)!;
+        const checkout = this.graphRegistry.read().checkouts.find((item) => item.id === source.checkout_id)!;
         if (checkout.path !== bundle.codex.cwd) throw new MoveRefused("source_changed", "The native session checkout differs from its recorded execution");
         await this.call(request.destination_machine_id, id, "destination", { checkout: request.destination_checkout, bundle });
         const fingerprint = digest(Buffer.from(JSON.stringify({ operation: id, request, source, snapshot: bundle.fingerprint })));
@@ -55,7 +55,7 @@ export class MoveCoordinator {
       },
       preflight: async (plan) => {
         const execution = this.source(plan.request), id = operationId(plan.operation_id);
-        const sources = await readFlockSource(this.machines, execution.machine_id, this.localSnapshot, this.codexHome);
+        const sources = await readGraphSource(this.machines, execution.machine_id, this.localSnapshot, this.codexHome);
         if (sources[0]?.snapshot?.herdr_lifetime !== execution.herdr_lifetime) throw new MoveRefused("source_changed", "The source herdr lifetime changed");
         const capabilities = await Promise.all([this.call(execution.machine_id, id, "capabilities"), this.call(plan.request.destination_machine_id, id, "capabilities")]);
         codexCompatibility(capabilities[0] as CodexMoveRuntime, capabilities[1] as CodexMoveRuntime);
@@ -100,18 +100,18 @@ export class MoveCoordinator {
         }
       },
       bindingCommitted: async (plan, destination) => {
-        const registry = this.flock.read(), session = registry.sessions.find((item) => item.id === plan.request.session_id);
+        const registry = this.graphRegistry.read(), session = registry.sessions.find((item) => item.id === plan.request.session_id);
         const current = registry.executions.find((item) => item.id === session?.current_execution_id);
-        return !!current && sameFlockBinding(current, { ...destination, agent: "codex" });
+        return !!current && sameGraphBinding(current, { ...destination, agent: "codex" });
       },
       bind: async (_id, plan, destination) => {
-        const registry = this.flock.read(), session = registry.sessions.find((item) => item.id === plan.request.session_id);
+        const registry = this.graphRegistry.read(), session = registry.sessions.find((item) => item.id === plan.request.session_id);
         const binding = { machine_id: destination.machine_id, herdr_lifetime: destination.herdr_lifetime, pane_id: destination.pane_id, agent: "codex", native_session_id: destination.native_session_id };
         const current = registry.executions.find((execution) => execution.id === session?.current_execution_id);
-        if (current && sameFlockBinding(current, binding)) return;
+        if (current && sameGraphBinding(current, binding)) return;
         if (session?.current_execution_id !== plan.request.source_execution_id) throw new MoveRefused("source_changed", "The logical session changed while its move was being verified");
-        const sources = await readFlockSource(this.machines, destination.machine_id, this.localSnapshot, this.codexHome);
-        this.flock.change(registry.revision, { type: "adopt", binding, session_id: plan.request.session_id, expected_execution_id: plan.request.source_execution_id }, sources);
+        const sources = await readGraphSource(this.machines, destination.machine_id, this.localSnapshot, this.codexHome);
+        this.graphRegistry.change(registry.revision, { type: "adopt", binding, session_id: plan.request.session_id, expected_execution_id: plan.request.source_execution_id }, sources);
       },
     };
   }

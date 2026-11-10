@@ -11,9 +11,9 @@ async function showWorkspaceList(page: Page): Promise<void> {
   if (await sidebar.isVisible()) await sidebar.click();
 }
 
-export async function openFlock(page: Page): Promise<void> {
+export async function openGraph(page: Page): Promise<void> {
   await showWorkspaceList(page);
-  await page.getByRole("button", { name: "Flock", exact: true }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
 }
 
 /** Exercise Ovis's own pane selection, including its folded phone Agents list. */

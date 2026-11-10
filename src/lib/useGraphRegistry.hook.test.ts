@@ -1,15 +1,15 @@
 import { afterAll, afterEach, beforeAll, expect, it, jest } from "bun:test";
 import { createElement } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
-import type { FlockRegistry } from "../../shared/flock.ts";
+import type { GraphRegistry } from "../../shared/graph-registry.ts";
 import { nativeTransport, setTransport } from "./transport.ts";
-import { useFlock } from "./useFlock.ts";
+import { useGraphRegistry } from "./useGraphRegistry.ts";
 
 const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
 const actDescriptor = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 let renderer: ReactTestRenderer | null = null;
-let latest: ReturnType<typeof useFlock>;
-function Probe() { latest = useFlock(true); return null; }
+let latest: ReturnType<typeof useGraphRegistry>;
+function Probe() { latest = useGraphRegistry(true); return null; }
 beforeAll(() => {
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
   Object.defineProperty(globalThis, "window", { configurable: true, value: {
@@ -22,7 +22,7 @@ afterAll(() => {
   if (windowDescriptor) Object.defineProperty(globalThis, "window", windowDescriptor); else Reflect.deleteProperty(globalThis, "window");
   if (actDescriptor) Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", actDescriptor); else Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 });
-const registry: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
+const registry: GraphRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
 it("accepts a read slower than the poll interval without starting a competing automatic read", async () => {
   jest.useFakeTimers();
   const first = Promise.withResolvers<Response>(); let calls = 0;

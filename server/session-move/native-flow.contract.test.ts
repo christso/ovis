@@ -12,7 +12,7 @@ it.skipIf(process.env["OVIS_CODEX_MOVE_NATIVE_TEST"] !== "1")("moves actual Code
     preview = await fixture.coordinator.moves.preview(fixture.request, preview.id);
     fixture.failLaunch();
     await expect(fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).rejects.toThrow();
-    expect(fixture.flock.read().sessions[0]!.current_execution_id).toBe(fixture.request.source_execution_id);
+    expect(fixture.graphRegistry.read().sessions[0]!.current_execution_id).toBe(fixture.request.source_execution_id);
     fixture.restart(); expect((await fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).phase).toBe("complete");
     const transcript = await driver.inspect();
     expect(JSON.stringify(transcript)).toContain("Preserve this owned conversation and dirty work");

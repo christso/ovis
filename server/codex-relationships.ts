@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
-import type { FlockObservation } from "../shared/flock.ts";
-import { flockObservationValue } from "../shared/flock-relationships.ts";
+import type { GraphObservation } from "../shared/graph-registry.ts";
+import { graphObservationValue } from "../shared/graph-relationships.ts";
 
 const READ_BYTES = 4 * 1024 * 1024;
 const LINE_BYTES = 256 * 1024;
@@ -10,10 +10,10 @@ type Row = Record<string, unknown>;
 const row = (value: unknown): Row => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
 interface Scan {
   path: string; identity: string; header: string; fileSize: number; modified: number; changed: number;
-  offset: number; skipLine: boolean; events: Map<string, FlockObservation>;
+  offset: number; skipLine: boolean; events: Map<string, GraphObservation>;
 }
 const scans = new Map<string, Scan>();
-const pending = new Map<string, Promise<FlockObservation[]>>();
+const pending = new Map<string, Promise<GraphObservation[]>>();
 
 /** Prune after a verified source census, so active panes keep progress and inactive histories leave memory. */
 export function retainCodexCoordinationScans(activePaths: ReadonlySet<string>): void {
@@ -21,7 +21,7 @@ export function retainCodexCoordinationScans(activePaths: ReadonlySet<string>): 
 }
 
 /** Completed v2 activity items are emitted after native spawn/send succeeds. Arguments alone are not receipts. */
-function observation(value: unknown, ownId: string): FlockObservation | null {
+function observation(value: unknown, ownId: string): GraphObservation | null {
   const entry = row(value), payload = row(entry.payload), item = row(payload.item);
   if (entry.type !== "event_msg" || payload.type !== "item_completed" || payload.thread_id !== ownId || item.type !== "SubAgentActivity"
     || (item.kind !== "started" && item.kind !== "interacted")) return null;
@@ -30,7 +30,7 @@ function observation(value: unknown, ownId: string): FlockObservation | null {
   const event = { id: item.id, kind: item.kind === "started" ? "delegation" : "communication", source_native_session_id: ownId,
     target_native_session_id: typeof item.agent_thread_id === "string" ? item.agent_thread_id.toLowerCase() : item.agent_thread_id,
     occurred_at: new Date(timestamp).toISOString(), source: "codex" };
-  return flockObservationValue(event) ? event : null;
+  return graphObservationValue(event) ? event : null;
 }
 
 /**
@@ -38,7 +38,7 @@ function observation(value: unknown, ownId: string): FlockObservation | null {
  * from the beginning over complete lines, at most 4MB per poll; large histories catch up over polls.
  * Only receipt metadata survives the scan. Legacy unscoped events and ambiguous v1 tool items are omitted.
  */
-export function codexCoordinationObservations(path: string, ownId: string): Promise<FlockObservation[]> {
+export function codexCoordinationObservations(path: string, ownId: string): Promise<GraphObservation[]> {
   const key = `${path}\u0000${ownId}`;
   const running = pending.get(key);
   if (running) return running;
@@ -47,7 +47,7 @@ export function codexCoordinationObservations(path: string, ownId: string): Prom
   return result;
 }
 
-async function scan(path: string, ownId: string, key: string): Promise<FlockObservation[]> {
+async function scan(path: string, ownId: string, key: string): Promise<GraphObservation[]> {
   let file: Awaited<ReturnType<typeof open>> | undefined;
   try {
     file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));

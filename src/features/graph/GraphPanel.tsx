@@ -1,6 +1,6 @@
 import { useMemo, useSyncExternalStore } from "react";
-import type { FlockRegistry } from "../../../shared/flock.ts";
-import type { FlockRow } from "../../../shared/flock-inventory.ts";
+import type { GraphRegistry } from "../../../shared/graph-registry.ts";
+import type { GraphRegistryRow } from "../../../shared/graph-registry-inventory.ts";
 import type { Machine, PaneTarget } from "../../../shared/machines.ts";
 import { useT } from "../../lib/i18n.ts";
 import { shownTabLabels, subscribeTabLabels } from "../../lib/tabLabels.ts";
@@ -8,7 +8,7 @@ import { graphInventory, graphTarget } from "./graphInventory.ts";
 import GraphView from "./GraphView.tsx";
 
 export interface GraphPanelProps {
-  registry: FlockRegistry | null; rows: readonly FlockRow[]; machines: readonly Machine[];
+  registry: GraphRegistry | null; rows: readonly GraphRegistryRow[]; machines: readonly Machine[];
   error: string | null; refresh(): Promise<void>; onOpenTarget(target: PaneTarget): void;
 }
 

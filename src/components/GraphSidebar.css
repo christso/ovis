@@ -1,0 +1,3 @@
+.graph-sidebar { flex: 0 0 auto; padding: 0 0 var(--space-2); }
+.graph-sidebar button { width: 100%; cursor: pointer; }
+.graph-sidebar [aria-current="page"] { color: var(--text); background: var(--side-selected); }

@@ -4668,15 +4668,17 @@ command opens on a typed address; no code is copied.
 ## Touch prompt suggestions
 
 The empty composer follows Claude Code's [prompt suggestion model](https://code.claude.com/docs/en/interactive-mode): accept into an editable draft, then send separately. On a touch screen with Settings → Chat → Composer buttons → Suggestion on (off by default), the grey words also accept a tap; with it off, a tap there only focuses the box, so a user who taps the words to write their own reply never gets the suggestion inserted. Only the words receive taps; the surrounding input keeps native focus and scrolling. Tab and the optional suggestion chip share the same acceptance function. A focused inline suggestion also accepts Enter and Space. A suggestion that exceeds the message limit leaves the draft unchanged and shows the limit in the existing alert. No code or visual assets are copied.
-## Flock graph
+## Graph
 
-Flock opens the graph directly from Ovis's sidebar. The native Agents section remains the single
+Graph is the name used in navigation, code and documentation. The legacy registry filename and
+wire names remain compatible with older installations; see [Graph's contract](docs/graph.md).
+Graph opens the graph directly from Ovis's sidebar. The native Agents section remains the single
 agent list with its existing filters and pane selection. There is no Table or Table/Graph mode
 selector. Legacy `page=table` links open Graph while retaining their pane, machine and terminal
 lens. Picking a native workspace or agent returns to Workspace. Open in Workspace selects the
 currently verified target without changing Herdr's focus or sending terminal input. Browser
 Back/Forward restores the graph selection, filters and terminal location. Watch-only devices
-receive neither private Flock inventory nor the lazy graph rendering chunk.
+receive neither private Graph inventory nor the lazy graph rendering chunk.
 
 The visual reference is [Folio's graph](https://github.com/evergreen-it-dev/folio/tree/2dd626383e6e2462a642a3d99e6c97d3aa3f9894/web/src/app/graph):
 circular nodes, degree-based size, repository colours and connected motion. Ovis uses SVG instead
@@ -4690,7 +4692,7 @@ D3 force links pull connected nodes, repulsion separates clusters and collision 
 apart. Radius grows with distinct visible communication neighbours; containment, delegation,
 self-links, parallel edges and recorded event counts cannot inflate it. Hidden communication links
 do not contribute. This communication-specific sizing differs from Zed's project-grouped thread
-list because Flock also shows relationships between tabs. Repository colour follows reported checkout membership,
+list because Graph also shows relationships between tabs. Repository colour follows reported checkout membership,
 never communication or delegation. Known native `repo_name` metadata supplies a common colour
 across machines with different root paths; recorded roots supply the fallback identity. Unknown
 repository membership stays neutral. Colour grouping does not merge identities. Status uses its
@@ -4760,7 +4762,7 @@ successful operations, not a complete delivery history. Communication defaults t
 agent even without native adoption support. Replacement agents get distinct identities;
 historical endpoints cannot authorize a replacement. Recorded logical-session relationships resolve through the current execution; historical
 executions never substitute a live target when the current one is missing.
-Source contracts and coverage limits are in `docs/flock.md`.
+Source contracts and coverage limits are in `docs/graph.md`.
 
 The graph exposes only Open in Workspace. The former association, work-renaming and Move controls
 are retired from product navigation. The registry, persisted associations, native ownership

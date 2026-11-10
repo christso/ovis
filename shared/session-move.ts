@@ -1,4 +1,4 @@
-/** Planned transfer receipts. Logical sessions and executions remain owned by shared/flock.ts. */
+/** Planned transfer receipts. Logical sessions and executions remain owned by shared/graph-registry.ts. */
 export interface SessionMoveRequest {
   session_id: string;
   source_execution_id: string;

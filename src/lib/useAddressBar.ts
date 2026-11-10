@@ -1,7 +1,7 @@
 import { type Dispatch, type RefObject, type SetStateAction, useCallback, useEffect, useRef, useState } from "react";
 import type { HerdrPane, HerdrWorkspace } from "../../shared/protocol.ts";
 import type { Machine } from "../../shared/machines.ts";
-import type { FlockView } from "./flockView.ts";
+import type { GraphPage } from "./graphPage.ts";
 import type { PaneView } from "./actions.ts";
 import { isNavigation, linkSearch, NAV_KEY, readLink, resolveLink, slugOf, type AppLink, type LinkNote } from "./deepLink.ts";
 import { withoutFile } from "./historyKeys.ts";
@@ -20,8 +20,8 @@ import type { useSettingsDialog } from "./useSettingsDialog.ts";
  * behind, or kept for Back and shown again on return (#3179), when another pane is selected.
  */
 export function useAddressBar({ page = "workspace", onPage, newSessionOpen, selectedPane, selectedPaneId, selectedWorkspace, viewing, selectedMachineId, leaveFile, restoreFile, fileFromPop, forgetLeftFiles, locked, machines, snapshot, linkLanded, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, wideScreen, sidebarCollapsed, newTab, newFields, autoSelected, pendingFile, selectedMachine, openFile, machinesRef, selectTargetRef, pendingLink, setLinkLanded, linkSince, rosterSeq, setNewSessionOpen, pendingCreate, setHeaderNote, selectionRef, setLinkTick }: {
-  page?: FlockView;
-  onPage?(page: FlockView): void;
+  page?: GraphPage;
+  onPage?(page: GraphPage): void;
   newSessionOpen: boolean;
   selectedPane: HerdrPane | null;
   selectedPaneId: string | null;

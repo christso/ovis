@@ -172,7 +172,6 @@ const BASE: Record<string, string> = {
   "No graph nodes match these filters.": "필터에 맞는 노드가 없습니다.",
   "Graph viewport": "그래프 화면",
   "Fit graph": "그래프 맞춤",
-  "Flock": "Flock",
   "Reset graph layout": "그래프 배치 초기화",
   "Copy graph link": "그래프 링크 복사",
   "Graph details": "그래프 상세 정보",

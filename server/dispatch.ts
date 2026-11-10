@@ -17,8 +17,8 @@ import { MOVE_NODE_PATH } from "./session-move/transport.ts";
 import { MOVE_PATH, handleMoveNode, handleSessionMoves } from "./session-move/routes.ts";
 import type { MoveNode } from "./session-move/node.ts";
 import type { MoveCoordinator } from "./session-move/coordinator.ts";
-import { readFlockSource, verifyFlockSnapshot } from "./flock-source.ts";
-import { handleFlockRequest, type FlockStore } from "./flock.ts";
+import { readGraphSource, verifyGraphSnapshot } from "./graph-source.ts";
+import { handleGraphRequest, type GraphRegistryStore } from "./graph-registry.ts";
 import { handlePreferencesRequest, type PreferenceStore } from "./preferences.ts";
 import { handleSeenRequest, type SeenStore } from "./seen.ts";
 import { remoteAccess } from "./tailscale.ts";
@@ -103,7 +103,7 @@ export interface RequestServices {
   readonly accountIntroductions: AccountIntroductions;
   readonly accountHolds: AccountHolds;
   readonly preferences: PreferenceStore;
-  readonly flock: FlockStore;
+  readonly graphRegistry: GraphRegistryStore;
   readonly moveNode: MoveNode;
   readonly sessionMoves: MoveCoordinator | null;
   readonly herdrSidebar: HerdrSidebarConfig;
@@ -157,7 +157,7 @@ export interface ServerContext {
 const OTHER_MACHINE_FILES = /^\/api\/(?:fs\/|pane\/(?:files|docs|image)$|workspace\/(?:diff\/|git\/|directories$|pr(?:$|\/)))/;
 
 export async function handleRequest(request: Request, ctx: ServerContext): Promise<Response | undefined> {
-  const { options, flock, moveNode, sessionMoves, launcherSearch, savedLaunchers, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
+  const { options, graphRegistry, moveNode, sessionMoves, launcherSearch, savedLaunchers, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
   const { sidecar, serialize, push, alertWebhook, logPushError, omo, claudeAgents, opencodeAgents, plans, clientSnapshot, machines, broadcastAll, collector, queueFirstMessage } = core;
   return requestLog.handle(request, async (headers) => {
   const startup = portalStartupResult ?? await portalStartup;
@@ -536,7 +536,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   // what every browser of this server shares; a watching device reads it and cannot change it (above)
   if (pathname === MOVE_NODE_PATH) { setRequestRoute(MOVE_NODE_PATH); return handleMoveNode(request, moveNode, bridgeAuthorized || options.bridgeOnly === true && tokenMatched); }
   if (pathname === MOVE_PATH) return handleSessionMoves(request, sessionMoves);
-  if (pathname === "/api/flock") { setRequestRoute(pathname); return handleFlockRequest(request, flock, machines?.list() ?? [], (id) => readFlockSource(machines, id, clientSnapshot, options.codexHome), browserSnapshot); }
+  if (pathname === "/api/flock") { setRequestRoute(pathname); return handleGraphRequest(request, graphRegistry, machines?.list() ?? [], (id) => readGraphSource(machines, id, clientSnapshot, options.codexHome), browserSnapshot); }
   if (pathname === "/api/preferences") { setRequestRoute(pathname); return handlePreferencesRequest(request, preferences); }
   // the finishes read in some browser of this server; a watching device reads them and cannot add to them (above)
   if (pathname === "/api/seen") { setRequestRoute(pathname); return handleSeenRequest(request, seen); }
@@ -773,7 +773,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
     if (url.searchParams.get("flock") === "1" && readOnly) return jsonResponse({ error: { code: "read_only", message: "this device can only watch" } }, 403);
     try {
       // another Ovis server reading this PC (its bridge token) applies its own rows; a browser gets this server's
-      const snapshot = url.searchParams.get("flock") === "1" ? await verifyFlockSnapshot(clientSnapshot, options.codexHome) : await clientSnapshot();
+      const snapshot = url.searchParams.get("flock") === "1" ? await verifyGraphSnapshot(clientSnapshot, options.codexHome) : await clientSnapshot();
       return jsonResponse({ snapshot: bridgeAuthorized ? snapshot : browserSnapshot(snapshot) }, 200, { "cache-control": "no-store" });
     } catch (error) {
       return errorResponse(error);

@@ -174,7 +174,6 @@ const BASE: Record<string, string> = {
   "No graph nodes match these filters.": "フィルターに一致するノードはありません。",
   "Graph viewport": "グラフの表示範囲",
   "Fit graph": "グラフを全体表示",
-  "Flock": "Flock",
   "Reset graph layout": "グラフの配置をリセット",
   "Copy graph link": "グラフのリンクをコピー",
   "Graph details": "グラフの詳細",

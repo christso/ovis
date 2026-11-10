@@ -2,13 +2,13 @@ import { expect, it } from "bun:test";
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve, sep } from "node:path";
-import type { HerdrCoordinationPage } from "../shared/flock.ts";
+import type { HerdrCoordinationPage } from "../shared/graph-registry.ts";
 import type { Machine } from "../shared/machines.ts";
-import { flockInventory } from "../shared/flock-inventory.ts";
-import { flockRelationships } from "../shared/flock-relationships.ts";
+import { graphRegistryInventory } from "../shared/graph-registry-inventory.ts";
+import { graphRelationships } from "../shared/graph-relationships.ts";
 import { graphInventory, graphTarget } from "../src/features/graph/graphInventory.ts";
-import { FlockStore } from "./flock.ts";
-import { verifyFlockSnapshot } from "./flock-source.ts";
+import { GraphRegistryStore } from "./graph-registry.ts";
+import { verifyGraphSnapshot } from "./graph-source.ts";
 import { createServer } from "./index.ts";
 import { herdrRpc, herdrSocketPath, workspaceClose, workspaceCreate } from "./herdr/client.ts";
 
@@ -78,28 +78,28 @@ it.skipIf(process.env["OVIS_HERDR_COORDINATION_TEST"] !== "1")("captures native 
     expect(JSON.stringify(recorded)).not.toContain("owned wait-timeout message");
 
     app = createServer({ port: 0, hostname: "127.0.0.1", token: "", stateDir: join(root, "app"), machines: false, sidecar: false, codexHome: home });
-    const read = () => verifyFlockSnapshot(() => app!.context.services.core.clientSnapshot(), home);
+    const read = () => verifyGraphSnapshot(() => app!.context.services.core.clientSnapshot(), home);
     const machine = async (): Promise<Machine> => ({ id: "owned-native-producer", name: "Owned native producer", kind: "local", enabled: true, state: "connected", error: null, snapshot: await read() });
-    const store = new FlockStore(join(root, "registry")), live = await machine();
+    const store = new GraphRegistryStore(join(root, "registry")), live = await machine();
     const registry = store.observe([live]);
     expect(registry.observations?.filter((event) => event.source === "herdr")).toHaveLength(3);
     expect(registry.executions).toHaveLength(0);
-    const relationships = flockRelationships(registry), delegation = relationships.find((relation) => relation.kind === "delegation")!;
+    const relationships = graphRelationships(registry), delegation = relationships.find((relation) => relation.kind === "delegation")!;
     expect(delegation.source.herdr?.agent_instance_id).toBe(sourceEndpoint.agent_instance_id);
     expect(delegation.target.herdr?.agent_instance_id).toBe(childEndpoint.agent_instance_id);
     expect(relationships.find((relation) => relation.kind === "communication")?.count).toBe(2);
-    const rows = flockInventory(registry, [live]), graph = graphInventory(registry, rows);
+    const rows = graphRegistryInventory(registry, [live]), graph = graphInventory(registry, rows);
     expect(graph.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
     expect(graph.edges.find((edge) => edge.kind === "communication")?.eventCount).toBe(2);
     expect(graphTarget(registry, rows, delegation.target.id)).toEqual({ machine_id: live.id, pane_id: targetPane });
     const revision = registry.revision;
     expect(store.observe([await machine()]).revision).toBe(revision);
-    expect(new FlockStore(join(root, "registry")).read().observations).toHaveLength(3);
+    expect(new GraphRegistryStore(join(root, "registry")).read().observations).toHaveLength(3);
     await workspaceClose(target.workspace.workspace_id); owned.pop();
     const closed = await machine(), retained = store.observe([closed]);
     expect(retained.observations).toHaveLength(3);
-    expect(graphTarget(retained, flockInventory(retained, [closed]), delegation.target.id)).toBeNull();
-    expect(graphInventory(retained, flockInventory(retained, [closed])).nodes.find((node) => node.id === delegation.target.id)?.freshness).toBe("unavailable");
+    expect(graphTarget(retained, graphRegistryInventory(retained, [closed]), delegation.target.id)).toBeNull();
+    expect(graphInventory(retained, graphRegistryInventory(retained, [closed])).nodes.find((node) => node.id === delegation.target.id)?.freshness).toBe("unavailable");
     expect(ownReceipts(await list())).toHaveLength(3);
     expect(readFileSync(log, "utf8")).toContain(prompt);
 
@@ -143,9 +143,9 @@ it.skipIf(process.env["OVIS_HERDR_COORDINATION_TEST"] !== "1")("captures native 
       expect(remotePage.receipts).toHaveLength(0);
       const afterForward = store.observe([await machine()]);
       expect(afterForward.observations).toHaveLength(5);
-      const remoteRelation = flockRelationships(afterForward).find((relation) => relation.kind === "delegation" && relation.target.herdr?.server_id === remotePage.server_id)!;
+      const remoteRelation = graphRelationships(afterForward).find((relation) => relation.kind === "delegation" && relation.target.herdr?.server_id === remotePage.server_id)!;
       expect(remoteRelation.source.herdr?.server_id).toBe(sourceEndpoint.server_id);
-      expect(graphTarget(afterForward, flockInventory(afterForward, [await machine()]), remoteRelation.target.id)).toBeNull();
+      expect(graphTarget(afterForward, graphRegistryInventory(afterForward, [await machine()]), remoteRelation.target.id)).toBeNull();
     } finally {
       await herdrRpc("server.stop", {}, remoteSocket).catch(() => { if (remote.exitCode === null) remote.kill(); });
       await remote.exited; await drained;

@@ -1,6 +1,6 @@
-# Work and session registry
+# Graph and its work registry
 
-Flock opens a force-directed graph of native tabs, including tabs inside the worktree workspaces
+Graph opens a force-directed graph of native tabs, including tabs inside the worktree workspaces
 nested beneath a workspace in the sidebar. Each tab appears once, even with several split panes
 or agents. Repository, branch, checkout and session information appears in its details.
 Ovis's native Agents section remains the single agent list and keeps its existing filters. The
@@ -37,24 +37,29 @@ nested worktrees. A worktree’s sole numbered tab uses the sidebar workspace na
 explicitly named worktree tabs include workspace context. There are no extra workspace, branch or
 checkout container nodes. Repository colors and the legend come from metadata.
 
+Graph was previously named Flock. Its modules, types and navigation now use Graph. The stored
+`flock.json` filename, `/api/flock` route, `flock=1` inventory query, `flock_*` snapshot fields and
+registry error codes retain their legacy names so existing data and older remote bridges continue
+to work. Renaming the feature does not migrate or duplicate saved registries.
+
 The manager serving the configured roster owns `flock.json` in its Ovis state directory. The writer
-is `server/flock.ts`; the shared contract and pure roster projection live in `shared/flock.ts` and
-`shared/flock-inventory.ts`. Graph and the retained migration APIs share this inventory. The document
+is `server/graph-registry.ts`; the shared contract and pure roster projection live in `shared/graph-registry.ts` and
+`shared/graph-registry-inventory.ts`. Graph and the retained migration APIs share this inventory. The document
 is new in this feature, with no previous shape to migrate:
 
 ```ts
 {
   version: 1,
   revision: number,
-  works: FlockWork[],
-  sessions: FlockSession[],
-  checkouts: FlockCheckout[],
-  executions: FlockExecution[]
+  works: GraphWork[],
+  sessions: GraphSession[],
+  checkouts: GraphCheckout[],
+  executions: GraphExecution[]
 }
 ```
 
 This release reads/writes version 1. Earlier releases know nothing about this separate file and do
-not rewrite it. Disk and API readers share the validator in `shared/flock-schema.ts`. Unknown API
+not rewrite it. Disk and API readers share the validator in `shared/graph-registry-schema.ts`. Unknown API
 formats leave the rest of the app working and disable registry writes until a supported reload. An unknown version, malformed record or broken reference refuses reads and writes
 without replacing its bytes. Writes use the existing private temporary-file/rename helper. Each
 mutation rereads the document and checks its revision, preventing another browser's stale change
@@ -62,7 +67,7 @@ from replacing newer work. There is no distributed synchronization or automatic 
 lost manager. Back up the manager's state directory to keep these associations.
 
 The authenticated manager API is `GET /api/flock` and `POST /api/flock` with
-`{ revision, command: FlockCommand }`. Both return the registry and `Cache-Control: no-store`.
+`{ revision, command: GraphCommand }`. Both return the registry and `Cache-Control: no-store`.
 POST requires the normal same-origin mutation check and `X-Herdr-Machine: 1`. Watch devices cannot
 read or change this document because it includes physical checkout metadata. The API is not a
 per-machine proxy route and a bridge-only credential cannot access it. Adoption checks a fresh

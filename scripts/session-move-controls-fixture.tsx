@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
-import type { FlockRow } from "../shared/flock-inventory.ts";
+import type { GraphRegistryRow } from "../shared/graph-registry-inventory.ts";
 import { useT } from "../src/lib/i18n.ts";
 import { fetchSessionMoves, type SessionMoveState } from "../src/lib/sessionMoves.ts";
-import type { FlockRegistry } from "../shared/flock.ts";
+import type { GraphRegistry } from "../shared/graph-registry.ts";
 import type { Machine, PaneTarget } from "../shared/machines.ts";
-interface MoveFixtureProps { registry: FlockRegistry | null; rows: readonly FlockRow[]; machines: readonly Machine[]; error: string | null; refresh(): Promise<void>; onOpenTarget(target: PaneTarget): void }
+interface MoveFixtureProps { registry: GraphRegistry | null; rows: readonly GraphRegistryRow[]; machines: readonly Machine[]; error: string | null; refresh(): Promise<void>; onOpenTarget(target: PaneTarget): void }
 import { SessionMoveDialog } from "../src/components/SessionMoveDialog.tsx";
 
 const unfinished = (state: SessionMoveState): boolean => state.record.phase !== "complete" && state.record.phase !== "cancelled";
@@ -16,7 +16,7 @@ export function SessionMoveFixtureControls(props: MoveFixtureProps) {
   const [moves, setMoves] = useState<SessionMoveState[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [statusError, setStatusError] = useState(false);
-  const [selected, setSelected] = useState<{ row: FlockRow | null; id: string | null } | null>(null);
+  const [selected, setSelected] = useState<{ row: GraphRegistryRow | null; id: string | null } | null>(null);
   const generation = useRef(0);
   const reading = useRef<AbortController | null>(null);
   const mounted = useRef(false);
@@ -55,7 +55,7 @@ export function SessionMoveFixtureControls(props: MoveFixtureProps) {
   const close = useCallback(() => { setSelected(null); void read(); }, [read]);
   const selectedRow = selected?.row ?? props.rows.find((row) => row.execution?.id === active?.record.plan.request.source_execution_id) ?? null;
   const sessionName = selectedRow?.name ?? props.registry?.sessions.find((session) => session.id === active?.record.plan.request.session_id)?.name ?? t("Session");
-  const action = (row: FlockRow) => {
+  const action = (row: GraphRegistryRow) => {
     const existing = moves.find((state) => unfinished(state) && (state.record.plan.request.source_execution_id === row.execution?.id || (state.record.plan.request.session_id === row.session?.id && row.session?.current_execution_id === row.execution?.id)));
     const current = !!row.execution && row.execution.agent === "codex" && row.session?.current_execution_id === row.execution.id && !!row.checkout;
     if (!existing && !current) return null;

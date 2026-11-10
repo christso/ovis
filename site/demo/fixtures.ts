@@ -4,7 +4,7 @@
  * curated chats and one Codex approval. Nothing here comes from a real machine. It imports no server
  * code, so the browser bundle can take it.
  */
-import type { FlockRegistry } from "../../shared/flock.ts";
+import type { GraphRegistry } from "../../shared/graph-registry.ts";
 import type { ConversationTurn, InteractivePrompt, SessionHistoryAgent, SessionHistoryRow, SlashCommand } from "../../shared/protocol.ts";
 import { AGENT_CATALOG, catalogRow, meetsMinVersion, type AgentCatalogResponse } from "../../shared/agent-catalog.ts";
 
@@ -255,7 +255,7 @@ export const PROMPT: InteractivePrompt = {
 };
 
 /** The demo has no manager-owned associations; writes are explicitly refused. */
-export const DEMO_FLOCK: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
+export const DEMO_GRAPH_REGISTRY: GraphRegistry = { version: 1, revision: 0, works: [], sessions: [], checkouts: [], executions: [] };
 
 /** The public demo has no pending machine transfers. */
 export const DEMO_SESSION_MOVES = { moves: [] };

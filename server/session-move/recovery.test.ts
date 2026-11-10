@@ -40,7 +40,7 @@ for (const failedAt of ["destination", "journal"] as const) owned(`rejects old c
     fault?.mockRestore(); fault = undefined; await fixture.exit();
     await expect(fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).rejects.toMatchObject({ code: "source_changed" });
     expect(existsSync(fixture.target)).toBe(false); expect(fixture.counts()).toEqual({ creates: 0, launches: 0 });
-    expect(fixture.flock.read().sessions[0]!.current_execution_id).toBe(fixture.request.source_execution_id);
+    expect(fixture.graphRegistry.read().sessions[0]!.current_execution_id).toBe(fixture.request.source_execution_id);
   } finally { fault?.mockRestore(); await fixture.close(); }
 });
 owned("reconciles native index commit before its completion marker using exact rows, without duplicates", async () => {
