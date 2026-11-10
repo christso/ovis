@@ -5,7 +5,6 @@
  */
 export const PALETTE_JA: Record<string, string> = {
   "Actions": "操作",
-  "Workspace": "ワークスペース",
   "Move tab to {workspace}": "タブを {workspace} へ移動",
   "Enable notifications": "通知を有効にする",
   "Switch to terminal": "ターミナルに切り替え",

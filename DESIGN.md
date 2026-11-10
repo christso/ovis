@@ -4681,7 +4681,7 @@ Back/Forward restores the graph selection, filters and terminal location. Watch-
 receive neither private Graph inventory nor the lazy graph rendering chunk.
 
 The visual reference is [Folio's graph](https://github.com/evergreen-it-dev/folio/tree/2dd626383e6e2462a642a3d99e6c97d3aa3f9894/web/src/app/graph):
-circular nodes, degree-based size, repository colours and connected motion. Ovis uses SVG instead
+circular nodes, degree-based size, category colours, tree edges and connected motion. Ovis uses SVG instead
 of Folio's canvas so each node remains a native keyboard target with a complete accessible name,
 plus an inspector selector for phone and keyboard users. The implementation is independently
 written; no Folio code or assets are copied. The containment and thread distinction also follows
@@ -4692,14 +4692,14 @@ D3 force links pull connected nodes, repulsion separates clusters and collision 
 apart. Radius grows with distinct visible communication neighbours; containment, delegation,
 self-links, parallel edges and recorded event counts cannot inflate it. Hidden communication links
 do not contribute. This communication-specific sizing differs from Zed's project-grouped thread
-list because Graph also shows relationships between tabs. Repository colour follows reported checkout membership,
-never communication or delegation. Known native `repo_name` metadata supplies a common colour
-across machines with different root paths; recorded roots supply the fallback identity. Unknown
-repository membership stays neutral. Colour grouping does not merge identities. Status uses its
-own small icon, and stale sources have a dashed outline. A compact legend names the repositories.
+list because Graph also shows relationships between tabs. Node fills identify workspace, worktree
+and tab, using existing theme roles. Status uses its own small icon, and stale sources have a
+dashed outline. The three-type legend sits below the canvas, with a keyboard-accessible disclosure
+whose state survives reloads. Hierarchy springs are shorter and stronger than communication
+springs; root hubs repel enough to separate work contexts without inventing repository affinity.
 
 Group by machine adds a soft, translucent cloud behind each machine's visible nodes, with a
-machine-name label and a stable background colour. Node fills retain their repository colours.
+machine-name label and a stable background colour. Node fills retain their type colours.
 The padded rounded boundary follows current node positions and sizes through dragging and force
 motion, including single-node groups. Clouds are SVG backgrounds under links and nodes and accept
 no pointer or keyboard input. Filters remove empty clouds; explicit Fit includes their bounds.
@@ -4709,20 +4709,19 @@ machine membership in Ovis's cross-machine graph, with soft envelopes in place o
 The existing grouping force remains; dragging members between clusters can overlap their clouds
 without changing machine identity.
 
-Native tabs are the visible units, including horizontal tabs inside the worktree workspaces that
-Ovis's sidebar nests beneath a workspace. Split panes and agents in the same tab share one node.
-Repository, branch, physical checkout, agent and logical-session facts appear in the inspector,
-rather than additional nodes. Workspace focus uses the sidebar's `worktreeGroups` membership and
-includes the parent's tabs and its nested worktrees; workspace groups are filter choices without
-rendered container nodes. A worktree with one numbered tab takes its sidebar workspace name.
-Several or explicitly named worktree tabs include the workspace name alongside the tab name.
-Other names follow Ovis's native tab strip, including its existing automatic labels.
+Actual native workspace hubs connect regular tabs directly, and linked worktrees form
+workspace → worktree → tab, following the user's chosen hierarchy. Split panes and agents in
+the same tab share one tab node. Plain folders have workspace hubs without Git metadata; empty
+workspaces stay visible and orphaned worktrees remain independent hubs. Repository, branch,
+physical checkout, agent and logical-session facts appear in the inspector. Workspace focus
+uses the sidebar's `worktreeGroups` membership, including the parent's tabs and nested worktrees.
+A worktree with one numbered tab takes its sidebar workspace name. Several or explicitly named
+worktree tabs include workspace context. Other names follow Ovis's native tab strip.
 
 This adapts [Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel), where recognizable threads are
-grouped by project and worktrees provide isolation. Ovis follows its own native tab and sidebar
-names because a terminal tab can contain several agent panes. No Zed code or pixels are copied.
-Repository colors and the legend use reported metadata directly, including common native repository
-names across machines; communication and delegation do not establish repository membership.
+grouped by project and worktrees provide isolation, alongside Folio's category colours and typed
+tree edges. Ovis follows its native tab and sidebar names because a terminal tab can contain
+several agent panes. No Zed or Folio code or pixels are copied.
 Recorded endpoints map onto their represented tabs; parallel endpoint pairs combine into one
 counted relationship. Same-tab activity produces no duplicate node or self-link. Unrepresented
 agent sessions appear as recorded activity in the directly related tab’s inspector, behind a
@@ -4739,6 +4738,10 @@ agent occupant identity. Renames, order and status changes keep the identity. Op
 current exact target; an agent tab still needs verified native ownership or current Herdr occupancy,
 and a mixed tab never substitutes a shell when agent proof is missing. Old selections become
 unavailable when their occupant changes and never follow a logical session to a different tab.
+Hub identity includes its native workspace and current pane/terminal set. Hub opening resolves
+only one of its own currently verified tabs, applying the same agent-proof checks as tab opening;
+empty hubs have no terminal action. Browser preferences use `ovis:graph:v2`, preserving v1 bytes
+for old tabs and rollback, and recluster once on migration; see [the storage contract](docs/graph.md).
 Visible labels stay at 12 screen pixels across zoom levels, with explicitly named tabs prioritized
 at label collisions. Complete names remain in SVG titles, accessible names and the inspector.
 

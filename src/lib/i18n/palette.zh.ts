@@ -5,7 +5,6 @@
  */
 export const PALETTE_ZH: Record<string, string> = {
   "Actions": "操作",
-  "Workspace": "工作区",
   "Move tab to {workspace}": "将标签页移动到 {workspace}",
   "Enable notifications": "开启通知",
   "Switch to terminal": "切换到终端",

@@ -146,7 +146,6 @@ export const COMPOSER_JA: Record<string, string> = {
   "Dismiss notice": "通知を閉じる",
   "Notices": "お知らせ",
   "Working folder": "作業フォルダ",
-  "Worktree": "ワークツリー",
   "Insert text without Enter": "Enter なしでテキストを挿入",
   "Insert text": "挿入",
   "Insert takes one line. Send several lines, or insert them one at a time.": "挿入できるのは 1 行だけです。複数行は送信するか、1 行ずつ挿入してください。",

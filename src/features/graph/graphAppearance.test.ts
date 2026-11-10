@@ -3,14 +3,14 @@ import { graphAppearance, nodeRadius } from "./graphAppearance.ts";
 import { projectGraph, type GraphData } from "./graphModel.ts";
 
 const data: GraphData = { nodes: [
-  { id: "repo", kind: "repository", label: "Orchard", repositoryKey: "Orchard" },
-  { id: "checkout", kind: "checkout", label: "Feature" },
-  { id: "agent", kind: "execution", label: "Prune" },
-  { id: "other", kind: "repository", label: "Harbour", repositoryKey: "Harbour" },
+  { id: "repo", kind: "workspace", label: "Orchard", repositoryKey: "Orchard" },
+  { id: "checkout", kind: "worktree", label: "Feature" },
+  { id: "agent", kind: "tab", label: "Prune" },
+  { id: "other", kind: "workspace", label: "Harbour", repositoryKey: "Harbour" },
 ], edges: [
-  { id: "a", source: "checkout", target: "repo", kind: "checkout-in-repository", evidence: "inventory" },
-  { id: "b", source: "agent", target: "checkout", kind: "execution-in-checkout", evidence: "inventory" },
-  { id: "parallel", source: "checkout", target: "repo", kind: "checkout-in-repository", evidence: "inventory", eventCount: 999 },
+  { id: "a", source: "checkout", target: "repo", kind: "worktree-in-workspace", evidence: "inventory" },
+  { id: "b", source: "agent", target: "checkout", kind: "tab-in-worktree", evidence: "inventory" },
+  { id: "parallel", source: "checkout", target: "repo", kind: "worktree-in-workspace", evidence: "inventory", eventCount: 999 },
   { id: "message", source: "agent", target: "other", kind: "communication", evidence: "receipt", eventCount: 999 },
   { id: "reply", source: "other", target: "agent", kind: "communication", evidence: "receipt" },
   { id: "second-peer", source: "checkout", target: "agent", kind: "communication", evidence: "receipt" },
@@ -35,10 +35,16 @@ test("hidden communication links do not contribute to radius", () => {
     expect(style.radius).toBe(9);
   }
 });
-test("repository colour follows only physical containment, never communication", () => {
-  const style = graphAppearance(data);
-  expect(style.get("agent")!.colour).toBe(style.get("repo")!.colour);
-  expect(style.get("checkout")!.colour).toBe(style.get("repo")!.colour);
-  expect(style.get("other")!.colour).not.toBe(style.get("repo")!.colour);
-  expect(graphAppearance({ ...data, nodes: [...data.nodes].reverse() }).get("agent")!.colour).toBe(style.get("agent")!.colour);
+test("node colours identify workspace, worktree and tab kinds regardless of repository", () => {
+  const nodes: GraphData["nodes"] = [
+    { id: "workspace-a", kind: "workspace", label: "Orchard", repositoryKey: "apple" },
+    { id: "workspace-b", kind: "workspace", label: "Harbour", repositoryKey: "pear" },
+    { id: "worktree", kind: "worktree", label: "Feature", repositoryKey: "apple" },
+    { id: "tab-a", kind: "tab", label: "Code", repositoryKey: "apple" },
+    { id: "tab-b", kind: "tab", label: "Notes" },
+  ];
+  const style = graphAppearance({ nodes, edges: [] });
+  expect(style.get("workspace-a")!.colour).toBe(style.get("workspace-b")!.colour);
+  expect(style.get("tab-a")!.colour).toBe(style.get("tab-b")!.colour);
+  expect(new Set([style.get("workspace-a")!.colour, style.get("worktree")!.colour, style.get("tab-a")!.colour]).size).toBe(3);
 });

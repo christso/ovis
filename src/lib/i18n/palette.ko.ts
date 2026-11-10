@@ -5,7 +5,6 @@
  */
 export const PALETTE_KO: Record<string, string> = {
   "Actions": "동작",
-  "Workspace": "워크스페이스",
   "Move tab to {workspace}": "탭을 {workspace}(으)로 이동",
   "Enable notifications": "알림 켜기",
   "Switch to terminal": "터미널로 전환",

@@ -4,7 +4,7 @@ import { graphBinding, graphRegistryInventory } from "../../../shared/graph-regi
 import type { Machine } from "../../../shared/machines.ts";
 import fixture from "../../../site/demo/fixtures/machines.json";
 import { graphInventory, graphTarget } from "./graphInventory.ts";
-import { projectGraph } from "./graphModel.ts";
+import { projectGraph, type GraphData } from "./graphModel.ts";
 import { DEFAULT_GRAPH_STATE } from "./graphState.ts";
 
 function source(names = ["obsidian", "phone", "social"]) {
@@ -25,6 +25,9 @@ function source(names = ["obsidian", "phone", "social"]) {
   const graph = () => graphInventory(registry, rows(), machines);
   return { machine, snapshot, workspace, registry, machines, rows, graph };
 }
+const tabNodes = (graph: GraphData) => graph.nodes.filter((node) => node.kind === "tab");
+const relationships = (graph: GraphData) => graph.edges.filter((edge) => edge.kind === "communication" || edge.kind === "delegation");
+
 function agent(state: ReturnType<typeof source>, index: number, native = `00000000-0000-4000-8000-00000000000${index}`) {
   const pane = state.snapshot.panes[index]!;
   pane.agent = "codex"; pane.agent_status = "working";
@@ -34,14 +37,14 @@ function agent(state: ReturnType<typeof source>, index: number, native = `000000
 }
 
 describe("workspace tabs in Graph", () => {
-  it("shows infra's three named tabs without repository, branch or execution duplicates", () => {
+  it("shows the native workspace and its three named tabs once", () => {
     const state = source(); agent(state, 0);
     const data = state.graph();
-    expect(data.nodes.map((node) => node.label)).toEqual(["obsidian", "phone", "social"]);
-    expect(data.nodes.every((node) => node.kind === "tab")).toBe(true);
-    expect(data.edges).toEqual([]);
+    expect(tabNodes(data).map((node) => node.label)).toEqual(["obsidian", "phone", "social"]);
+    expect(data.nodes.filter((node) => node.kind === "workspace")).toHaveLength(1);
+    expect(relationships(data)).toEqual([]);
     const focus = data.groups!.find((group) => group.label === "infra")!;
-    expect(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, focus: focus.id }).nodes.map((node) => node.label)).toEqual(["obsidian", "phone", "social"]);
+    expect(tabNodes(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, focus: focus.id })).map((node) => node.label)).toEqual(["obsidian", "phone", "social"]);
     expect(data.nodes[0]!.detail).toContain("main");
     expect(data.nodes[0]!.detail).toContain("/fictional/infra");
     expect(data.nodes[0]!.detail).toContain("codex");
@@ -60,24 +63,24 @@ describe("workspace tabs in Graph", () => {
       snapshot.panes.push({ ...snapshot.panes[0]!, workspace_id: workspace.workspace_id, tab_id: tab.tab_id, pane_id: `child-pane-${index}`, terminal_id: `child-terminal-${index}` });
     }
     let data = state.graph();
-    const focus = (label: string) => projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, focus: data.groups!.find((group) => group.label === label)!.id }).nodes.map((node) => node.label);
+    const focus = (label: string) => tabNodes(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, focus: data.groups!.find((group) => group.label === label)!.id })).map((node) => node.label);
     expect(focus("infra")).toEqual(["obsidian", "phone"]);
     expect(focus("phone")).toEqual(["phone"]);
     expect(focus("other infra")).toEqual(["social"]);
-    expect(data.nodes).toHaveLength(3);
+    expect(tabNodes(data)).toHaveLength(3);
     const phone = snapshot.tabs.find((tab) => tab.workspace_id === child.workspace_id)!;
     phone.label = "review";
     snapshot.tabs.push({ ...phone, tab_id: "phone-test", label: "test", number: 2 });
     snapshot.panes.push({ ...snapshot.panes.find((pane) => pane.workspace_id === child.workspace_id)!, tab_id: "phone-test", pane_id: "phone-test-pane", terminal_id: "phone-test-terminal" });
     data = state.graph();
     expect(focus("phone")).toEqual(["phone · review", "phone · test"]);
-    expect(data.nodes).toHaveLength(4);
+    expect(tabNodes(data)).toHaveLength(4);
   });
   it("represents mixed and multi-agent split panes once, retaining details and guarded opening", () => {
     const state = source(["obsidian"]), pane = agent(state, 0);
     state.snapshot.panes.push({ ...pane, pane_id: "split-shell", terminal_id: "split-shell-terminal", agent: null, agent_session: null });
     const data = state.graph();
-    expect(data.nodes).toHaveLength(1);
+    expect(tabNodes(data)).toHaveLength(1);
     const selected = data.nodes[0]!.id;
     expect(graphTarget(state.registry, state.rows(), selected, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: pane.pane_id });
     state.snapshot.flock_bindings = [];
@@ -111,7 +114,7 @@ describe("workspace tabs in Graph", () => {
     const remote = structuredClone(state.machine); remote.id = "remote";
     state.machines.push(remote);
     const data = state.graph();
-    expect(data.nodes).toHaveLength(2);
+    expect(tabNodes(data)).toHaveLength(2);
     expect(data.nodes[0]!.id).not.toBe(data.nodes[1]!.id);
     expect(graphInventory(null, [], state.machines).nodes).toEqual([]);
     expect(graphTarget(null, [], data.nodes[0]!.id, state.machines)).toBeNull();
@@ -126,8 +129,8 @@ describe("workspace tabs in Graph", () => {
       { id: "closed-child", kind: "delegation", source: "codex", machine_id: state.machine.id, source_native_session_id: native(parent), target_native_session_id: absent, occurred_at: "2026-11-10T00:02:00Z" },
     ];
     const data = state.graph(), obsidian = data.nodes.find((node) => node.label === "obsidian")!, phone = data.nodes.find((node) => node.label === "phone")!;
-    expect(data.nodes).toHaveLength(3);
-    expect(data.nodes.every((node) => node.kind === "tab")).toBe(true);
+    expect(tabNodes(data)).toHaveLength(3);
+    expect(data.nodes.filter((node) => node.kind === "workspace")).toHaveLength(1);
     expect(data.edges.find((edge) => edge.kind === "communication")).toMatchObject({ source: obsidian.id, target: phone.id, eventCount: 2, sources: ["codex"] });
     expect(data.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
     expect(obsidian.activity).toHaveLength(1);
@@ -141,9 +144,9 @@ describe("workspace tabs in Graph", () => {
     state.snapshot.panes.push(third); agent(state, 2);
     state.registry.observations = [[0, 1], [2, 1], [0, 2]].map(([from, to], index) => ({ id: `message-${index}`, kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: state.snapshot.panes[from!]!.agent_session!.value, target_native_session_id: state.snapshot.panes[to!]!.agent_session!.value, occurred_at: "2026-11-10T00:00:00Z" }));
     const data = state.graph();
-    expect(data.nodes).toHaveLength(2);
-    expect(data.edges).toHaveLength(1);
-    expect(data.edges[0]!.eventCount).toBe(2);
+    expect(tabNodes(data)).toHaveLength(2);
+    expect(relationships(data)).toHaveLength(1);
+    expect(relationships(data)[0]!.eventCount).toBe(2);
   });
   it("uses the logical session's current tab for receipts without duplicating its execution", () => {
     const state = source(["obsidian", "phone"]), pane = agent(state, 0), second = agent(state, 1);
@@ -152,9 +155,9 @@ describe("workspace tabs in Graph", () => {
     state.registry.executions = [{ ...binding, id: "current", session_id: "logical", checkout_id: null, created_at: "2026-11-10T00:00:00Z" }];
     state.registry.observations = [{ id: "message", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: binding.native_session_id, target_native_session_id: second.agent_session!.value, occurred_at: "2026-11-10T00:00:00Z" }];
     const data = state.graph();
-    expect(data.nodes.map((node) => node.label)).toEqual(["obsidian", "phone"]);
+    expect(tabNodes(data).map((node) => node.label)).toEqual(["obsidian", "phone"]);
     expect(data.nodes[0]!.detail).toContain("Logical alias");
-    expect(data.edges).toHaveLength(1);
+    expect(relationships(data)).toHaveLength(1);
     expect(data.edges[0]!.source).toBe(data.nodes[0]!.id);
     expect(graphTarget(state.registry, state.rows(), "session:logical", state.machines)).toBeNull();
   });
@@ -198,8 +201,8 @@ it("does not attach a historical session's recorded relationship using only a pu
   state.registry.observations = [{ id: "earlier-message", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: binding.native_session_id, target_native_session_id: "00000000-0000-4000-8000-000000000009", occurred_at: "2026-11-10T00:00:00Z" }];
   state.snapshot.flock_bindings = [];
   const data = state.graph();
-  expect(data.edges).toEqual([]);
-  expect(data.nodes).toHaveLength(1);
+  expect(relationships(data)).toEqual([]);
+  expect(tabNodes(data)).toHaveLength(1);
   expect(data.nodes[0]!.activity).toBeUndefined();
   expect(graphTarget(state.registry, state.rows(), data.nodes.find((node) => node.kind === "tab")!.id, state.machines)).toBeNull();
 });
@@ -234,8 +237,8 @@ it("counts recorded activity once per endpoint pair, retaining direction without
   state.registry.observations.push(structuredClone(state.registry.observations[0]!));
   state.registry.observations.push({ id: "reply", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: missing, target_native_session_id: pane.agent_session!.value, occurred_at: "2026-11-10T00:02:00Z" });
   const data = state.graph();
-  expect(data.nodes.map((node) => node.label)).toEqual(["shared-action"]);
-  expect(data.edges).toEqual([]);
+  expect(tabNodes(data).map((node) => node.label)).toEqual(["shared-action"]);
+  expect(relationships(data)).toEqual([]);
   expect(data.nodes[0]!.activity).toHaveLength(2);
   expect(data.nodes[0]!.activity!.find((item) => item.direction === "outgoing")).toMatchObject({ label: "Codex 01a1a426", kind: "communication", eventCount: 2, lastObservedAt: "2026-11-10T00:01:00Z", sources: ["codex"] });
   expect(data.nodes[0]!.activity!.find((item) => item.direction === "incoming")?.eventCount).toBe(1);

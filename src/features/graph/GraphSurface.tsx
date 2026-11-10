@@ -3,7 +3,7 @@ import { Circle, CircleCheck, CircleHelp, CirclePause, LoaderCircle, OctagonAler
 import { useT } from "../../lib/i18n.ts";
 import { graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
 import type { GraphData, GraphNode } from "./graphModel.ts";
-import { graphAppearance, repositoryColour } from "./graphAppearance.ts";
+import { graphAppearance, machineColour } from "./graphAppearance.ts";
 import { graphMachineClouds } from "./graphMachineClouds.ts";
 import { zoomAt, type Point, type Positions, type Viewport } from "./graphLayout.ts";
 
@@ -47,27 +47,29 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
     if (edge.source === highlighted) neighbours.add(edge.target);
     if (edge.target === highlighted) neighbours.add(edge.source);
   }
-  const labels = new Map<string, { text: string; x: number }>();
+  const labels = new Map<string, { text: string; x: number; y: number }>();
   const occupied: { left: number; right: number; top: number; bottom: number }[] = [];
   const priority = (node: GraphNode) => {
     if (node.id === highlighted) return 0;
     if (neighbours.has(node.id)) return 1;
     if (node.namedTab) return 2;
-    if (node.kind === "repository") return 3;
-    if (node.kind === "execution" || node.kind === "tab") return 4;
+    if (node.kind === "workspace") return 3;
+    if (node.kind === "worktree") return 4;
     return 5;
   };
   for (const node of [...nodes].sort((a, b) => priority(a) - priority(b) || a.id.localeCompare(b.id))) {
-    const point = positions[node.id], prominent = neighbours.has(node.id) || node.kind === "repository";
+    const point = positions[node.id], prominent = neighbours.has(node.id) || node.kind === "workspace";
     if (!point) continue;
     const limit = Math.max(8, Math.min(prominent ? 32 : viewport.k < 0.45 ? 16 : 22, Math.floor((surfaceWidth - 24) / 7)));
     const text = node.label.length > limit ? `${node.label.slice(0, limit - 1)}…` : node.label;
     const width = text.length * 7, screenX = viewport.x + point.x * viewport.k;
     const centre = screenX >= 0 && screenX <= surfaceWidth ? Math.max(width / 2 + 12, Math.min(surfaceWidth - width / 2 - 12, screenX)) : screenX;
-    const top = viewport.y + (point.y + appearance.get(node.id)!.radius) * viewport.k + 7;
-    const box = { left: centre - width / 2, right: centre + width / 2, top, bottom: top + 15 };
-    if (node.id !== highlighted && occupied.some((placed) => box.left < placed.right + 5 && box.right > placed.left - 5 && box.top < placed.bottom + 4 && box.bottom > placed.top - 4)) continue;
-    occupied.push(box); labels.set(node.id, { text, x: (centre - screenX) / viewport.k });
+    const radius = appearance.get(node.id)!.radius;
+    const candidates = [viewport.y + (point.y + radius) * viewport.k + 7, viewport.y + (point.y - radius) * viewport.k - 23]
+      .map((top) => ({ left: centre - width / 2, right: centre + width / 2, top, bottom: top + 15 }));
+    const box = candidates.find((candidate) => !occupied.some((placed) => candidate.left < placed.right + 5 && candidate.right > placed.left - 5 && candidate.top < placed.bottom + 4 && candidate.bottom > placed.top - 4)) ?? (node.id === highlighted ? candidates[0] : undefined);
+    if (!box) continue;
+    occupied.push(box); labels.set(node.id, { text, x: (centre - screenX) / viewport.k, y: (box.top + 12 - viewport.y) / viewport.k - point.y });
   }
   const cloudLabels = new Map<string, { text: string; x: number; y: number }>();
   for (const cloud of clouds) {
@@ -167,7 +169,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
         const name = machineNames?.get(cloud.machineId) ?? cloud.machineId;
         const label = cloudLabels.get(cloud.machineId)!;
         return <g key={cloud.machineId} data-machine-cloud={cloud.machineId} className="graph-machine-cloud" aria-hidden="true"
-          style={{ "--machine-colour": repositoryColour(`machine:${cloud.machineId}`) } as CSSProperties}>
+          style={{ "--machine-colour": machineColour(`machine:${cloud.machineId}`) } as CSSProperties}>
           <title>{name}</title>
           <path d={cloud.path} vectorEffect="non-scaling-stroke" />
           <text x={label.x} y={label.y} textAnchor="middle" style={{ fontSize: 12 / viewport.k, strokeWidth: 4 / viewport.k }}>{label.text}</text>
@@ -192,8 +194,8 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
         const Icon = node.status ? STATUS_ICON[node.status] : Circle;
         const style = appearance.get(node.id)!;
         const label = labels.get(node.id);
-        return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-status-${node.status ?? "unknown"}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}${highlighted ? neighbours.has(node.id) ? " graph-related" : " graph-muted" : ""}`}
-          style={{ "--repository-colour": style.colour } as CSSProperties} data-degree={style.degree} data-radius={style.radius} transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={nodeLabel(node)} aria-pressed={selected === node.id}
+        return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-node-kind-${node.kind} graph-status-${node.status ?? "unknown"}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}${highlighted ? neighbours.has(node.id) ? " graph-related" : " graph-muted" : ""}`}
+          style={{ "--node-colour": style.colour } as CSSProperties} data-degree={style.degree} data-radius={style.radius} transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={nodeLabel(node)} aria-pressed={selected === node.id}
           onPointerEnter={(event) => { if (event.pointerType === "mouse" && event.buttons === 0) setHovered(node.id); }} onPointerLeave={() => setHovered(null)}
           onClick={(event) => { if (event.detail === 0) { setHovered(null); onSelect(node.id); } }}
           onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setHovered(null); onSelect(node.id); } }}>
@@ -201,7 +203,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
           <circle className="graph-node-hit" r={Math.max(style.radius + 5, 23 / viewport.k)} />
           <circle className="graph-node-disc" r={style.radius} />
           <Icon x={style.radius - 7} y={-style.radius - 7} width={14} height={14} aria-hidden="true" className="graph-status-icon" />
-          {label && <text textAnchor="middle" x={label.x} y={style.radius + 19 / viewport.k} style={{ fontSize: 12 / viewport.k, strokeWidth: 4 / viewport.k }} className="graph-node-label">{label.text}</text>}
+          {label && <text textAnchor="middle" x={label.x} y={label.y} style={{ fontSize: 12 / viewport.k, strokeWidth: 4 / viewport.k }} className="graph-node-label">{label.text}</text>}
 
         </g>;
       })}

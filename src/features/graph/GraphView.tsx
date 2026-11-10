@@ -5,9 +5,9 @@ import { copyText } from "../../lib/clipboard.ts";
 import { useMediaQuery } from "../../lib/useMediaQuery.ts";
 import { projectGraph, type GraphData, type GraphEdge, type GraphFilters } from "./graphModel.ts";
 import { fitGraph, zoomAt, type Viewport } from "./graphLayout.ts";
-import { GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
+import { GRAPH_KINDS, GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
 import { useGraphSimulation } from "./useGraphSimulation.ts";
-import { graphAppearance } from "./graphAppearance.ts";
+import { graphAppearance, graphNodeColour } from "./graphAppearance.ts";
 import { graphMachineClouds } from "./graphMachineClouds.ts";
 import { GraphSurface } from "./GraphSurface.tsx";
 import { useGraphState } from "./useGraphState.ts";
@@ -40,20 +40,20 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const compact = useMediaQuery("(max-width: 700px)");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const filtersId = useId(), detailsId = useId();
+  const filtersId = useId(), detailsId = useId(), legendId = useId();
   const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent"].filter(Boolean).length;
   const host = useRef<HTMLDivElement>(null);
   const fitted = useRef(saved);
   const [reset, setReset] = useState(0);
   const view = useMemo(() => projectGraph(data, state.filters), [data, state.filters]);
   const { positions, move, endDrag, layoutReset } = useGraphSimulation(view, state.positions, state.groupMachine, reset, (settled) => setState((previous) => ({ ...previous, positions: { ...previous.positions, ...settled } })));
-  const appearance = useMemo(() => graphAppearance(data), [data]);
-  const repositories = [...new Map(data.nodes.filter((node) => node.repositoryKey || node.kind === "repository").map((node) => [appearance.get(node.id)!.repository, node])).values()];
+  const kinds = GRAPH_KINDS.filter((kind) => view.nodes.some((node) => node.kind === kind));
   const selected = data.nodes.find((node) => node.id === state.selected);
+  const selectedCanOpen = useMemo(() => !!selected && canOpenNode(selected.id), [selected?.id, canOpenNode]);
   const activity = selected?.activity ?? [];
   const relatedSessions = new Set(activity.map((item) => item.endpointId)).size;
-  const focusGroups = data.groups ?? [];
-  const focusNodes = data.nodes.filter((node) => ["repository", "session", "work", "tab"].includes(node.kind) || node.id === state.filters.focus);
+  const legacyFocus = data.groups?.find((group) => group.id === state.filters.focus);
+  const focusNodes = data.nodes;
   const machines = [...new Set(data.nodes.flatMap((node) => node.machineId ? [node.machineId] : []))].sort();
   const fit = () => {
     const surface = host.current?.querySelector("svg.graph-surface");
@@ -88,7 +88,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
         <option value="">{t("All machines")}</option>{state.filters.machine && !machines.includes(state.filters.machine) && <option value={state.filters.machine}>{state.filters.machine}</option>}{machines.map((id) => <option key={id} value={id}>{machineNames?.get(id) ?? id}</option>)}
       </select></label>
       <label>{t("Focus graph")}<select aria-label={t("Focus graph")} value={state.filters.focus} onChange={(event) => filter({ focus: event.target.value })}>
-        <option value="">{t("Whole graph")}</option>{state.filters.focus && !focusNodes.some((node) => node.id === state.filters.focus) && !focusGroups.some((group) => group.id === state.filters.focus) && <option value={state.filters.focus}>{t("This graph focus is unavailable.")}</option>}{focusGroups.map((group) => <option key={group.id} value={group.id}>{group.label} · {machineNames?.get(group.machineId) ?? group.machineId}</option>)}{focusNodes.map((node) => <option key={node.id} value={node.id}>{node.label}{node.machineId ? ` · ${machineNames?.get(node.machineId) ?? node.machineId}` : ""}</option>)}
+        <option value="">{t("Whole graph")}</option>{state.filters.focus && !focusNodes.some((node) => node.id === state.filters.focus) && <option value={state.filters.focus}>{legacyFocus?.label ?? t("This graph focus is unavailable.")}</option>}{focusNodes.map((node) => <option key={node.id} value={node.id}>{node.label}{node.machineId ? ` · ${machineNames?.get(node.machineId) ?? node.machineId}` : ""}</option>)}
       </select></label>
       <label>{t("Communication links")}<select aria-label={t("Communication links")} value={state.filters.communication ?? "recent"} onChange={(event) => filter({ communication: event.target.value as GraphFilters["communication"] })}>
         <option value="recent">{t("Last 24 hours")}</option><option value="all">{t("All recorded activity")}</option><option value="none">{t("Hidden")}</option>
@@ -108,7 +108,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
     {error && <p className="graph-warning" role="status">{error}</p>}
     <div className="graph-body">
       <div className="graph-stage">
-        <div className="graph-repository-legend" aria-label={t("Repository")}>{repositories.map((node) => <span key={node.id}><i style={{ background: appearance.get(node.id)!.colour }} />{node.repositoryName ?? node.label}</span>)}</div>
+        <div className="graph-canvas">
         <GraphSurface nodes={view.nodes} edges={view.edges} positions={positions} viewport={viewport} selected={state.selected} groupMachine={state.groupMachine} machineNames={machineNames}
           onSelect={(selected) => setState((previous) => ({ ...previous, selected }))} onViewport={updateViewport}
           onMove={move} onEndMove={endDrag} onFit={fit} />
@@ -120,6 +120,13 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           <button type="button" className="graph-reset" title={t("Reset graph layout")} aria-label={t("Reset graph layout")} onClick={() => { fitted.current = false; setReset((value) => value + 1); }}><RotateCcw size={18} aria-hidden="true" />{t("Reset")}</button>
           <button type="button" title={t("Copy graph link")} aria-label={t("Copy graph link")} onClick={() => { void copyText(window.location.href); }}><Link size={18} /></button>
         </div>
+        </div>
+        {kinds.length > 0 && <div className="graph-legend">
+          <button type="button" className="graph-legend-toggle" aria-expanded={state.legendOpen} aria-controls={legendId} onClick={() => setState((previous) => ({ ...previous, legendOpen: !previous.legendOpen }))}>
+            <ChevronDown size={16} aria-hidden="true" />{t("Legend")}
+          </button>
+          <div className="graph-kind-legend" id={legendId} hidden={!state.legendOpen}>{kinds.map((kind) => <span key={kind}><i style={{ background: graphNodeColour(kind) }} />{graphKindLabel(t, kind)}</span>)}</div>
+        </div>}
       </div>
       <aside className="graph-details" aria-label={t("Graph details")}>
         {selected && <h2>{selected.label}</h2>}
@@ -128,10 +135,10 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           {selected.freshness && <span className={selected.freshness === "live" ? undefined : "graph-warning"}>{graphFreshnessLabel(t, selected.freshness)}</span>}</p>
         </> : <p className="graph-selection-hint">{state.selected ? t("The selected node is unavailable.") : t("Select a node to inspect its status and relationships.")}</p>}
         <div className="graph-selection-actions">
-          {selected && <button type="button" className="btn btn-primary" disabled={!canOpenNode(selected.id)} onClick={() => onOpenNode(selected.id)}>{t("Open in Workspace")}</button>}
+          {selected && <button type="button" className="btn btn-primary" disabled={!selectedCanOpen} onClick={() => onOpenNode(selected.id)}>{t("Open in Workspace")}</button>}
           <button type="button" className="btn graph-details-toggle" aria-label={t("Details and help")} aria-expanded={!compact || detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen((open) => !open)}>{t("Details")}<ChevronDown size={16} aria-hidden="true" /></button>
         </div>
-        {selected && !canOpenNode(selected.id) && <p className="graph-target-note">{t("No verified live terminal target.")}</p>}
+        {selected && !selectedCanOpen && <p className="graph-target-note">{t("No verified live terminal target.")}</p>}
         <div className="graph-details-extra" id={detailsId} hidden={compact && !detailsOpen}>
         {selected && <>
           {selected.machineId && <p>{machineNames?.get(selected.machineId) ?? selected.machineId}</p>}
@@ -152,8 +159,8 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           </details>}
         </>}
         <p className="graph-help">{t("Drag to pan or move nodes. Pinch or scroll to zoom. Use arrow keys to pan, +/− to zoom and 0 to fit.")}</p>
-        <p className="graph-help">{t("Links show recorded relationships only. Delegation and dependencies are absent when the source does not report them.")}</p>
-        <p className="graph-help">{t("Automatic links use recorded Herdr operations and supported Codex success receipts. Older servers may have no relationship history.")}</p>
+        <p className="graph-help">{t("Hierarchy links show workspaces, worktrees and tabs. Communication and delegation links show recorded activity.")}</p>
+        <p className="graph-help">{t("Recorded activity uses Herdr operations and supported Codex success receipts. Older servers may have no relationship history.")}</p>
         <p className="graph-help" aria-live="polite">{t("{nodes} nodes · {edges} links", { nodes: view.nodes.length, edges: view.edges.length })}</p>
         </div>
       </aside>
