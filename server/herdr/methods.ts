@@ -1,5 +1,5 @@
 import type { AgentInfo, AgentTarget, PaneProcessInfo, PaneProcessInfoParams, PaneSendKeysParams, PaneSendTextParams } from "../../shared/herdr-api.generated.ts";
-import type { HerdrCoordinationPage } from "../../shared/flock.ts";
+import type { HerdrCoordinationPage } from "../../shared/graph-registry.ts";
 
 /**
  * The herdr methods `herdrRpc` knows the shape of: each method's params and its raw answer

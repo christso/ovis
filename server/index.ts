@@ -19,7 +19,7 @@ import { isLoopbackBind, lanExposed } from "./access.ts";
 import { DeviceStore, mergeAccountTombstones } from "./devices.ts";
 import { PreferenceStore } from "./preferences.ts";
 import { readOmpHeldFilesSetting } from "./omp.ts";
-import { FlockStore } from "./flock.ts";
+import { GraphRegistryStore } from "./graph-registry.ts";
 import { MoveNode } from "./session-move/node.ts";
 import { MoveCoordinator } from "./session-move/coordinator.ts";
 import { moveRuntime } from "./session-move/runtime.ts";
@@ -305,7 +305,7 @@ export function createServer(
   readOmpHeldFilesSetting(() => preferences.get().settings.ompHeldFiles === true);
   // on herdr-core an agent pinned here is pinned in the Herdr app and its other clients too
   const stopPinBridge = servingCore() ? bridgePins(coreConnection(), preferences, LOCAL_MACHINE, stateDir) : null;
-  const flock = new FlockStore(stateDir);
+  const graphRegistry = new GraphRegistryStore(stateDir);
   // Chat's own rewind (#1500, never released) kept its rewinds here; nothing reads them since #1577
   try {
     rmSync(join(stateDir, "claude-rewinds.json"), { force: true });
@@ -473,7 +473,7 @@ export function createServer(
   }
 
   const moveNode = new MoveNode(stateDir, moveRuntime(core.clientSnapshot, options.codexHome));
-  const sessionMoves = machines ? new MoveCoordinator(stateDir, flock, machines, core.clientSnapshot, moveNode, options.codexHome) : null;
+  const sessionMoves = machines ? new MoveCoordinator(stateDir, graphRegistry, machines, core.clientSnapshot, moveNode, options.codexHome) : null;
   const requestLog = new RequestLog(stateDir);
   const accountHolds = new AccountHolds({ enrollingPath: join(stateDir, "account-enrolling.json"), heldPath: join(stateDir, "account-held.json") });
   const accountMailbox = new AccountMailbox({
@@ -495,7 +495,7 @@ export function createServer(
       switchRuntime: () => { const answer = options.runtimeService!.request("herdr-core"); return answer.ok ? null : answer.message; },
       ...(options.herdrCoreInstaller ? { installer: options.herdrCoreInstaller } : {}),
     }) : null,
-    options, flock, moveNode, sessionMoves, launcherSearch, savedLaunchers, relay: ovisRelay, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, accountMailbox, accountIntroductions: new AccountIntroductions(Date.now, join(stateDir, "account-introductions.json")), accountHolds, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, usageAccounts, systemSampler, fontsDir: join(stateDir, "fonts"), voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartup,
+    options, graphRegistry, moveNode, sessionMoves, launcherSearch, savedLaunchers, relay: ovisRelay, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, accountMailbox, accountIntroductions: new AccountIntroductions(Date.now, join(stateDir, "account-introductions.json")), accountHolds, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, usageAccounts, systemSampler, fontsDir: join(stateDir, "fonts"), voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartup,
     get portalStartupResult() { return portalStartupResult; },
   };
   ovisRelay.resume(services, server.port ?? DEFAULT_PORT);

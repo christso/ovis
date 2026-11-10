@@ -1,5 +1,5 @@
-import type { HerdrCoordinationPage, HerdrCoordinationReceipt } from "../shared/flock.ts";
-import { flockCoordinationPageValue, flockHerdrEndpointMetadata } from "../shared/flock-relationships.ts";
+import type { HerdrCoordinationPage, HerdrCoordinationReceipt } from "../shared/graph-registry.ts";
+import { graphCoordinationPageValue, graphHerdrEndpointMetadata } from "../shared/graph-relationships.ts";
 import { agentCoordinationList, herdrSocketPath } from "./herdr/client.ts";
 
 interface Scan { server: string; boot: string; cursor: string | null; receipts: Map<string, HerdrCoordinationReceipt> }
@@ -29,11 +29,11 @@ async function collect(socketPath: string): Promise<HerdrCoordinationPage | unde
       if (!scan?.cursor || index + 1 >= PAGES_PER_READ) return undefined;
       index += 1;
       try { raw = await agentCoordinationList(undefined, socketPath); } catch { return undefined; }
-      if (!flockCoordinationPageValue(raw) || (raw.server_id === scan.server && raw.boot_id === scan.boot)) return undefined;
+      if (!graphCoordinationPageValue(raw) || (raw.server_id === scan.server && raw.boot_id === scan.boot)) return undefined;
       scan = undefined;
       requestedCursor = null;
     }
-    if (!flockCoordinationPageValue(raw)) return undefined;
+    if (!graphCoordinationPageValue(raw)) return undefined;
     if (scan && (scan.server !== raw.server_id || scan.boot !== raw.boot_id)) {
       scan = undefined;
       // The old cursor belongs to another daemon incarnation. Restart before consuming its history.
@@ -42,7 +42,7 @@ async function collect(socketPath: string): Promise<HerdrCoordinationPage | unde
     }
     scan ??= { server: raw.server_id, boot: raw.boot_id, cursor: null, receipts: new Map() };
     for (const receipt of raw.receipts) if (!scan.receipts.has(receipt.id)) scan.receipts.set(receipt.id, {
-      id: receipt.id, kind: receipt.kind, source: flockHerdrEndpointMetadata(receipt.source), target: flockHerdrEndpointMetadata(receipt.target), occurred_at: receipt.occurred_at,
+      id: receipt.id, kind: receipt.kind, source: graphHerdrEndpointMetadata(receipt.source), target: graphHerdrEndpointMetadata(receipt.target), occurred_at: receipt.occurred_at,
     });
     last = raw;
     if (raw.cursor === scan.cursor && raw.cursor !== null) return undefined;
@@ -51,7 +51,7 @@ async function collect(socketPath: string): Promise<HerdrCoordinationPage | unde
     if (raw.cursor === null) break;
   }
   if (!last || !scan) return undefined;
-  const result = { version: 1 as const, server_id: last.server_id, boot_id: last.boot_id, agents: last.agents.map(flockHerdrEndpointMetadata), receipts: [...scan.receipts.values()], cursor: last.cursor };
+  const result = { version: 1 as const, server_id: last.server_id, boot_id: last.boot_id, agents: last.agents.map(graphHerdrEndpointMetadata), receipts: [...scan.receipts.values()], cursor: last.cursor };
   scans.set(socketPath, scan);
   return result;
 }

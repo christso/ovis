@@ -1,5 +1,5 @@
 import { afterEach, expect, it, spyOn } from "bun:test";
-import type { HerdrCoordinationEndpoint, HerdrCoordinationPage, HerdrCoordinationReceipt } from "../shared/flock.ts";
+import type { HerdrCoordinationEndpoint, HerdrCoordinationPage, HerdrCoordinationReceipt } from "../shared/graph-registry.ts";
 import * as herdr from "./herdr/client.ts";
 import { herdrCoordinationSnapshot } from "./herdr-coordination.ts";
 

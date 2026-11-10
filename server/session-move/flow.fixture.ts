@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { Machine } from "../../shared/machines.ts";
 import type { SessionSnapshot } from "../../shared/protocol.ts";
 import type { MachineManager } from "../machines.ts";
-import { FlockStore } from "../flock.ts";
+import { GraphRegistryStore } from "../graph-registry.ts";
 import { jsonResponse } from "../http.ts";
 import { MoveCoordinator } from "./coordinator.ts";
 import { MoveNode, type MoveNodeRuntime, type NodeNative } from "./node.ts";
@@ -81,15 +81,15 @@ export async function moveFlowFixture(driver?: FlowDriver, options: { segmented?
   ];
   const endpoints = new Map([["owned-source", { url: sourceServer.url.origin, token: sourceToken }], ["owned-destination", { url: targetServer.url.origin, token: targetToken }]]);
   const manager = { list: machines, endpoint: (id: string) => endpoints.get(id) } as unknown as MachineManager;
-  const flock = new FlockStore(state); let registry = flock.change(0, { type: "create-work", name: "Owned work" }, machines());
-  registry = flock.change(registry.revision, { type: "adopt", name: "Owned logical session", work_id: registry.works[0]!.id, binding: { machine_id: "owned-source", herdr_lifetime: sourceLifetime, pane_id: "owned:p0", agent: "codex", native_session_id: FIXTURE_THREAD } }, machines());
-  let coordinator = new MoveCoordinator(state, flock, manager, async () => view(false), sourceNode);
-  return { root, source, target, home, targetHome, rollout, state, registry, flock, machines, get sourceNode() { return sourceNode; }, get destinationNode() { return destinationNode; }, get coordinator() { return coordinator; },
+  const graphRegistry = new GraphRegistryStore(state); let registry = graphRegistry.change(0, { type: "create-work", name: "Owned work" }, machines());
+  registry = graphRegistry.change(registry.revision, { type: "adopt", name: "Owned logical session", work_id: registry.works[0]!.id, binding: { machine_id: "owned-source", herdr_lifetime: sourceLifetime, pane_id: "owned:p0", agent: "codex", native_session_id: FIXTURE_THREAD } }, machines());
+  let coordinator = new MoveCoordinator(state, graphRegistry, manager, async () => view(false), sourceNode);
+  return { root, source, target, home, targetHome, rollout, state, registry, graphRegistry, machines, get sourceNode() { return sourceNode; }, get destinationNode() { return destinationNode; }, get coordinator() { return coordinator; },
     request: { session_id: registry.sessions[0]!.id, source_execution_id: registry.executions[0]!.id, destination_machine_id: "owned-destination", destination_checkout: target, untracked_files: ["selected.txt"] },
     async exit() { if (sourceExited) return; if (driver) await driver.exit(); else lock!.release(); sourceExited = true; },
     failChunk() { dropChunk = true; }, failLaunch() { dropLaunch = true; }, counts: () => ({ creates, launches }),
     restartNodes() { sourceNode.close(); destinationNode.close(); sourceNode = new MoveNode(join(root, "source-state"), runtime(false)); destinationNode = new MoveNode(join(root, "target-state"), runtime(true)); },
-    restart() { coordinator = new MoveCoordinator(state, flock, manager, async () => view(false), sourceNode); },
+    restart() { coordinator = new MoveCoordinator(state, graphRegistry, manager, async () => view(false), sourceNode); },
     async api(request: Request) { return handleSessionMoves(request, coordinator); },
     verifyWork() { return { committed: git(target, "show", "HEAD:work.txt"), staged: git(target, "show", ":work.txt"), working: readFileSync(join(target, "work.txt"), "utf8"), selected: readFileSync(join(target, "selected.txt"), "utf8"), status: git(target, "status", "--porcelain") }; },
     async close() { sourceNode.close(); destinationNode.close(); sourceServer.stop(true); targetServer.stop(true); lock?.release(); await driver?.close(); rmSync(root, { recursive: true, force: true }); },

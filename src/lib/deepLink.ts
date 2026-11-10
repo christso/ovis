@@ -22,7 +22,7 @@
  * pane the app picked itself only replace the entry. Settings keeps its own entries
  * (lib/settingsHistory.ts); the address of the one shown carries its page.
  */
-import type { FlockView } from "./flockView.ts";
+import type { GraphPage } from "./graphPage.ts";
 import type { SessionSnapshot } from "../../shared/protocol.ts";
 
 export type LinkView = "chat" | "terminal";
@@ -36,7 +36,7 @@ export interface AppLink {
   pane: string | null;
   view: LinkView | null;
   /** Full-page presentation, independent of the selected pane lens. Omitted for Workspace. */
-  page?: Exclude<FlockView, "workspace">;
+  page?: Exclude<GraphPage, "workspace">;
   /** the file open in the viewer over the pane, as the chat or the Files dialog gave its path */
   file?: string | null;
   settings: string | null;

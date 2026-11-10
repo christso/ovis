@@ -7,7 +7,7 @@ import { createServer } from "./index.ts";
 import { herdrRpc, paneRead, workspaceClose, workspaceCreate } from "./herdr/client.ts";
 import type { ConversationResponse, SessionSnapshot } from "../shared/protocol.ts";
 import type { Machine } from "../shared/machines.ts";
-import { flockBinding, flockInventory } from "../shared/flock-inventory.ts";
+import { graphBinding, graphRegistryInventory } from "../shared/graph-registry-inventory.ts";
 import rolloutHeaders from "./fixtures/codex-rollout-headers.json";
 
 // Real herdr panes running a stand-in `codex` process: which rollout the chat reads
@@ -467,12 +467,12 @@ it("takes the thread herdr has for a Codex pane as a hint: the shared daemon rep
     const raw = (await (await fetch(`${base}/api/session`)).json() as { snapshot: SessionSnapshot }).snapshot;
     const machine: Machine = { id: "local", name: "Owned fixture", kind: "local", state: "connected", enabled: true, error: null, snapshot: raw };
     expect(raw.panes.find((pane) => pane.pane_id === daemon)!.agent_session!.value).toBe(threads.resumed);
-    expect(flockBinding(machine, raw.panes.find((pane) => pane.pane_id === daemon)!)).toBeNull();
+    expect(graphBinding(machine, raw.panes.find((pane) => pane.pane_id === daemon)!)).toBeNull();
     const verified = (await (await fetch(`${base}/api/session?flock=1`)).json() as { snapshot: SessionSnapshot }).snapshot;
     const proven = { ...machine, snapshot: verified };
-    const own = flockBinding(proven, verified.panes.find((pane) => pane.pane_id === daemon)!)!;
+    const own = graphBinding(proven, verified.panes.find((pane) => pane.pane_id === daemon)!)!;
     expect(own.native_session_id).toBe(threads.other);
-    expect(flockBinding(proven, verified.panes.find((pane) => pane.pane_id === resumed)!)!.native_session_id).toBe(threads.resumed);
+    expect(graphBinding(proven, verified.panes.find((pane) => pane.pane_id === resumed)!)!.native_session_id).toBe(threads.resumed);
     const spoofed = { ...own, native_session_id: threads.resumed };
     const adopt = (binding: typeof own) => fetch(`${base}/api/flock`, { method: "POST", headers: { origin: base, "content-type": "application/json", "x-herdr-machine": "1" }, body: JSON.stringify({ revision: 0, command: { type: "adopt", name: "Owned daemon conversation", binding } }) });
     expect((await adopt(spoofed)).status).toBe(409);
@@ -481,13 +481,13 @@ it("takes the thread herdr has for a Codex pane as a hint: the shared daemon rep
     const registry = await adopted.json();
     expect(registry.executions[0].native_session_id).toBe(threads.other);
     const inventory = await (await fetch(`${base}/api/flock?sources=1`)).json();
-    expect(flockInventory(registry, inventory.sources).find((row) => row.execution)?.availability).toBe("live");
+    expect(graphRegistryInventory(registry, inventory.sources).find((row) => row.execution)?.availability).toBe("live");
     // with nothing on screen, the thread another pane was resumed on is not this pane's
     const silent = await pane("silent", codex);
     await reportThread(silent, threads.resumed);
     expect((await read(silent)).source).toBe("scrollback");
     const uncertain = (await (await fetch(`${base}/api/session?flock=1`)).json() as { snapshot: SessionSnapshot }).snapshot;
-    expect(flockBinding({ ...machine, snapshot: uncertain }, uncertain.panes.find((pane) => pane.pane_id === silent)!)).toBeNull();
+    expect(graphBinding({ ...machine, snapshot: uncertain }, uncertain.panes.find((pane) => pane.pane_id === silent)!)).toBeNull();
   } finally {
     remove();
   }

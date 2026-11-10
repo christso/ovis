@@ -9,7 +9,7 @@ import machinesFixture from "../site/demo/fixtures/machines.json";
 import type { Machine } from "../shared/machines.ts";
 import type { SessionMoveRecord, SessionMoveRequest } from "../shared/session-move.ts";
 import type { SessionMoveState } from "../src/lib/sessionMoves.ts";
-import { FlockStore, handleFlockRequest } from "../server/flock.ts";
+import { GraphRegistryStore, handleGraphRequest } from "../server/graph-registry.ts";
 import { buildSessionMoveFixture } from "./session-move-fixture-build.ts";
 import { chromePath } from "./chrome-path.ts";
 
@@ -39,7 +39,7 @@ const evidence = process.env["UI_EVIDENCE_DIR"];
 const mobileAudit = process.env["MOVE_MOBILE_AUDIT"] === "1";
 const baselineAudit = process.env["MOVE_MOBILE_BASELINE"] === "1";
 const recordVideo = !!evidence && process.env["MOVE_UI_VIDEO"] === "1";
-let store: FlockStore;
+let store: GraphRegistryStore;
 let moves: SessionMoveState[] = [];
 let sourceExited = false;
 let failHistory = true;
@@ -68,7 +68,7 @@ async function auditMobile(): Promise<void> {
   for (const theme of ["dark", "light"] as const) for (const viewport of scenarios) {
     const { width, height } = viewport, phone = width < 640, key = `${theme}-${width}x${height}`;
     if (process.env["MOVE_MOBILE_CASE"] && process.env["MOVE_MOBILE_CASE"] !== key) continue;
-    store = new FlockStore(join(root, key)); moves = []; target.snapshot = structuredClone(targetSnapshot);
+    store = new GraphRegistryStore(join(root, key)); moves = []; target.snapshot = structuredClone(targetSnapshot);
     sourceExited = false; failHistory = true; pendingPolls = 0; statusUnreadable = false; exitRefreshNeeded = false;
     const longName = `Owned mobile session ${"unbroken-logical-name".repeat(8)}`;
     store.change(0, { type: "adopt", name: longName, binding: { machine_id: source.id, herdr_lifetime: source.snapshot!.herdr_lifetime!, pane_id: chosen.pane_id, agent: "codex", native_session_id: chosen.agent_session!.value } }, machines);
@@ -232,7 +232,7 @@ try {
     const path = new URL(request.url).pathname;
     if (path === "/api/machines") return respond({ machines });
     if (path === "/api/session") return respond({ snapshot: source.snapshot });
-    if (path === "/api/flock") return handleFlockRequest(request, store, machines);
+    if (path === "/api/flock") return handleGraphRequest(request, store, machines);
     if (path === "/api/session-moves") {
       if (request.method === "GET") {
         if (pendingPolls > 0 && --pendingPolls === 0) {
@@ -301,7 +301,7 @@ try {
   browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
   if (mobileAudit) await auditMobile();
   for (const width of mobileAudit ? [] : [1280, 390]) {
-    store = new FlockStore(join(root, `state-${width}`)); moves = []; target.snapshot = structuredClone(targetSnapshot); sourceExited = false; failHistory = true; guards = []; launches = 0; runRequests = 0; generation = 0; statusUnreadable = false; pendingPolls = 0; exitRefreshNeeded = false; previewRevision = 0;
+    store = new GraphRegistryStore(join(root, `state-${width}`)); moves = []; target.snapshot = structuredClone(targetSnapshot); sourceExited = false; failHistory = true; guards = []; launches = 0; runRequests = 0; generation = 0; statusUnreadable = false; pendingPolls = 0; exitRefreshNeeded = false; previewRevision = 0;
     for (const pane of [chosen, other]) store.change(store.read().revision, { type: "adopt", name: pane.agent === "codex" ? "Fixture session" : "Unrelated fixture session", binding: { machine_id: source.id, herdr_lifetime: source.snapshot!.herdr_lifetime!, pane_id: pane.pane_id, agent: pane.agent!, native_session_id: pane.agent_session!.value } }, machines);
     const originalSession = structuredClone(store.read().sessions[0]!);
     const originalExecution = structuredClone(store.read().executions[0]!);

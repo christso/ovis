@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRight, X } from "lucide-react";
-import { sameFlockBinding, type FlockRow } from "../../shared/flock-inventory.ts";
+import { sameGraphBinding, type GraphRegistryRow } from "../../shared/graph-registry-inventory.ts";
 import type { Machine, PaneTarget } from "../../shared/machines.ts";
 import type { SessionMovePhase } from "../../shared/session-move.ts";
 import { ApiError } from "../lib/api.ts";
@@ -55,8 +55,8 @@ export function moveRefusal(code: string | null | undefined, t: Translate, phase
   }
 }
 interface Props {
-  row: FlockRow | null;
-  rows: readonly FlockRow[];
+  row: GraphRegistryRow | null;
+  rows: readonly GraphRegistryRow[];
   name: string;
   machines: readonly Machine[];
   state: SessionMoveState | null;
@@ -103,7 +103,7 @@ export function SessionMoveDialog({ row, rows, name, machines, state, statusErro
   const [showAll, setShowAll] = useState(false);
   const candidates = record ? (record.plan as typeof record.plan & { untracked_candidates?: string[] }).untracked_candidates ?? record.plan.files.filter((file) => file.kind === "untracked").map((file) => file.path) : [];
   const destinationReceipt = record?.destination;
-  const destinationReported = !!destinationReceipt && rows.some((item) => item.availability === "live" && item.binding && sameFlockBinding({ ...destinationReceipt, agent: "codex" }, item.binding));
+  const destinationReported = !!destinationReceipt && rows.some((item) => item.availability === "live" && item.binding && sameGraphBinding({ ...destinationReceipt, agent: "codex" }, item.binding));
   const destinations = machines.filter((machine) => machine.id !== sourceMachineId && machine.enabled && machine.state === "connected");
   const running = state?.running === true;
   const terminal = record?.phase === "complete" || record?.phase === "cancelled";

@@ -176,7 +176,6 @@ const BASE: Record<string, string> = {
   "No graph nodes match these filters.": "没有符合筛选条件的节点。",
   "Graph viewport": "关系图视口",
   "Fit graph": "适应关系图",
-  "Flock": "Flock",
   "Reset graph layout": "重置关系图布局",
   "Copy graph link": "复制关系图链接",
   "Graph details": "关系图详情",

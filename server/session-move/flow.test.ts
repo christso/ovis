@@ -16,7 +16,7 @@ it.skipIf(process.platform === "win32")("transfers scoped dirty work across two 
     expect(fixture.verifyWork()).toMatchObject({ committed: "committed\n", staged: "staged\n", working: "working\n", selected: "selected work\n" });
     expect(existsSync(join(fixture.target, "excluded.txt"))).toBe(false);
     expect(readFileSync(join(fixture.source, "excluded.txt"), "utf8")).toBe("source only\n");
-    const registry = fixture.flock.read();
+    const registry = fixture.graphRegistry.read();
     expect(registry.sessions[0]).toMatchObject({ id: fixture.registry.sessions[0]!.id, name: "Owned logical session", work_id: fixture.registry.works[0]!.id });
     expect(registry.executions).toHaveLength(2); expect(registry.sessions[0]!.current_execution_id).toBe(registry.executions[1]!.id);
     expect(fixture.counts()).toEqual({ creates: 1, launches: 1 });
@@ -28,7 +28,7 @@ for (const failure of ["chunk", "launch"] as const) it.skipIf(process.platform =
     const preview = await fixture.coordinator.moves.preview(fixture.request); await fixture.exit();
     if (failure === "chunk") fixture.failChunk(); else fixture.failLaunch();
     await expect(fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).rejects.toThrow();
-    expect(fixture.flock.read().sessions[0]!.current_execution_id).toBe(fixture.request.source_execution_id);
+    expect(fixture.graphRegistry.read().sessions[0]!.current_execution_id).toBe(fixture.request.source_execution_id);
     fixture.restart();
     expect((await fixture.coordinator.moves.run(preview.id, preview.plan.fingerprint)).phase).toBe("complete");
     expect(fixture.counts()).toEqual({ creates: 1, launches: 1 });

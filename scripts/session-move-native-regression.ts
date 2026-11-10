@@ -45,7 +45,7 @@ try {
   server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const url = new URL(request.url), path = url.pathname;
     if (path === "/api/machines") return jsonResponse({ machines: publicMachines() });
-    if (path === "/api/flock") return jsonResponse({ ...fixture.flock.read(), sources: publicMachines() });
+    if (path === "/api/flock") return jsonResponse({ ...fixture.graphRegistry.read(), sources: publicMachines() });
     if (path === "/api/session-moves") return fixture.api(request);
     if (path === "/fixture/exit" && request.method === "POST") { await fixture.exit(); phase = "Owned native client exited by EOF. Its actual writer lock can now be acquired. Refresh preview."; return jsonResponse({ exited: true }); }
     if (path === "/fixture/inspect" && request.method === "POST") {
@@ -96,7 +96,7 @@ try {
   await dialog.getByRole("button", { name: "Move session", exact: true }).click();
   await dialog.getByRole("button", { name: "Check destination", exact: true }).waitFor();
   await page.waitForFunction(() => [...document.querySelectorAll('[role="alert"]')].some((node) => node.textContent?.includes("could not continue")));
-  assert.equal(fixture.flock.read().sessions[0]!.current_execution_id, fixture.request.source_execution_id);
+  assert.equal(fixture.graphRegistry.read().sessions[0]!.current_execution_id, fixture.request.source_execution_id);
   if (evidence) {
     await page.screenshot({ path: join(evidence, "native-lost-ack.png") });
     // fixed wait: keep the already-asserted recoverable lost-acknowledgement state readable in the recording.
@@ -107,7 +107,7 @@ try {
   await page.locator("#native-inspect").click();
   await page.locator("#native-proof").filter({ hasText: "Owned conversation retained" }).waitFor();
   assert.deepEqual(fixture.counts(), { creates: 1, launches: 1 });
-  assert.equal(fixture.flock.read().executions.length, 2);
+  assert.equal(fixture.graphRegistry.read().executions.length, 2);
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLButtonElement>("button")].some((button) => button.textContent === "Open moved session" && !button.disabled));
   if (evidence) {
     await page.screenshot({ path: join(evidence, "native-complete-proof.png") });

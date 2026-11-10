@@ -38,7 +38,7 @@ import { closeLayoutPane, moveLayoutPane, resizeLayout, setLayoutSplitRatio, spl
 import { deviceLabel } from "../../src/lib/phone.ts";
 import { rollupStatus } from "../../src/lib/status.ts";
 import { movedTabOrder } from "../../src/lib/tabOrder.ts";
-import { agentSkillRows, CHATS, DEMO_AGENT_CATALOG, DEMO_FLOCK, DEMO_SESSION_MOVES, DEMO_PUSH, PROMPT, resumedSession, SESSION_HISTORY_AGENTS, sessionHistoryRows, SPECS, type DemoSpec } from "./fixtures.ts";
+import { agentSkillRows, CHATS, DEMO_AGENT_CATALOG, DEMO_GRAPH_REGISTRY, DEMO_SESSION_MOVES, DEMO_PUSH, PROMPT, resumedSession, SESSION_HISTORY_AGENTS, sessionHistoryRows, SPECS, type DemoSpec } from "./fixtures.ts";
 import { DemoHistory } from "./history.ts";
 import { screenAgent, screenCommand, screenFrame } from "./agentScreens.ts";
 import machinesFixture from "./fixtures/machines.json";
@@ -1403,7 +1403,7 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
     return error("demo_read_only", "Session transfers use configured PCs and are not run in the demo.", 400);
   }
   if (path === "/api/flock") {
-    if (method === "GET") return json({ ...DEMO_FLOCK, sources: machines }, 200, { "cache-control": "no-store" });
+    if (method === "GET") return json({ ...DEMO_GRAPH_REGISTRY, sources: machines }, 200, { "cache-control": "no-store" });
     return error("demo_read_only", "Logical associations are not saved in the demo. Use your own Ovis instance to associate sessions.", 400);
   }
   if (path === "/api/seen") return method === "POST" ? new Response(null, { status: 204 }) : json({ finishes: [] }, 200, { "cache-control": "no-store" });

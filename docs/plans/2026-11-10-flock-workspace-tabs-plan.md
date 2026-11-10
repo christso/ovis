@@ -1,5 +1,5 @@
 ---
-title: Flock Workspace Tabs - Plan
+title: Graph Workspace Tabs - Plan
 type: fix
 date: 2026-11-10
 artifact_contract: ce-unified-plan/v1
@@ -7,11 +7,11 @@ product_contract_source: ce-plan-bootstrap
 execution: code
 ---
 
-# Flock Workspace Tabs - Plan
+# Graph Workspace Tabs - Plan
 
 ## Goal Capsule
 
-**Objective:** People can recognize their workspace's tabs and worktrees in Flock without seeing several nodes for the same open work.
+**Objective:** People can recognize their workspace's tabs and worktrees in Graph without seeing several nodes for the same open work.
 **Means:** Project the native workspace/tab hierarchy into the graph (KTD1).
 **Authority:** The user's agreed tab-based design and worktree clarification govern product behavior; repository instructions govern implementation and checks.
 **Execution:** One PR containing this plan, implementation, documentation and regression coverage. The implementing session verifies and opens it; the maintainer merges.
@@ -23,7 +23,7 @@ execution: code
 
 ### Summary
 
-Flock represents open work through native tabs, including tabs inside the worktree workspaces nested under a workspace in the sidebar.
+Graph represents open work through native tabs, including tabs inside the worktree workspaces nested under a workspace in the sidebar.
 Repository, branch, checkout and agent/session facts appear in details and filters instead of additional nodes for that tab.
 
 ### Problem Frame
@@ -75,7 +75,7 @@ No manual relationship editor or new user setting is needed.
 - KTD2. **Share sidebar grouping semantics.** Use `worktreeGroups` from `src/lib/workspaceOrder.ts`, scoped to a machine's workspace order, for R4. Membership uses reported `repo_key` and the nearest preceding main-checkout workspace, with the helper's existing fallback; matching repository paths alone is insufficient.
 - KTD3. **Separate graph focus from rendered nodes.** Workspace focus options carry machine/workspace identity and membership independently of the node list, so R4 does not require drawing a repository or workspace container node.
 - KTD4. **Resolve receipts before projecting endpoints.** Map existing verified row/endpoint identities to the containing tab, aggregate parallel receipts without counting duplicate captures, and retain unrepresented endpoints under R5–R6. A same-tab relation must not produce a second node or inflate its connection degree.
-- KTD5. **Keep location and agent-occupant identity in tab IDs and action-time resolution.** Machine, workspace, daemon lifetime, native tab and exact pane/terminal membership remain the location boundary for R7. Agent panes additionally retain their reported native-session or exact Herdr endpoint identity, and open through `flockTarget`; identity metadata alone never proves ownership. Renames, ordering, status and optional proof refresh retain the same node; replaced occupants, terminals or pane membership invalidate the old target. Missing proof disables an agent tab's target rather than falling back to another shell pane in a mixed tab.
+- KTD5. **Keep location and agent-occupant identity in tab IDs and action-time resolution.** Machine, workspace, daemon lifetime, native tab and exact pane/terminal membership remain the location boundary for R7. Agent panes additionally retain their reported native-session or exact Herdr endpoint identity, and open through `graphRowTarget`; identity metadata alone never proves ownership. Renames, ordering, status and optional proof refresh retain the same node; replaced occupants, terminals or pane membership invalidate the old target. Missing proof disables an agent tab's target rather than falling back to another shell pane in a mixed tab.
 - KTD6. **Retain repository colors through metadata.** Adapt appearance and legend generation to node membership rather than relying on visible repository nodes for R3 and R8. Distinct machines and workspace/tab identities remain distinct even when names coincide.
 
 ### High-Level Technical Design
@@ -137,7 +137,7 @@ The existing Folio-inspired graph gestures remain appropriate; navigation follow
 **Goal:** Make the agreed design reviewable on desktop and phone.
 **Requirements:** R1–R8 and AE1–AE4.
 **Dependencies:** U1, U2.
-**Files:** `scripts/graph-app-demo-regression.ts`, existing graph/browser regression scripts affected by the node model, `DESIGN.md`, `docs/flock.md`, and a `changelog.d/` fragment.
+**Files:** `scripts/graph-app-demo-regression.ts`, existing graph/browser regression scripts affected by the node model, `DESIGN.md`, `docs/graph.md`, and a `changelog.d/` fragment.
 **Approach:** Update fixtures and assertions around visible tabs, nested worktrees, relationship aggregation and navigation; replace documentation describing metadata nodes with the final presentation model.
 **Test scenarios:**
 
@@ -152,7 +152,7 @@ The existing Folio-inspired graph gestures remain appropriate; navigation follow
 ## Verification Contract
 
 Run the focused graph unit files, then `bun run check fast` before the single final push.
-Run `scripts/graph-browser-regression.ts`, `scripts/graph-app-demo-regression.ts` and `scripts/flock-herdr-graph-regression.ts` in the self-hosted CI runner image as its own user, following `docs/development.md` and `AGENTS.md`.
+Run `scripts/graph-browser-regression.ts`, `scripts/graph-app-demo-regression.ts` and `scripts/graph-herdr-regression.ts` in the self-hosted CI runner image as its own user, following `docs/development.md` and `AGENTS.md`.
 Use an owned cache-backed `TMPDIR`, isolated test sessions, temporary state directories and `port: 0`; screenshots and recordings use fictional demo/test data.
 The PR Validation names exact commands, outcomes and skipped integration/native lanes; the PR includes this plan and cites the existing Ovis/Zed navigation reference.
 No release guard or bundle validation is newly required unless implementation expands into its governed paths.

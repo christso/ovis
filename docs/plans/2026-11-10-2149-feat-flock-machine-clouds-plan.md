@@ -1,5 +1,5 @@
 ---
-title: Flock Machine Clouds - Plan
+title: Graph Machine Clouds - Plan
 type: feat
 date: 2026-11-10
 artifact_contract: ce-unified-plan/v1
@@ -7,11 +7,11 @@ product_contract_source: ce-plan-bootstrap
 execution: code
 ---
 
-# Flock Machine Clouds - Plan
+# Graph Machine Clouds - Plan
 
 ## Goal Capsule
 
-**Objective:** People can see which machine each Flock tab belongs to while the communication graph moves.
+**Objective:** People can see which machine each Graph tab belongs to while the communication graph moves.
 **Means:** Add labelled, translucent machine clouds to the existing Group by machine view.
 **Authority:** The agreed cloud design governs behavior; repository instructions govern checks and delivery.
 **Execution:** One independent PR from `origin/christso/main`, containing this plan, implementation, documentation and tests. The implementing session opens the PR; the maintainer merges.
@@ -97,7 +97,7 @@ The plan is independent of the open communication-sizing PR and consumes the exi
 ### U2. Verify grouped graph behavior and document it
 
 - **Depends on:** U1.
-- **Files:** `scripts/graph-browser-regression.ts`, `scripts/graph-fixture.tsx` if an additional fixture action is needed, `DESIGN.md`, `docs/flock.md`, `changelog.d/flock-machine-clouds.md`.
+- **Files:** `scripts/graph-browser-regression.ts`, `scripts/graph-fixture.tsx` if an additional fixture action is needed, `DESIGN.md`, `docs/graph.md`, `changelog.d/flock-machine-clouds.md`.
 - **Approach:** Extend existing grouped-view and animated checks, preserving their original navigation, viewport and selection coverage.
 - **Test scenarios:** The toggle adds named clouds and removes them when off; machine filtering removes the other cloud; repository node colours stay unchanged; node drag changes the cloud path; background pan and node selection work through the cloud; clouds follow zoom with the graph; settled polling does not change paths; desktop and narrow phone layouts pass in light and dark themes.
 - **Patterns:** Follow the synthetic isolated fixture in `scripts/graph-browser-regression.ts` and integrated app fixtures in the other two graph scripts.
@@ -107,7 +107,7 @@ The plan is independent of the open communication-sizing PR and consumes the exi
 
 Run `bun test src/features/graph` for geometry and existing model/simulation behavior.
 Run `bun run check fast` on the final unchanged source before pushing.
-Run `scripts/graph-browser-regression.ts`, `scripts/graph-app-demo-regression.ts` and `scripts/flock-herdr-graph-regression.ts` in `local/ovis-ci-upstream-sync:20261109` as `runner`, with isolated synthetic state.
+Run `scripts/graph-browser-regression.ts`, `scripts/graph-app-demo-regression.ts` and `scripts/graph-herdr-regression.ts` in `local/ovis-ci-upstream-sync:20261109` as `runner`, with isolated synthetic state.
 All local tests use a task-specific `TMPDIR` beneath `~/.cache/ovis-tmp/`.
 Record exact checks and skips in the PR; full unrelated browser/integration and native Windows/macOS runs are outside local verification.
 

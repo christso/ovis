@@ -22,7 +22,7 @@ import { resolveAgent } from "./pane-context.ts";
 import { FOOTER } from "./codex-steering.ts";
 import { codexStartScreenUnused } from "./start-screen.ts";
 import { codexCoordinationObservations } from "./codex-relationships.ts";
-import type { FlockObservation } from "../shared/flock.ts";
+import type { GraphObservation } from "../shared/graph-registry.ts";
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue => value !== null && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {};
@@ -3327,7 +3327,7 @@ async function codexPaneSource(paneId: string, cwd: string, configured?: string,
 }
 
 /** Ownership and coordination use one proven rollout; a raw Herdr session hint never supplies either. */
-export async function codexPaneCoordination(paneId: string, cwd: string, configured?: string, panes?: HerdrPane[]): Promise<{ id: string; observations: FlockObservation[]; rolloutPath: string } | null> {
+export async function codexPaneCoordination(paneId: string, cwd: string, configured?: string, panes?: HerdrPane[]): Promise<{ id: string; observations: GraphObservation[]; rolloutPath: string } | null> {
   const source = await codexPaneSource(paneId, cwd, configured, panes);
   return source ? { id: source.id, observations: await codexCoordinationObservations(source.path, source.id), rolloutPath: source.path } : null;
 }

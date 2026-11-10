@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { useAddressBar } from "./useAddressBar.ts";
 
-test.each([false, true])("keeps offline Flock navigation in the page query (relay: %s)", async (relay) => {
+test.each([false, true])("keeps offline Graph navigation in the page query (relay: %s)", async (relay) => {
   const savedWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const savedDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
   let location = new URL(relay ? "https://app.example/s/fixture/#machine=remote&pane=private-pane" : "https://pc.example/?machine=remote&pane=private-pane");

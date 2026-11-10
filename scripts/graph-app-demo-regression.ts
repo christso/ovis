@@ -1,4 +1,4 @@
-/** Real Ovis App + real FlockStore/handler, using fictional roster/proofs/transport only. Not native or live-user dogfooding. */
+/** Real Ovis App + real GraphRegistryStore/handler, using fictional roster/proofs/transport only. Not native or live-user dogfooding. */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
@@ -8,12 +8,12 @@ import { join } from "node:path";
 import { chromium, type Browser } from "playwright-core";
 import fixture from "../site/demo/fixtures/machines.json";
 import type { Machine } from "../shared/machines.ts";
-import { flockBinding, flockInventory } from "../shared/flock-inventory.ts";
+import { graphBinding, graphRegistryInventory } from "../shared/graph-registry-inventory.ts";
 import { graphTabs } from "../src/features/graph/graphTabs.ts";
-import { FlockStore, handleFlockRequest } from "../server/flock.ts";
+import { GraphRegistryStore, handleGraphRequest } from "../server/graph-registry.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
-import { openFlock, openNativeAgent } from "./flock-navigation.ts";
+import { openGraph as openGraphFromSidebar, openNativeAgent } from "./graph-navigation.ts";
 
 const videoDir = process.env.GRAPH_VIDEO_DIR;
 const testedSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -55,7 +55,7 @@ original.snapshot!.workspaces.push(socialWorkspace);
 original.snapshot!.tabs.push({ ...chosenTab, workspace_id: socialWorkspace.workspace_id, tab_id: "social-tab", label: "1", number: 1 });
 original.snapshot!.panes.push({ ...idlePane, workspace_id: socialWorkspace.workspace_id, tab_id: "social-tab", pane_id: "social-pane", terminal_id: "social-terminal" });
 const pristine: Machine[] = [original, remote, offline, { ...offline, id: "graph-empty", name: "Graph awaiting inventory", state: "connecting", snapshot: null }];
-let machines = structuredClone(pristine), store = new FlockStore(join(root, "initial")), future = false, flockReads = 0;
+let machines = structuredClone(pristine), store = new GraphRegistryStore(join(root, "initial")), future = false, graphReads = 0;
 let browser: Browser | undefined, server: ReturnType<typeof Bun.serve> | undefined;
 const harness = (machines: Machine[]) => `<script>(() => {
   const raw = (values) => values.map(machine => ({...machine, snapshot:machine.snapshot ? {...machine.snapshot, flock_bindings:undefined, flock_observations:undefined} : null}));
@@ -89,7 +89,7 @@ try {
   const html = readFileSync(join(app, "index.html"), "utf8");
   server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const path = new URL(request.url).pathname;
-    if (path === "/api/flock") { flockReads++; return future ? Response.json({ version: 99 }) : handleFlockRequest(request, store, machines); }
+    if (path === "/api/flock") { graphReads++; return future ? Response.json({ version: 99 }) : handleGraphRequest(request, store, machines); }
     const prefix = "/herdr-web-ui/demo/app/";
     if (!path.startsWith(prefix)) return new Response("not found", { status: 404 });
     const file = decodeURIComponent(path.slice(prefix.length)) || "index.html";
@@ -100,11 +100,11 @@ try {
   browser = await chromium.launch({ executablePath: chromePath(), headless: true, slowMo: videoDir ? 350 : 0, args: ["--no-sandbox"] });
   for (const [width, height, theme] of runs) {
     const mobile = width <= 700;
-    machines = structuredClone(pristine); future = false; store = new FlockStore(join(root, `${width}-${height}-${theme}`));
+    machines = structuredClone(pristine); future = false; store = new GraphRegistryStore(join(root, `${width}-${height}-${theme}`));
     store.change(0, { type: "create-work", name: "Orchard work" }, machines);
-    store.change(1, { type: "adopt", binding: flockBinding(machines[0]!, machines[0]!.snapshot!.panes[0]!)!, work_id: store.read().works[0]!.id, name: "Prune orchard" }, machines);
+    store.change(1, { type: "adopt", binding: graphBinding(machines[0]!, machines[0]!.snapshot!.panes[0]!)!, work_id: store.read().works[0]!.id, name: "Prune orchard" }, machines);
     const session = store.read().sessions[0]!;
-    const tabId = (machineId: string, tab = chosen.tab_id) => graphTabs(machines, {}, undefined, flockInventory(store.read(), machines)).find((item) => item.machine.id === machineId && item.panes[0]?.tab_id === tab)!.node.id;
+    const tabId = (machineId: string, tab = chosen.tab_id) => graphTabs(machines, {}, undefined, graphRegistryInventory(store.read(), machines)).find((item) => item.machine.id === machineId && item.panes[0]?.tab_id === tab)!.node.id;
     const sourceId = tabId(original.id);
     let selectedTabId = sourceId;
     const context = await browser.newContext({ viewport: { width, height }, ...(videoDir ? { recordVideo: { dir: videoDir, size: { width, height } } } : {}), locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
@@ -113,7 +113,7 @@ try {
     const errors: string[] = [], assets: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message)); page.on("request", (request) => { if (request.url().includes("GraphPanel-")) assets.push(request.url()); });
     const base = `http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/`;
-    const openGraph = () => openFlock(page);
+    const openGraph = () => openGraphFromSidebar(page);
     const graphNode = (id: string) => page.locator(`[data-graph-node=${JSON.stringify(id)}]`);
     const node = () => graphNode(selectedTabId);
     const options = async (open: boolean) => {
@@ -132,12 +132,12 @@ try {
     try {
       await page.goto(`${base}?pane=${encodeURIComponent(chosen.pane_id)}&view=terminal`);
       if (mobile) await page.getByRole("button", { name: "Open workspace list", exact: true }).waitFor();
-      else await page.getByRole("button", { name: "Flock", exact: true }).waitFor();
+      else await page.getByRole("button", { name: "Graph", exact: true }).waitFor();
       assert.equal(assets.length, 0, "Graph dependencies do not load in Workspace");
       await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
       if (width >= 980) await page.getByRole("button", { name: "Browse files", exact: true }).waitFor();
       const beforePane = new URL(page.url()).searchParams.get("pane");
-      await openFlock(page);
+      await openGraphFromSidebar(page);
       await node().waitFor();
       await options(true);
       const focus = page.getByRole("combobox", { name: "Focus graph", exact: true });
@@ -155,41 +155,41 @@ try {
       await idleTab.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("pane") === idlePane.pane_id && !url.searchParams.has("page"));
-      await openFlock(page);
+      await openGraphFromSidebar(page);
       const social = page.locator('[data-graph-node][aria-label^="social ·"]');
       await social.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("pane") === "social-pane" && !url.searchParams.has("page"));
       await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
-      await openFlock(page); await node().waitFor();
-      assert.equal(await page.getByRole("group", { name: "Flock view", exact: true }).count(), 0, "Flock opens the graph directly without a mode selector");
-      assert.equal(await page.getByRole("banner").count(), 1, "Flock keeps one global app banner");
-      assert.equal(await page.locator(".app-header .context-title-text").innerText(), "Flock", "the global header names the active graph");
+      await openGraphFromSidebar(page); await node().waitFor();
+      assert.equal(await page.getByRole("group", { name: "Graph view", exact: true }).count(), 0, "Graph opens the graph directly without a mode selector");
+      assert.equal(await page.getByRole("banner").count(), 1, "Graph keeps one global app banner");
+      assert.equal(await page.locator(".app-header .context-title-text").innerText(), "Graph", "the global header names the active graph");
       await page.getByRole("button", { name: /^More(?: · alerts are off)?$/ }).click();
       assert.equal(await page.getByRole("menuitem", { name: "Find in terminal", exact: true }).count(), 0);
       assert.equal(await page.getByRole("menuitem", { name: "Browse files", exact: true }).count(), 0);
       await page.keyboard.press("Escape");
-      assert.equal(await page.getByRole("group", { name: "Pane view", exact: true }).count(), 0, "Flock hides pane-only controls");
+      assert.equal(await page.getByRole("group", { name: "Pane view", exact: true }).count(), 0, "Graph hides pane-only controls");
       assert.equal(await page.getByRole("button", { name: "Browse files", exact: true }).count(), 0, "pane-only Files control stays with the workspace");
       assert.equal(await page.locator(".agents-sidebar").count(), 1, "only the native Agents section exists");
       assert.equal(await page.getByRole("navigation", { name: "Views", exact: true }).count(), 0, "no duplicate global view navigation");
-      if (mobile) assert.ok(!(await page.locator("#workspace-drawer").getAttribute("class"))?.includes("is-open"), "Flock closes the phone drawer");
-      assert.ok(assets.length > 0, "opening Flock lazily loads Graph");
+      if (mobile) assert.ok(!(await page.locator("#workspace-drawer").getAttribute("class"))?.includes("is-open"), "Graph closes the phone drawer");
+      assert.ok(assets.length > 0, "opening Graph lazily loads Graph");
       await openGraph(); await node().waitFor(); assert.ok(assets.length > 0, "Graph is a lazy chunk");
       await openNativeAgent(page, "local", chosen.pane_id);
       await page.waitForURL((url) => !url.searchParams.has("page"));
       await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
-      if (mobile) assert.notEqual(await page.locator(".app-header .context-title-text").innerText(), "Flock", "native pane selection restores its title");
+      if (mobile) assert.notEqual(await page.locator(".app-header .context-title-text").innerText(), "Graph", "native pane selection restores its title");
       else assert.equal(await page.locator('.app-header [role="tab"][aria-selected="true"]').getAttribute("data-tab-id"), chosen.tab_id, "native pane selection restores its header tab");
       if (width >= 980) await page.getByRole("button", { name: "Browse files", exact: true }).waitFor();
-      await openFlock(page); await node().waitFor();
+      await openGraphFromSidebar(page); await node().waitFor();
       assert.equal(new URL(page.url()).searchParams.get("page"), "graph");
       if (mobile) await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
       await page.getByRole("region", { name: `PC ${original.name}`, exact: true }).locator(`.workspace-select[data-pane="${chosen.pane_id}"]`).click();
       await page.waitForURL((url) => !url.searchParams.has("page"));
-      await openFlock(page); await node().waitFor();
+      await openGraphFromSidebar(page); await node().waitFor();
       assert.equal(new URL(page.url()).searchParams.get("page"), "graph");
-      assert.equal(await page.getByRole("button", { name: "Flock", exact: true, includeHidden: true }).getAttribute("aria-current"), "page");
+      assert.equal(await page.getByRole("button", { name: "Graph", exact: true, includeHidden: true }).getAttribute("aria-current"), "page");
       assert.equal(new URL(page.url()).searchParams.get("pane"), beforePane);
       await page.getByText(/Inventory is incomplete for:.*Graph awaiting inventory/).waitFor();
       await inspect(selectedTabId);
@@ -259,7 +259,7 @@ try {
       machines[1]!.snapshot!.flock_bindings![0]!.native_session_id = nativeSourceId;
       machines[1]!.snapshot!.panes[0]!.agent_session!.value = nativeSourceId;
       machines[1]!.snapshot!.flock_observations = structuredClone(original.snapshot!.flock_observations);
-      store.change(store.read().revision, { type: "adopt", binding: flockBinding(machines[1]!, machines[1]!.snapshot!.panes[0]!)!, session_id: session.id }, machines);
+      store.change(store.read().revision, { type: "adopt", binding: graphBinding(machines[1]!, machines[1]!.snapshot!.panes[0]!)!, session_id: session.id }, machines);
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
       const remoteId = tabId(remote.id);
@@ -305,7 +305,7 @@ try {
       await linked.waitForURL((url) => !url.searchParams.has("page"));
       assert.equal(new URL(linked.url()).searchParams.get("pane"), chosen.pane_id, "legacy Agents links keep the pane target");
       assert.equal(await linked.locator(".agents-sidebar").count(), 1);
-      assert.equal(await linked.locator(".flock-agents").count(), 0);
+      assert.equal(await linked.locator(".graph-agents").count(), 0);
       await linked.close();
       await openGraph(); await inspect(sourceId);
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
@@ -351,18 +351,18 @@ try {
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0, "missing roster cannot retain a target");
       // Watch role may access neither the private registry nor the Graph chunk/metadata.
       await page.goto(`${base}?pane=${encodeURIComponent(chosen.pane_id)}&view=terminal`);
-      const reads = flockReads, watch = await context.newPage();
+      const reads = graphReads, watch = await context.newPage();
       const watchAssets: string[] = []; watch.on("request", (request) => { if (request.url().includes("GraphPanel-")) watchAssets.push(request.url()); });
       await watch.goto(`${base}?page=graph&demo_devices=watch&hold_auth=1`);
       await watch.waitForFunction(() => typeof (window as unknown as { graphFixture: { releaseAuth?: () => void } }).graphFixture?.releaseAuth === "function");
-      assert.equal(flockReads, reads, "unknown role does not fetch the private registry"); assert.deepEqual(watchAssets, [], "unknown role does not fetch Graph code");
+      assert.equal(graphReads, reads, "unknown role does not fetch the private registry"); assert.deepEqual(watchAssets, [], "unknown role does not fetch Graph code");
       await watch.evaluate(() => (window as unknown as { graphFixture: { releaseAuth(): void } }).graphFixture.releaseAuth());
       await watch.getByText("This device can only watch", { exact: true }).waitFor();
-      assert.equal(await watch.locator(".graph-view").count(), 0); assert.equal(flockReads, reads); assert.deepEqual(watchAssets, []);
-      assert.equal(await watch.getByRole("button", { name: "Flock", exact: true }).count(), 0, "watch role has no Flock entry");
+      assert.equal(await watch.locator(".graph-view").count(), 0); assert.equal(graphReads, reads); assert.deepEqual(watchAssets, []);
+      assert.equal(await watch.getByRole("button", { name: "Graph", exact: true }).count(), 0, "watch role has no Graph entry");
       await watch.close();
       stage = "empty inventory reload";
-      store = new FlockStore(join(root, `empty-${width}-${height}-${theme}`));
+      store = new GraphRegistryStore(join(root, `empty-${width}-${height}-${theme}`));
       await page.evaluate(() => localStorage.removeItem("ovis:graph:v1"));
       await page.goto(`${base}?page=graph`);
       await page.getByText("No graph nodes match these filters.", { exact: true }).waitFor();
@@ -383,7 +383,7 @@ try {
       const video = page.video(); await context.close();
       if (videoDir && video) {
         writeFileSync(join(videoDir, "source.diff"), sourceDiff);
-        writeFileSync(join(videoDir, "graph-recording.json"), JSON.stringify({ testedSha, diffSha256, sourceFingerprint, source: "real Ovis App + fictional roster/native ownership proofs + real isolated FlockStore/handler", video: await video.path(), width, height, theme }, null, 2));
+        writeFileSync(join(videoDir, "graph-recording.json"), JSON.stringify({ testedSha, diffSha256, sourceFingerprint, source: "real Ovis App + fictional roster/native ownership proofs + real isolated GraphRegistryStore/handler", video: await video.path(), width, height, theme }, null, 2));
       }
     }
   }

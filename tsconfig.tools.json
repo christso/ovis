@@ -45,7 +45,7 @@
     "scripts/graph-fixture.tsx",
     "scripts/graph-browser-regression.ts",
     "scripts/graph-app-demo-regression.ts",
-    "scripts/flock-herdr-graph-regression.ts",
+    "scripts/graph-herdr-regression.ts",
     "scripts/chat-virtual-fixture.tsx",
     "scripts/chat-virtual-browser-qa.ts",
     "scripts/conversation-search-fixture.tsx",

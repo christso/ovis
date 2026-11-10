@@ -1,17 +1,17 @@
-import type { FlockBinding, FlockCommand, FlockRegistry } from "./flock.ts";
-import { sameFlockBinding } from "./flock-inventory.ts";
-import { flockHerdrEndpointKey, flockHerdrEndpointValue, flockObservationKey, flockObservationValue } from "./flock-relationships.ts";
+import type { GraphBinding, GraphCommand, GraphRegistry } from "./graph-registry.ts";
+import { sameGraphBinding } from "./graph-registry-inventory.ts";
+import { graphHerdrEndpointKey, graphHerdrEndpointValue, graphObservationKey, graphObservationValue } from "./graph-relationships.ts";
 
 const isJsonObject = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 4096 && !value.includes("\u0000");
 const nullableText = (value: unknown): value is string | null => value === null || text(value);
 const named = (value: unknown): value is string => text(value) && value.trim() === value && value.length <= 200;
-function bindingValue(raw: unknown): raw is FlockBinding {
+function bindingValue(raw: unknown): raw is GraphBinding {
   return isJsonObject(raw) && [raw["machine_id"], raw["herdr_lifetime"], raw["pane_id"], raw["agent"], raw["native_session_id"]].every(text);
 }
 
 /** Validate the whole owned format before any write. Unknown versions and broken references stay untouched. */
-export function flockRegistryValue(raw: unknown): raw is FlockRegistry {
+export function graphRegistryValue(raw: unknown): raw is GraphRegistry {
   if (!isJsonObject(raw) || raw["version"] !== 1 || !Number.isSafeInteger(raw["revision"]) || (raw["revision"] as number) < 0) return false;
   const { works, sessions, checkouts, executions } = raw;
   if (![works, sessions, checkouts, executions].every(Array.isArray)) return false;
@@ -19,8 +19,8 @@ export function flockRegistryValue(raw: unknown): raw is FlockRegistry {
     if (!Array.isArray(raw.herdr_associations)) return false;
     const seen = new Set<string>();
     for (const association of raw.herdr_associations) {
-      if (!isJsonObject(association) || !flockHerdrEndpointValue(association.endpoint) || !text(association.machine_id) || !nullableText(association.native_session_id)) return false;
-      const key = JSON.stringify([flockHerdrEndpointKey(association.endpoint), association.machine_id, association.native_session_id]);
+      if (!isJsonObject(association) || !graphHerdrEndpointValue(association.endpoint) || !text(association.machine_id) || !nullableText(association.native_session_id)) return false;
+      const key = JSON.stringify([graphHerdrEndpointKey(association.endpoint), association.machine_id, association.native_session_id]);
       if (seen.has(key)) return false;
       seen.add(key);
     }
@@ -29,8 +29,8 @@ export function flockRegistryValue(raw: unknown): raw is FlockRegistry {
     if (!Array.isArray(raw.observations)) return false;
     const seen = new Set<string>();
     for (const event of raw.observations) {
-      if (!flockObservationValue(event) || !("machine_id" in event) || !text(event.machine_id)) return false;
-      const key = flockObservationKey({ ...event, machine_id: event.machine_id });
+      if (!graphObservationValue(event) || !("machine_id" in event) || !text(event.machine_id)) return false;
+      const key = graphObservationKey({ ...event, machine_id: event.machine_id });
       if (seen.has(key)) return false;
       seen.add(key);
     }
@@ -49,10 +49,10 @@ export function flockRegistryValue(raw: unknown): raw is FlockRegistry {
   return es.every((e, index) => bindingValue(e) && text(e["created_at"]) && Number.isFinite(Date.parse(e["created_at"]))
     && ss.some((s) => s["id"] === e["session_id"])
     && (e["checkout_id"] === null || cs.some((c) => c["id"] === e["checkout_id"] && c["machine_id"] === e.machine_id))
-    && !es.slice(0, index).some((other) => sameFlockBinding(other as unknown as FlockBinding, e)));
+    && !es.slice(0, index).some((other) => sameGraphBinding(other as unknown as GraphBinding, e)));
 }
 
-export function flockCommandValue(raw: unknown): raw is FlockCommand {
+export function graphCommandValue(raw: unknown): raw is GraphCommand {
   if (!isJsonObject(raw)) return false;
   switch (raw["type"]) {
     case "create-work": return named(raw["name"]);

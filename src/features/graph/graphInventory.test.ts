@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { FlockRegistry } from "../../../shared/flock.ts";
-import { flockBinding, flockInventory } from "../../../shared/flock-inventory.ts";
+import type { GraphRegistry } from "../../../shared/graph-registry.ts";
+import { graphBinding, graphRegistryInventory } from "../../../shared/graph-registry-inventory.ts";
 import type { Machine } from "../../../shared/machines.ts";
 import fixture from "../../../site/demo/fixtures/machines.json";
 import { graphInventory, graphTarget } from "./graphInventory.ts";
@@ -19,9 +19,9 @@ function source(names = ["obsidian", "phone", "social"]) {
   snapshot.tabs = names.map((name, index) => ({ ...tab, tab_id: `tab-${index}`, label: name, number: index + 1, agent_status: "idle" }));
   snapshot.panes = snapshot.tabs.map((tab, index) => ({ ...pane, pane_id: `pane-${index}`, tab_id: tab.tab_id, terminal_id: `terminal-${index}`, agent: null, agent_session: null, agent_status: "idle", cwd: "/fictional/infra" }));
   snapshot.agents = []; snapshot.flock_bindings = [];
-  const registry: FlockRegistry = { version: 1, revision: 0, works: [], sessions: [], executions: [], checkouts: [] };
+  const registry: GraphRegistry = { version: 1, revision: 0, works: [], sessions: [], executions: [], checkouts: [] };
   const machines = [machine];
-  const rows = () => flockInventory(registry, machines);
+  const rows = () => graphRegistryInventory(registry, machines);
   const graph = () => graphInventory(registry, rows(), machines);
   return { machine, snapshot, workspace, registry, machines, rows, graph };
 }
@@ -33,7 +33,7 @@ function agent(state: ReturnType<typeof source>, index: number, native = `000000
   return pane;
 }
 
-describe("workspace tabs in Flock", () => {
+describe("workspace tabs in Graph", () => {
   it("shows infra's three named tabs without repository, branch or execution duplicates", () => {
     const state = source(); agent(state, 0);
     const data = state.graph();
@@ -147,7 +147,7 @@ describe("workspace tabs in Flock", () => {
   });
   it("uses the logical session's current tab for receipts without duplicating its execution", () => {
     const state = source(["obsidian", "phone"]), pane = agent(state, 0), second = agent(state, 1);
-    const binding = flockBinding(state.machine, pane)!;
+    const binding = graphBinding(state.machine, pane)!;
     state.registry.sessions = [{ id: "logical", name: "Logical alias", work_id: null, current_execution_id: "current" }];
     state.registry.executions = [{ ...binding, id: "current", session_id: "logical", checkout_id: null, created_at: "2026-11-10T00:00:00Z" }];
     state.registry.observations = [{ id: "message", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: binding.native_session_id, target_native_session_id: second.agent_session!.value, occurred_at: "2026-11-10T00:00:00Z" }];
@@ -192,7 +192,7 @@ it("rejects an old private binding when the ordinary roster reports a replacemen
 });
 
 it("does not attach a historical session's recorded relationship using only a public native hint", () => {
-  const state = source(["obsidian"]), pane = agent(state, 0), binding = flockBinding(state.machine, pane)!;
+  const state = source(["obsidian"]), pane = agent(state, 0), binding = graphBinding(state.machine, pane)!;
   state.registry.sessions = [{ id: "historical", name: "Earlier conversation", work_id: null, current_execution_id: "earlier" }];
   state.registry.executions = [{ ...binding, id: "earlier", session_id: "historical", checkout_id: null, created_at: "2026-11-10T00:00:00Z" }];
   state.registry.observations = [{ id: "earlier-message", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: binding.native_session_id, target_native_session_id: "00000000-0000-4000-8000-000000000009", occurred_at: "2026-11-10T00:00:00Z" }];
