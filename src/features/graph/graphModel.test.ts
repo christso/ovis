@@ -5,21 +5,21 @@ import { DEFAULT_GRAPH_STATE, graphLocation, readGraphLocation, sanitizeGraphSta
 
 const fixture: GraphData = {
   nodes: [
-    { id: "repo", kind: "repository", label: "Orchard" },
-    { id: "checkout", kind: "checkout", label: "Garden", machineId: "north" },
-    { id: "session", kind: "session", label: "Prune branches", status: "working", machineId: "north", freshness: "live" },
-    { id: "execution", kind: "execution", label: "Prune branches", status: "working", machineId: "north", freshness: "live" },
-    { id: "sibling", kind: "session", label: "Other task" },
-    { id: "sibling-execution", kind: "execution", label: "Other task" },
-    { id: "done", kind: "session", label: "Harvest", status: "done", freshness: "stale" },
-    { id: "unrelated", kind: "session", label: "Garden", freshness: "disconnected" },
+    { id: "repo", kind: "workspace", label: "Orchard" },
+    { id: "checkout", kind: "worktree", label: "Garden", machineId: "north" },
+    { id: "session", kind: "tab", label: "Prune branches", status: "working", machineId: "north", freshness: "live" },
+    { id: "execution", kind: "tab", label: "Review branches", status: "working", machineId: "north", freshness: "live" },
+    { id: "sibling", kind: "tab", label: "Other task" },
+    { id: "sibling-execution", kind: "tab", label: "Other task" },
+    { id: "done", kind: "tab", label: "Harvest", status: "done", freshness: "stale" },
+    { id: "unrelated", kind: "tab", label: "Garden", freshness: "disconnected" },
   ],
   edges: [
-    { id: "a", source: "execution", target: "checkout", kind: "execution-in-checkout", evidence: "reported checkout" },
-    { id: "b", source: "checkout", target: "repo", kind: "checkout-in-repository", evidence: "reported repository" },
-    { id: "c", source: "execution", target: "session", kind: "session-execution", evidence: "recorded session" },
-    { id: "d", source: "sibling-execution", target: "sibling", kind: "session-execution", evidence: "recorded session" },
-    { id: "e", source: "sibling-execution", target: "checkout", kind: "execution-in-checkout", evidence: "recorded checkout" },
+    { id: "a", source: "execution", target: "checkout", kind: "tab-in-worktree", evidence: "reported checkout" },
+    { id: "b", source: "checkout", target: "repo", kind: "worktree-in-workspace", evidence: "reported repository" },
+    { id: "c", source: "session", target: "checkout", kind: "tab-in-worktree", evidence: "recorded tab" },
+    { id: "d", source: "sibling", target: "repo", kind: "tab-in-workspace", evidence: "recorded tab" },
+    { id: "e", source: "sibling-execution", target: "checkout", kind: "tab-in-worktree", evidence: "recorded checkout" },
     { id: "dangling", source: "missing", target: "repo", kind: "delegation", evidence: "recorded parent" },
     { id: "unsupported", source: "unrelated", target: "repo", kind: "delegation", evidence: "" },
   ],
@@ -42,14 +42,14 @@ describe("Graph projection", () => {
     expect(view.nodes.some((node) => node.id === "unrelated")).toBe(true);
     expect(view.nodes.some((node) => node.id === "done")).toBe(false);
   });
-  it("keeps repository context for a matching session and focuses using established edges", () => {
+  it("keeps workspace context for a matching tab and focuses using established edges", () => {
     const view = projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, search: "prune", machine: "north" });
-    expect(view.nodes.map((node) => node.id)).toEqual(["repo", "checkout", "session", "execution"]);
+    expect(view.nodes.map((node) => node.id)).toEqual(["repo", "checkout", "session"]);
     expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, focus: "repo" }).nodes.map((node) => node.id)).toEqual(["repo", "checkout", "session", "execution", "sibling", "sibling-execution"]);
     expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, focus: "unrelated" }).nodes.map((node) => node.id)).toEqual(["unrelated"]);
   });
-  it("session focus includes recorded execution/checkout/repository but excludes siblings", () => {
-    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, focus: "session" }).nodes.map((node) => node.id)).toEqual(["repo", "checkout", "session", "execution"]);
+  it("tab focus includes its worktree and workspace but excludes sibling tabs", () => {
+    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, focus: "session" }).nodes.map((node) => node.id)).toEqual(["repo", "checkout", "session"]);
   });
   it("treats unknown focus as unavailable instead of silently showing another target", () => {
     const view = projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, focus: "gone" });
@@ -60,7 +60,7 @@ describe("Graph projection", () => {
     const positions = reconcilePositions(fixture.nodes, {});
     const changed = fixture.nodes.map((node) => node.id === "session" ? { ...node, status: "blocked" as const, machineId: "south" } : node);
     changed.reverse();
-    changed.push({ id: "new", kind: "session", label: "New growth" });
+    changed.push({ id: "new", kind: "tab", label: "New growth" });
     const next = reconcilePositions(changed, positions);
     expect(next.session).toEqual(positions.session);
     expect(reconcilePositions(changed.slice(0, 1), next).session).toEqual(positions.session);
@@ -77,8 +77,8 @@ describe("Graph location and viewport", () => {
   });
   it("bounds stored values and ignores malformed positions and unknown versions", () => {
     expect(sanitizeGraphState({ version: 99, selected: "future" })).toBeNull();
-    expect(sanitizeGraphState({ version: 1, layout: "future" })).toBeNull();
-    const state = sanitizeGraphState({ version: 1, viewport: { x: 0, y: 0, k: 999 }, positions: { bad: { x: Infinity, y: 2 }, fine: { x: 5, y: 7 } } })!;
+    expect(sanitizeGraphState({ version: 2, layout: "future" })).toBeNull();
+    const state = sanitizeGraphState({ version: 2, viewport: { x: 0, y: 0, k: 999 }, positions: { bad: { x: Infinity, y: 2 }, fine: { x: 5, y: 7 } } })!;
     expect(state.viewport.k).toBe(4);
     expect(state.positions).toEqual({ fine: { x: 5, y: 7 } });
   });

@@ -1,22 +1,27 @@
 # Graph and its work registry
 
-Graph opens a force-directed graph of native tabs, including tabs inside the worktree workspaces
-nested beneath a workspace in the sidebar. Each tab appears once, even with several split panes
-or agents. Repository, branch, checkout and session information appears in its details.
+Graph opens a force-directed graph of native workspaces, linked worktrees and tabs. Regular tabs
+connect directly to their workspace; linked worktrees use workspace → worktree → tab, following
+the sidebar's native grouping. Each tab appears once, even with several split panes or agents.
+Plain folders need no Git repository to have a workspace hub. Empty workspaces remain visible;
+a worktree whose main workspace is not open has its own independent hub. Repository, branch,
+checkout and session information appears in the inspector.
 Ovis's native Agents section remains the single agent list and keeps its existing filters. The
 old Table view and association/work-renaming/Move controls are retired from navigation; the
 registry, existing associations and migration APIs remain intact. Legacy `page=table` links open
 Graph. Open in Workspace resolves the selected node's verified current target without focusing
 Herdr or sending input.
 
-Repository colours follow reported physical membership. Native repository names keep colours
-consistent across machines; unknown membership stays neutral. Names use existing native tab
-labels and launcher metadata without reading transcripts or inferring session identity. Dragging
-moves linked neighbours; the simulation stops when settled. Fit/Reset are intentional framing
-actions, and polling does not move an idle graph.
+Colours identify the three node types: workspace, worktree and tab. The legend sits below the
+canvas and can be collapsed; that preference survives reloads. Short, strong hierarchy links
+keep each workspace's worktrees and tabs together, while weaker communication links connect
+clusters. Node radius counts only distinct visible communication neighbours. Names use native
+workspace/tab labels and launcher metadata without reading transcripts or inferring session
+identity. Dragging moves linked neighbours; the simulation stops when settled. Fit/Reset are
+intentional framing actions, and polling does not move an idle graph.
 
-**Group by machine** also draws a translucent, named cloud behind each machine's visible tabs.
-The clouds follow the tabs as they move, while node colours continue to identify repositories.
+**Group by machine** also draws a translucent, named cloud behind each machine's visible nodes.
+The clouds follow the nodes as they move, while node colours identify their types.
 Filtering updates each cloud and removes empty ones; Fit includes the cloud boundaries. Clouds
 do not block selection, dragging or panning. Dragging tabs across a cluster can overlap clouds
 without changing which machine a tab belongs to.
@@ -40,8 +45,18 @@ do not follow a logical session to a different tab after a move.
 Workspace focus follows the sidebar’s native worktree grouping, including its nearest preceding
 main-checkout workspace rule. A workspace filter includes its horizontal tabs and the tabs in its
 nested worktrees. A worktree’s sole numbered tab uses the sidebar workspace name; several or
-explicitly named worktree tabs include workspace context. There are no extra workspace, branch or
-checkout container nodes. Repository colors and the legend come from metadata.
+explicitly named worktree tabs include workspace context. Hub opening chooses only a verified
+current tab belonging to that hub; it never substitutes a tab from a child worktree. Empty hubs
+have no terminal action. Hub identity includes its machine, daemon, workspace and pane/terminal set,
+so an old selection cannot open a replacement terminal.
+
+Graph layout and legend preferences live only in the browser's `ovis:graph:v2` localStorage key,
+owned by `graphState.ts` and `useGraphState.ts`. On the first v2 read, supported v1 selection,
+filters and machine grouping are retained, while coordinates and viewport are reset once to
+form the new hierarchy. The original `ovis:graph:v1` bytes remain unchanged: older tabs and
+rollback releases keep reading/writing v1, and current tabs write only v2. An existing unknown
+version, layout or malformed v2 value is never overwritten. Saved v2 coordinates and viewport
+continue to win on subsequent reloads. These preferences do not change any HTTP/WS contract.
 
 Graph was previously named Flock. Its modules, types and navigation now use Graph. The stored
 `flock.json` filename, `/api/flock` route, `flock=1` inventory query, `flock_*` snapshot fields and

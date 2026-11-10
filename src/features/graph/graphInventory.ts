@@ -3,7 +3,8 @@ import { graphBinding, graphRowTarget, sameGraphBinding, type GraphRegistryRow }
 import type { Machine, PaneTarget } from "../../../shared/machines.ts";
 import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
 import { graphRelationships, graphRowRelationshipIds, type GraphRelationship } from "../../../shared/graph-relationships.ts";
-import { graphTabs, graphWorkspaceGroups } from "./graphTabs.ts";
+import { graphHierarchy } from "./graphHierarchy.ts";
+import { graphTabs } from "./graphTabs.ts";
 import type { GraphActivity, GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
 function appendReceipts(record: Pick<GraphEdge, "eventCount" | "lastObservedAt" | "sources">, relation: GraphRelationship): void {
@@ -48,7 +49,9 @@ export function graphInventory(registry: GraphRegistry | null, rows: readonly Gr
     return represented?.size === 1 ? [...represented][0]! : null;
   };
   const activity = new Map<string, Map<string, GraphActivity>>();
-  const edges = new Map<string, GraphEdge>();
+  const hierarchy = graphHierarchy(machines, tabs);
+  for (const hub of hierarchy.nodes) nodes.set(hub.id, hub);
+  const edges = new Map<string, GraphEdge>(hierarchy.edges.map((edge) => [edge.id, edge]));
   for (const relation of graphRelationships(registry)) {
     const source = resolve(relation.source.id), target = resolve(relation.target.id);
     if (!source || !target) {
@@ -75,14 +78,23 @@ export function graphInventory(registry: GraphRegistry | null, rows: readonly Gr
       eventCount: relation.count, lastObservedAt: relation.last_at, sources: relation.sources });
   }
   for (const [tabId, records] of activity) nodes.get(tabId)!.activity = [...records.values()];
-  return { nodes: [...nodes.values()], edges: [...edges.values()], groups: graphWorkspaceGroups(machines, tabs) };
+  return { nodes: [...nodes.values()], edges: [...edges.values()], groups: hierarchy.groups };
 }
 
-/** Rebuild the exact tab/occupant identity at action time; no historical node can open its replacement. */
+/** Opening a hub resolves only its own current tabs; it never follows a moved session. */
 export function graphTarget(registry: GraphRegistry | null, rows: readonly GraphRegistryRow[], id: string, machines: readonly Machine[] = []): PaneTarget | null {
   if (!registry) return null;
-  const tab = graphTabs(machines, {}, defaultTranslate, rows).find((tab) => tab.node.id === id);
-  if (!tab || tab.node.freshness !== "live") return null;
+  const tabs = graphTabs(machines, {}, defaultTranslate, rows);
+  const tab = tabs.find((tab) => tab.node.id === id);
+  if (tab) return tabTarget(tab, rows);
+  const hub = graphHierarchy(machines, tabs).hubs.find((hub) => hub.node.id === id);
+  if (!hub || hub.node.freshness !== "live") return null;
+  for (const member of hub.tabs) { const target = tabTarget(member, rows); if (target) return target; }
+  return null;
+}
+
+function tabTarget(tab: Tab, rows: readonly GraphRegistryRow[]): PaneTarget | null {
+  if (tab.node.freshness !== "live") return null;
   const agent = tab.panes.find((pane) => pane.agent);
   if (!agent) return { machine_id: tab.machine.id, pane_id: tab.panes[0]!.pane_id };
   const candidates = rows.filter((row) => row.machine_id === tab.machine.id && row.pane?.pane_id === agent.pane_id && row.pane.terminal_id === agent.terminal_id && rowTab(row, [tab]) === tab);

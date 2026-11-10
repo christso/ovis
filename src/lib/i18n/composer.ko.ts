@@ -146,7 +146,6 @@ export const COMPOSER_KO: Record<string, string> = {
   "Dismiss notice": "알림 닫기",
   "Notices": "알림 메시지",
   "Working folder": "작업 폴더",
-  "Worktree": "워크트리",
   "Insert text without Enter": "Enter 없이 텍스트 넣기",
   "Insert text": "넣기",
   "Insert takes one line. Send several lines, or insert them one at a time.": "넣기는\u00a0한\u00a0줄만\u00a0됩니다. 여러\u00a0줄은\u00a0보내거나 한\u00a0줄씩\u00a0넣으세요.",

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { build as viteBuild } from "vite";
 import { chromePath } from "./chrome-path.ts";
+import { SUPPORTED_ENTRIES } from "../src/lib/themes.generated.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ovis-graph-")));
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
@@ -37,6 +38,22 @@ try {
       await page.goto(`http://127.0.0.1:${server.port}`);
       const node = page.locator('[data-graph-node="session"]');
       await node.waitFor();
+      stage = "bottom legend";
+      const legendToggle = page.getByRole("button", { name: "Legend", exact: true });
+      assert.equal(await legendToggle.getAttribute("aria-expanded"), "true");
+      const legendBox = (await page.locator(".graph-legend").boundingBox())!;
+      const canvasBox = (await page.locator(".graph-surface").boundingBox())!;
+      assert.ok(legendBox.y >= canvasBox.y + canvasBox.height - 1, "legend sits below the graph canvas");
+      const stageBox = (await page.locator(".graph-stage").boundingBox())!;
+      assert.ok(legendBox.y + legendBox.height <= stageBox.y + stageBox.height + 1, "the bottom legend is not clipped");
+      const legendViewport = await page.locator(".graph-surface > g").getAttribute("transform");
+      await legendToggle.click();
+      assert.equal(await page.locator(".graph-kind-legend").isVisible(), false);
+      await page.reload(); await node.waitFor();
+      assert.equal(await legendToggle.getAttribute("aria-expanded"), "false", "collapsed legend survives reload");
+      assert.equal(await page.locator(".graph-surface > g").getAttribute("transform"), legendViewport, "legend disclosure preserves the viewport");
+      await legendToggle.focus(); await page.keyboard.press("Enter");
+      assert.equal(await legendToggle.getAttribute("aria-expanded"), "true", "keyboard restores the legend");
       assert.ok(await page.locator(".graph-node-label").evaluateAll((labels) => labels.length > 0 && labels.every((label) => { const matrix = (label as SVGTextElement).getScreenCTM()!; return parseFloat(getComputedStyle(label).fontSize) * Math.hypot(matrix.a, matrix.b) >= 11.99; })), "visible labels keep a readable screen size at every viewport scale");
       const reset = page.getByRole("button", { name: "Reset graph layout", exact: true });
       assert.equal(await reset.innerText(), "Reset", "layout reset has a visible text label");
@@ -81,22 +98,22 @@ try {
       stage = "selection neighbourhood";
       const opacity = (id: string) => page.locator(`[data-graph-node="${id}"]`).evaluate((element) => Number(getComputedStyle(element).opacity));
       assert.equal(await opacity("session"), 1, "selected node remains visible");
-      assert.equal(await opacity("execution"), 1, "direct neighbour remains visible");
-      assert.ok(await opacity("checkout") < 0.5, "selection dims a second-degree node instead of highlighting the whole component");
+      assert.equal(await opacity("checkout"), 1, "direct neighbour remains visible");
+      assert.ok(await opacity("repo") < 0.5, "selection dims a second-degree node instead of highlighting the whole component");
       assert.ok(await opacity("offline") < 0.5, "selection dims unrelated nodes");
-      assert.equal(await page.locator('.graph-edge').filter({ hasText: "Recorded session: prune" }).evaluate((element) => Number(getComputedStyle(element).opacity)), 1, "selected node's incident link remains visible");
+      assert.equal(await page.locator('.graph-edge').filter({ hasText: "Recorded tab: prune" }).evaluate((element) => Number(getComputedStyle(element).opacity)), 1, "selected node's incident link remains visible");
       assert.ok(await page.locator('.graph-edge').filter({ hasText: "Recorded repository: orchard" }).evaluate((element) => Number(getComputedStyle(element).opacity)) < 0.5, "unrelated links are dimmed");
       assert.deepEqual(await graphSurface.evaluate((svg) => ({ viewport: svg.querySelector(":scope > g")?.getAttribute("transform"), nodes: [...svg.querySelectorAll("[data-graph-node]")].map((item) => [item.getAttribute("data-graph-node"), item.getAttribute("transform")]) })), layoutBeforeSelection, "highlighting keeps nodes and viewport in place");
       if (!mobile) {
         await page.locator('[data-graph-node="checkout"]').hover();
         assert.equal(await opacity("repo"), 1, "mouse hover previews direct neighbours");
-        assert.ok(await opacity("session") < 0.5, "hover does not expand through indirect relationships");
+        assert.ok(await opacity("offline") < 0.5, "hover does not expand through indirect relationships");
         assert.equal(await node.getAttribute("aria-pressed"), "true", "hover does not replace persistent selection");
         await node.focus(); await page.keyboard.press("Enter");
-        assert.equal(await opacity("execution"), 1, "keyboard activation takes precedence over a stationary mouse preview");
-        assert.ok(await opacity("checkout") < 0.5);
+        assert.equal(await opacity("checkout"), 1, "keyboard activation takes precedence over a stationary mouse preview");
+        assert.ok(await opacity("execution") < 0.5);
         await page.getByLabel("Search graph", { exact: true }).hover();
-        assert.equal(await opacity("execution"), 1, "leaving the hovered node restores selection highlighting");
+        assert.equal(await opacity("checkout"), 1, "leaving the hovered node restores selection highlighting");
         assert.ok(await opacity("repo") < 0.5);
       }
       await node.focus(); await page.keyboard.press("Escape");
@@ -200,7 +217,7 @@ try {
       const cloudBounds = (await northCloud.locator("path").boundingBox())!, surfaceBounds = (await surface.boundingBox())!;
       assert.ok(cloudBounds.x >= surfaceBounds.x && cloudBounds.y >= surfaceBounds.y && cloudBounds.x + cloudBounds.width <= surfaceBounds.x + surfaceBounds.width && cloudBounds.y + cloudBounds.height <= surfaceBounds.y + surfaceBounds.height, "Fit frames the cloud boundary");
       assert.equal(await northCloud.locator("path").evaluate((path) => getComputedStyle(path).pointerEvents), "none");
-      assert.equal(await node.locator(".graph-node-disc").evaluate((disc) => getComputedStyle(disc).fill), nodeColour, "cloud colours preserve repository node colours");
+      assert.equal(await node.locator(".graph-node-disc").evaluate((disc) => getComputedStyle(disc).fill), nodeColour, "cloud colours preserve node type colours");
       assert.ok(await northCloud.evaluate((cloud) => cloud.compareDocumentPosition(document.querySelector(".graph-edge")!) & Node.DOCUMENT_POSITION_FOLLOWING), "clouds paint behind links and nodes");
       assert.ok(await page.evaluate(() => {
         const boxes = [...document.querySelectorAll(".graph-node-label")].map((label) => label.getBoundingClientRect());
@@ -246,10 +263,10 @@ try {
       await options(true);
       await page.getByLabel("Focus graph", { exact: true }).selectOption("");
       await page.locator('[data-graph-node="session"]').waitFor();
-      await page.evaluate(() => localStorage.removeItem("ovis:graph:v1"));
+      await page.evaluate(() => localStorage.removeItem("ovis:graph:v2"));
       stage = "empty inventory reload";
       await page.goto(`http://127.0.0.1:${server.port}?empty=1`);
-      await page.waitForFunction(() => JSON.parse(localStorage.getItem("ovis:graph:v1") ?? "null")?.version === 1);
+      await page.waitForFunction(() => JSON.parse(localStorage.getItem("ovis:graph:v2") ?? "null")?.version === 2);
       await page.reload();
       await page.getByRole("button", { name: "Load inventory", exact: true }).click();
       await node.waitFor();
@@ -257,9 +274,9 @@ try {
       await page.evaluate((url) => history.replaceState(history.state, "", url), loaded.href);
       await page.waitForFunction(() => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== "translate(160 100) scale(1)");
       assert.ok((await node.boundingBox())!.x < width!, "an empty persisted default frame is framed when inventory arrives");
-      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
       stage = "custom saved viewport";
-      await page.evaluate((saved) => localStorage.setItem("ovis:graph:v1", JSON.stringify({ ...saved, positions: {}, viewport: { x: 61, y: 83, k: 0.63 } })), saved);
+      await page.evaluate((saved) => localStorage.setItem("ovis:graph:v2", JSON.stringify({ ...saved, positions: {}, viewport: { x: 61, y: 83, k: 0.63 } })), saved);
       await page.reload(); await node.waitFor();
       assert.equal(await page.locator(".graph-surface > g").getAttribute("transform"), "translate(61 83) scale(0.63)", "even a saved viewport without positions is not silently reset");
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
@@ -275,7 +292,7 @@ try {
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
       const resetDefaults = await page.locator("[data-graph-node]").evaluateAll((nodes) => Object.fromEntries(nodes.map((node) => [node.getAttribute("data-graph-node"), node.getAttribute("transform")])));
       await node.focus(); await page.keyboard.press("Enter");
-      const beforeReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+      const beforeReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
       const dragBox = (await node.locator(".graph-node-disc").boundingBox())!;
       const start = { x: dragBox.x + dragBox.width / 2, y: dragBox.y + dragBox.height / 2 };
       if (mobile) {
@@ -294,12 +311,12 @@ try {
       await page.waitForFunction((defaults) => [...document.querySelectorAll("[data-graph-node]")].every((node) => node.getAttribute("transform") === defaults[node.getAttribute("data-graph-node")!]), resetDefaults);
       await page.waitForFunction((frame) => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== frame, draggedFrame);
       assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), draggedFrame, "reset refits the graph");
-      const afterReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+      const afterReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
       assert.equal(afterReset.selected, beforeReset.selected, "reset preserves selection");
       assert.deepEqual(afterReset.filters, beforeReset.filters, "reset preserves filters");
       assert.equal(afterReset.groupMachine, true, "reset preserves grouping");
       await page.reload(); await node.waitFor();
-      assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!).positions), afterReset.positions, "reset positions survive reload");
+      assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!).positions), afterReset.positions, "reset positions survive reload");
       assert.equal(await node.getAttribute("transform"), resetDefaults.session);
       if (mobile) {
         assert.ok((await reset.boundingBox())!.height >= 44, "reset meets phone touch size");
@@ -317,28 +334,43 @@ try {
         assert.ok(Math.abs(scaleAfter / scaleBefore - 2) < 0.05, `pinch follows finger distance (${scaleAfter / scaleBefore})`);
         assert.equal(await node.getAttribute("aria-pressed"), "true", "pinch cancellation does not clear selection");
         const afterPinch = await surface.locator(":scope > g").getAttribute("transform");
-        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 3, x: box.x + 20, y: box.y + 20 }] });
-        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ id: 3, x: box.x + 55, y: box.y + 45 }] });
+        const panStart = await surface.evaluate((svg) => {
+          const box = svg.getBoundingClientRect();
+          const discs = [...svg.querySelectorAll(".graph-node-disc")].map((disc) => disc.getBoundingClientRect());
+          let best: { x: number; y: number; clearance: number } | null = null;
+          for (let y = Math.max(20, box.y + 20); y < Math.min(innerHeight, box.bottom) - 45; y += 20) {
+            for (let x = box.x + 20; x < box.right - 55; x += 20) {
+              const target = document.elementFromPoint(x, y);
+              if (target !== svg && !target?.closest(".graph-edge, .graph-machine-cloud")) continue;
+              const clearance = Math.min(...discs.map((disc) => Math.hypot(x - disc.x - disc.width / 2, y - disc.y - disc.height / 2) - Math.max(23, disc.width / 2)));
+              if (clearance > 15 && (!best || clearance > best.clearance)) best = { x, y, clearance };
+            }
+          }
+          return best;
+        });
+        assert.ok(panStart, "a fresh pan starts clear of the nodes' touch targets");
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 3, ...panStart }] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ id: 3, x: panStart.x + 35, y: panStart.y + 25 }] });
         await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-        assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), afterPinch, "a fresh drag works after pinch cancellation");
+        await page.waitForFunction((before) => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== before, afterPinch);
         await cdp.detach();
       }
       await page.goto(`http://127.0.0.1:${server.port}/storage.html`);
-      await page.evaluate(() => localStorage.setItem("ovis:graph:v1", JSON.stringify({ version: 1, selected: "session", filters: { search: "prune", status: "", machine: "", focus: "", showCompleted: false, communication: "recent" }, groupMachine: false, positions: { session: { x: 9999, y: 9999 } }, viewport: { x: 1, y: 2, k: 1 } })));
+      await page.evaluate(() => { localStorage.removeItem("ovis:graph:v2"); localStorage.setItem("ovis:graph:v1", JSON.stringify({ version: 1, selected: "session", filters: { search: "prune", status: "", machine: "", focus: "", showCompleted: false, communication: "recent" }, groupMachine: false, positions: { session: { x: 9999, y: 9999 } }, viewport: { x: 1, y: 2, k: 1 } })); });
       await page.goto(`http://127.0.0.1:${server.port}`); await node.waitFor();
-      assert.equal(await node.getAttribute("aria-pressed"), "true", "column-layout migration preserves selected identity");
-      assert.equal(await page.getByLabel("Search graph", { exact: true }).inputValue(), "prune", "column-layout migration preserves filters");
-      const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+      assert.equal(await node.getAttribute("aria-pressed"), "true", "v1 migration preserves selected identity");
+      assert.equal(await page.getByLabel("Search graph", { exact: true }).inputValue(), "prune", "v1 migration preserves filters");
+      const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
       assert.equal(migrated.layout, "force");
-      assert.notDeepEqual(migrated.positions.session, { x: 9999, y: 9999 }, "the retired column positions receive a natural layout once");
-      await page.evaluate(() => localStorage.setItem("ovis:graph:v1", '{"version":99,"future":"keep"}'));
+      assert.notDeepEqual(migrated.positions.session, { x: 9999, y: 9999 }, "the previous scattered positions receive a hierarchy layout once");
+      await page.evaluate(() => localStorage.setItem("ovis:graph:v2", '{"version":99,"future":"keep"}'));
       await page.reload();
       await page.getByLabel("Search graph", { exact: true }).fill("future reader");
-      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v1")), '{"version":99,"future":"keep"}', "future storage is never overwritten");
-      await page.evaluate(() => localStorage.setItem("ovis:graph:v1", '{"version":'));
+      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v2")), '{"version":99,"future":"keep"}', "future storage is never overwritten");
+      await page.evaluate(() => localStorage.setItem("ovis:graph:v2", '{"version":'));
       await page.reload();
       await page.getByLabel("Search graph", { exact: true }).fill("malformed reader");
-      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v1")), '{"version":', "unparseable storage bytes are preserved while controls remain usable");
+      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v2")), '{"version":', "unparseable storage bytes are preserved while controls remain usable");
       assert.deepEqual(errors, []);
       console.log(`PASS Graph ${width}x${height} ${theme}: compact disclosures, readable fresh view, saved viewport, long labels, selection, filters, stale target, update, view switch, deep link, keyboard/touch viewport`);
     } catch (error) {
@@ -355,25 +387,35 @@ try {
     const node = page.locator('[data-graph-node="session"]'), neighbour = page.locator('[data-graph-node="execution"]');
     await node.waitFor();
     const colour = (id: string) => page.locator(`[data-graph-node="${id}"] .graph-node-disc`).evaluate((disc) => getComputedStyle(disc).fill);
-    assert.equal(await colour("repo"), await colour("checkout"));
-    assert.equal(await colour("checkout"), await colour("execution"));
-    assert.notEqual(await colour("repo"), await colour("harbour"));
+    assert.equal(await colour("repo"), await colour("harbour"), "workspace colour is independent of repository");
+    assert.equal(await colour("session"), await colour("execution"), "tabs share their type colour");
+    assert.equal(new Set([await colour("repo"), await colour("checkout"), await colour("session")]).size, 3, "workspace, worktree and tab colours are distinct");
+    const originalTheme = await page.evaluate(() => ({ theme: document.documentElement.getAttribute("data-theme"), palette: document.documentElement.getAttribute("data-palette") }));
+    for (const entry of SUPPORTED_ENTRIES) {
+      await page.evaluate(({ id, mode }) => { document.documentElement.setAttribute("data-theme", mode); document.documentElement.setAttribute("data-palette", id); }, entry);
+      assert.equal(new Set([await colour("repo"), await colour("checkout"), await colour("session")]).size, 3, `three node type colours remain distinct in ${entry.id}/${entry.mode}`);
+    }
+    await page.evaluate(({ theme, palette }) => {
+      for (const [name, value] of [["data-theme", theme], ["data-palette", palette]]) {
+        if (value === null) document.documentElement.removeAttribute(name!); else document.documentElement.setAttribute(name!, value!);
+      }
+    }, originalTheme);
     const radius = (id: string) => page.locator(`[data-graph-node="${id}"]`).getAttribute("data-radius").then(Number);
     assert.equal(await radius("checkout"), await radius("repo"), "containment links do not inflate nodes");
     await page.getByRole("button", { name: "Add communication", exact: true }).click();
     await page.waitForFunction(() => document.querySelector('[data-graph-node="session"]')?.getAttribute("data-degree") === "2");
     assert.ok(await radius("session") > await radius("execution"), "two communication neighbours make a larger node than one");
-    assert.equal(await radius("execution"), await radius("checkout"), "replies and event counts do not inflate nodes");
+    assert.equal(await radius("execution"), await radius("offline"), "replies and event counts do not inflate nodes");
     await page.getByRole("combobox", { name: "Communication links", exact: true }).selectOption("none");
     assert.equal(await radius("session"), await radius("repo"), "hidden communication links do not inflate nodes");
     await page.getByRole("combobox", { name: "Communication links", exact: true }).selectOption("recent");
     const box = (await node.locator(".graph-node-disc").boundingBox())!;
     const before = await neighbour.getAttribute("transform");
-    const storedBefore = await page.evaluate(() => localStorage.getItem("ovis:graph:v1"));
+    const storedBefore = await page.evaluate(() => localStorage.getItem("ovis:graph:v2"));
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 60, { steps: 8 });
     await page.waitForFunction((before) => document.querySelector('[data-graph-node="execution"]')?.getAttribute("transform") !== before, before);
-    assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v1")), storedBefore, "animated ticks do not persist unfinished coordinates");
+    assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v2")), storedBefore, "animated ticks do not persist unfinished coordinates");
     const held = await node.getAttribute("transform");
     await page.getByRole("button", { name: "Add neighbour", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     await page.locator('[data-graph-node="new-neighbour"]').waitFor();
@@ -389,7 +431,7 @@ try {
     assert.equal(heldAfterTopology.drift, false, "a held drag remains pinned under the cursor through topology replacement and subsequent simulation frames");
     assert.equal(heldAfterTopology.neighbourMoved, true, "the new force simulation actually advances while preserving the dragged pin");
     await page.mouse.up();
-    const released = await page.evaluate(() => { const point = JSON.parse(localStorage.getItem("ovis:graph:v1")!).positions.session; return `translate(${point.x} ${point.y})`; });
+    const released = await page.evaluate(() => { const point = JSON.parse(localStorage.getItem("ovis:graph:v2")!).positions.session; return `translate(${point.x} ${point.y})`; });
     await page.getByRole("button", { name: "Switch view", exact: true }).click();
     await page.getByRole("button", { name: "Switch view", exact: true }).click(); await node.waitFor();
     assert.equal(await node.getAttribute("transform"), released, "a normal-motion drag checkpoints at release so an immediate view departure preserves the released layout");
@@ -401,7 +443,7 @@ try {
       const began = performance.now(); let stableFrames = 0, last = "";
       await new Promise<void>((resolve, reject) => {
         const frame = () => {
-          const saved = JSON.parse(localStorage.getItem("ovis:graph:v1") ?? "null"), nodes = [...document.querySelectorAll("[data-graph-node]")];
+          const saved = JSON.parse(localStorage.getItem("ovis:graph:v2") ?? "null"), nodes = [...document.querySelectorAll("[data-graph-node]")];
           const signature = nodes.map((node) => node.getAttribute("transform")).join("|");
           const matches = saved && nodes.every((node) => { const point = saved.positions[node.getAttribute("data-graph-node")!]; return point && node.getAttribute("transform") === `translate(${point.x} ${point.y})`; });
           stableFrames = matches && signature === last ? stableFrames + 1 : 0; last = signature;
@@ -423,9 +465,9 @@ try {
     });
     assert.equal(stable.changed, false, "settled status/order polling never reheats, remounts, jitters or refits the graph");
     await page.getByRole("button", { name: "Reset graph layout", exact: true }).click(); await settled();
-    const savedReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!));
+    const savedReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
     await page.reload(); await node.waitFor();
-    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v1")!).positions), savedReset.positions, "settled reset survives reload without a simulation restart");
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!).positions), savedReset.positions, "settled reset survives reload without a simulation restart");
     await page.getByLabel("Group by machine", { exact: true }).check(); await settled();
     const cloud = page.locator('[data-machine-cloud="north"] path');
     const cloudBefore = await cloud.getAttribute("d"), cloudNode = (await node.locator(".graph-node-disc").boundingBox())!;
@@ -445,7 +487,7 @@ try {
       return changed;
     }, cloudsBeforePoll);
     assert.equal(cloudDrift, false, "settled clouds do not jitter or restart on identical membership polls");
-    console.log("PASS animated graph: repository colours, communication-neighbour radius, connected drag, topology continuity, settled polling, deferred persistence, reset/reload");
+    console.log("PASS animated graph: node type colours, communication-neighbour radius, connected drag, topology continuity, settled polling, deferred persistence, reset/reload");
   } finally { await motion.close(); }
 
   const dense = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce", locale: "en-US" });
@@ -457,7 +499,7 @@ try {
     const labels = await page.locator(".graph-node-label").evaluateAll((labels) => labels.map((label) => { const box = label.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }; }));
     assert.ok(labels.length >= 5, "dense overview retains meaningful readable labels");
     for (const [index, a] of labels.entries()) for (const b of labels.slice(index + 1)) assert.ok(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top, "shown dense overview labels do not overlap");
-    assert.equal(await page.locator(".graph-repository-legend span").count(), 5);
+    assert.equal(await page.locator(".graph-kind-legend span").count(), 3);
     if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "graph-dense-390-overview.png") });
     const surface = page.locator(".graph-surface");
     const beforePan = await surface.locator(":scope > g").getAttribute("transform");
@@ -485,7 +527,7 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "graph-dense-390-selected.png") });
     assert.deepEqual(errors, []);
-    console.log("PASS dense 150-node / 5-repository fictional phone graph: readable non-overlapping overview labels, pan/zoom/select/touch drag, settled polling and no overflow");
+    console.log("PASS dense 150-node / 5-workspace fictional phone graph: readable non-overlapping overview labels, pan/zoom/select/touch drag, settled polling and no overflow");
   } finally { await dense.close(); }
 
 } finally {

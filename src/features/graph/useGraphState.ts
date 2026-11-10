@@ -1,30 +1,17 @@
 import { useEffect, useState } from "react";
-import { DEFAULT_GRAPH_STATE, GRAPH_STORAGE_KEY, graphLocation, readGraphLocation, sanitizeGraphState, type GraphState } from "./graphState.ts";
+import { DEFAULT_GRAPH_STATE, graphLocation, loadGraphState, readGraphLocation, saveGraphState, type GraphState } from "./graphState.ts";
 
 function loadState(): { state: GraphState; saved: boolean } {
-  let state = DEFAULT_GRAPH_STATE;
-  let saved = false;
-  try {
-    const raw = JSON.parse(localStorage.getItem(GRAPH_STORAGE_KEY) ?? "null");
-    const stored = sanitizeGraphState(raw);
-    if (stored && raw.layout !== "force") { stored.positions = {}; stored.viewport = DEFAULT_GRAPH_STATE.viewport; }
-    if (stored) {
-      state = stored;
-      saved = Object.keys(stored.positions).length > 0 || stored.viewport.x !== DEFAULT_GRAPH_STATE.viewport.x || stored.viewport.y !== DEFAULT_GRAPH_STATE.viewport.y || stored.viewport.k !== DEFAULT_GRAPH_STATE.viewport.k;
-    }
-  } catch { /* Storage can be disabled. */ }
-  return { state: readGraphLocation(new URL(window.location.href), state), saved };
+  let initial = { state: DEFAULT_GRAPH_STATE, saved: false };
+  try { initial = loadGraphState(localStorage); } catch { /* Storage can be disabled. */ }
+  return { ...initial, state: readGraphLocation(new URL(window.location.href), initial.state) };
 }
 
 export function useGraphState() {
   const [initial] = useState(loadState);
   const [state, setState] = useState(initial.state);
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(GRAPH_STORAGE_KEY);
-      if (stored !== null && sanitizeGraphState(JSON.parse(stored)) === null) return;
-      localStorage.setItem(GRAPH_STORAGE_KEY, JSON.stringify(state));
-    } catch { /* The view remains usable without persistence. */ }
+    try { saveGraphState(localStorage, state); } catch { /* The view remains usable without persistence. */ }
   }, [state]);
   const { selected, groupMachine, filters } = state;
   useEffect(() => {

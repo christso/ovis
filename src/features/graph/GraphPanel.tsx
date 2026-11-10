@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { GraphRegistry } from "../../../shared/graph-registry.ts";
 import type { GraphRegistryRow } from "../../../shared/graph-registry-inventory.ts";
 import type { Machine, PaneTarget } from "../../../shared/machines.ts";
@@ -17,7 +17,8 @@ export default function GraphPanel({ registry, rows, machines, error, refresh, o
   const labels = useSyncExternalStore(subscribeTabLabels, shownTabLabels);
   const data = useMemo(() => graphInventory(registry, rows, machines, labels, t), [registry, rows, machines, labels, t]);
   const incomplete = machines.filter((machine) => machine.state !== "connected" || machine.snapshot === null);
-  const target = (id: string) => error ? null : graphTarget(registry, rows, id, machines);
+  const target = useCallback((id: string) => error ? null : graphTarget(registry, rows, id, machines), [error, registry, rows, machines]);
+  const canOpenNode = useCallback((id: string) => target(id) !== null, [target]);
   return <div className="graph-panel">
     <div className="graph-source-note">
       <button type="button" className="btn btn-ghost" onClick={() => void refresh()}>{t("Refresh")}</button>
@@ -25,6 +26,6 @@ export default function GraphPanel({ registry, rows, machines, error, refresh, o
       {incomplete.length > 0 && <p role="status">{t("Inventory is incomplete for: {machines}.", { machines: incomplete.map((machine) => machine.name).join(", ") })}</p>}
     </div>
     <GraphView data={data} machineNames={new Map(machines.map((machine) => [machine.id, machine.name]))} error={error}
-      canOpenNode={(id) => target(id) !== null} onOpenNode={(id) => { const current = target(id); if (current) onOpenTarget(current); }} />
+      canOpenNode={canOpenNode} onOpenNode={(id) => { const current = target(id); if (current) onOpenTarget(current); }} />
   </div>;
 }

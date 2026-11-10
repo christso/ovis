@@ -146,7 +146,6 @@ export const COMPOSER_ZH: Record<string, string> = {
   "Dismiss notice": "关闭提示",
   "Notices": "提示",
   "Working folder": "工作文件夹",
-  "Worktree": "工作树",
   "Insert text without Enter": "插入文本，不按 Enter",
   "Insert text": "插入",
   "Insert takes one line. Send several lines, or insert them one at a time.": "插入只能一行。多行请发送，或逐行插入。",
