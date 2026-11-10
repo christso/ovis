@@ -51,6 +51,11 @@ function Fixture() {
     <nav aria-label="Fixture actions">
       <button onClick={() => setShown((value) => !value)}>Switch view</button>
       <button onClick={() => setData(fixture)}>Load inventory</button>
+      <button onClick={() => setData((previous) => ({ ...previous, edges: [...previous.edges,
+        { id: "message-one", source: "session", target: "execution", kind: "communication", evidence: "Fictional receipt", lastObservedAt: new Date().toISOString(), eventCount: 999 },
+        { id: "reply-one", source: "execution", target: "session", kind: "communication", evidence: "Fictional receipt", lastObservedAt: new Date().toISOString() },
+        { id: "message-two", source: "session", target: "checkout", kind: "communication", evidence: "Fictional receipt", lastObservedAt: new Date().toISOString() },
+      ] }))}>Add communication</button>
       <button onClick={() => setData((previous) => ({ nodes: [...previous.nodes, { id: "new-neighbour", kind: "execution", label: "New growth · Codex" }], edges: [...previous.edges, { id: "new-link", source: "new-neighbour", target: "session", kind: "session-execution", evidence: "Recorded session" }] }))}>Add neighbour</button>
       <button onClick={() => setData((previous) => ({ ...previous, nodes: [...previous.nodes].reverse().map((node) => (node.id === "session" || node.id.startsWith("dense-agent")) ? { ...node, machineId: "south", status: "blocked" } : node) }))}>Live update</button>
       <button onClick={() => setData((previous) => ({ ...previous, nodes: previous.nodes.map((node) => node.id === "session" ? { ...node, label: "Review the orchard irrigation schedule and accessibility of the seasonal harvest dashboard", detail: "/fictional/very-long-project-directory/seasonal-orchard-accessibility-review/working-checkout-with-an-unusually-long-name" } : node) }))}>Long labels</button>
