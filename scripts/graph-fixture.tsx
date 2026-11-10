@@ -25,6 +25,19 @@ const fixture: GraphData = {
     { id: "e", source: "offline", target: "harbour", kind: "tab-in-workspace", evidence: "Recorded tab: compost" },
   ],
 };
+function sizingFixture(): GraphData {
+  return {
+    nodes: [
+      { id: "sizing-hub", kind: "workspace", label: "Five-link hub" },
+      { id: "sizing-isolated", kind: "workspace", label: "No links" },
+      ...Array.from({ length: 5 }, (_, index) => ({ id: `sizing-leaf-${index}`, kind: "tab" as const, label: `Tab ${index + 1}` })),
+    ],
+    edges: Array.from({ length: 5 }, (_, index) => ({
+      id: `sizing-link-${index}`, source: `sizing-leaf-${index}`, target: "sizing-hub",
+      kind: "tab-in-workspace" as const, evidence: "Fictional tab membership",
+    })),
+  };
+}
 function denseFixture(): GraphData {
   const nodes: GraphData["nodes"][number][] = [], edges: GraphData["edges"][number][] = [];
   const repositories = ["Orchard", "Harbour", "Observatory", "Library", "Meadow"];
@@ -47,7 +60,7 @@ function denseFixture(): GraphData {
 }
 function Fixture() {
   const [shown, setShown] = useState(true);
-  const [data, setData] = useState(new URLSearchParams(location.search).has("empty") ? { nodes: [], edges: [] } as GraphData : new URLSearchParams(location.search).has("dense") ? denseFixture() : fixture);
+  const [data, setData] = useState(new URLSearchParams(location.search).has("empty") ? { nodes: [], edges: [] } as GraphData : new URLSearchParams(location.search).has("sizing") ? sizingFixture() : new URLSearchParams(location.search).has("dense") ? denseFixture() : fixture);
   const [opened, setOpened] = useState("");
   return <main style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
     <nav aria-label="Fixture actions">

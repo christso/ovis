@@ -23,7 +23,7 @@ const data: GraphData = { nodes: [
 test("radius counts all distinct connections, excluding parallel edges, receipts and self-links", () => {
   const style = graphAppearance(data);
   expect(style.get("empty")!.degree).toBe(0);
-  expect(style.get("empty")!.radius).toBe(9);
+  expect(style.get("empty")!.radius).toBe(6);
   expect(style.get("root-tab")!.degree).toBe(1);
   expect(style.get("repo")!.degree).toBe(2);
   expect(style.get("checkout")!.degree).toBe(3);
@@ -34,6 +34,13 @@ test("radius counts all distinct connections, excluding parallel edges, receipts
   expect(style.get("repo")!.radius).toBeLessThan(style.get("checkout")!.radius);
   expect(style.get("other")!.radius).toBe(style.get("agent")!.radius);
   expect(nodeRadius(100)).toBeGreaterThan(nodeRadius(20));
+});
+test("Folio-style growth makes a five-link hub visibly larger and bounds crowded hubs", () => {
+  expect(nodeRadius(5) / nodeRadius(1)).toBeGreaterThanOrEqual(1.7);
+  expect((nodeRadius(5) / nodeRadius(1)) ** 2).toBeGreaterThanOrEqual(3);
+  expect(nodeRadius(1)).toBeGreaterThan(nodeRadius(0));
+  expect(nodeRadius(100)).toBeGreaterThan(nodeRadius(20));
+  expect(nodeRadius(10_000)).toBe(nodeRadius(114));
 });
 test("hidden communication links leave hierarchy and delegation connections in the radius", () => {
   const view = projectGraph(data, { search: "", status: "", machine: "", focus: "", showCompleted: true, communication: "none" });

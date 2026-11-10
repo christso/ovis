@@ -2,6 +2,15 @@
 
 Ovis includes material from the projects below, under their own licenses.
 
+## Folio graph node sizing
+
+`src/features/graph/graphAppearance.ts` adapts the capped square-root degree curve from
+[Folio's graph model](https://github.com/evergreen-it-dev/folio/blob/94f4e0a6e9f83bd84f80ae097e47910242b7bd99/web/src/app/graph/graphModel.ts),
+with stronger size contrast for Ovis. No other Folio code or assets are included.
+The MIT license text printed below applies, with this copyright notice:
+
+Copyright (c) 2026 Evergreen and Folio contributors
+
 ## Paseo endpoint encryption
 
 `shared/vendor/paseo-e2ee/` vendors the Noise NK endpoint encryption from

@@ -4687,14 +4687,19 @@ The visual reference is [Folio's graph](https://github.com/evergreen-it-dev/foli
 circular nodes, degree-based size, category colours, tree edges and connected motion. Ovis uses SVG instead
 of Folio's canvas so each node remains a native keyboard target with a complete accessible name,
 plus an inspector selector for phone and keyboard users. The implementation is independently
-written; no Folio code or assets are copied. The containment and thread distinction also follows
+written, with the degree-sizing curve adapted as credited in THIRD_PARTY_NOTICES.md. The containment and thread distinction also follows
 [Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel): physical checkout metadata and logical
 session identity remain separate.
 
 D3 force links pull connected nodes, repulsion separates clusters and collision keeps circles
-apart. Radius grows with distinct visible connections of every type: direct tabs, worktrees,
+apart. Collision padding balances the larger circles so workspace clusters remain distinct.
+Radius grows with distinct visible connections of every type: direct tabs, worktrees,
 communication and delegation. Parallel links, replies, self-links and recorded event counts cannot
-inflate it. Hidden links do not contribute. This connection-based sizing differs from Zed's
+inflate it. Hidden links do not contribute. The capped square-root curve follows
+[Folio's sizing model](https://github.com/evergreen-it-dev/folio/blob/94f4e0a6e9f83bd84f80ae097e47910242b7bd99/web/src/app/graph/graphModel.ts),
+tuned to `6 + 6 × min(16, 1.5 × √degree)`: five connections give about 1.74 times the
+diameter and three times the area of one connection. A fixed curve keeps unrelated inventory
+changes from rescaling existing nodes, and the cap bounds crowded hubs. This connection-based sizing differs from Zed's
 project-grouped thread list because Graph also shows relationships between nodes. Node fills
 identify workspace (blue), worktree (orange) and tab (green). Dedicated theme tokens keep these
 hues across palettes, with darker light-mode shades and no text-colour blending, following the
@@ -4710,7 +4715,7 @@ connection sizing; tabs under a hidden worktree stay independent, with no invent
 links. The existing force simulation reheats for the changed topology and settles again, retaining
 the user's viewport. Reduced motion settles without animation. This follows Folio's graph type
 filters rather than Zed's project/thread list; the graph needs independent type visibility while
-preserving the native workspace hierarchy. No Folio or Zed code or assets are copied.
+preserving the native workspace hierarchy. The legend controls are independently written.
 
 Group by machine adds a soft, translucent cloud behind each machine's visible nodes, with a
 machine-name label and a stable background colour. Node fills retain their type colours.
@@ -4735,7 +4740,7 @@ worktree tabs include workspace context. Other names follow Ovis's native tab st
 This adapts [Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel), where recognizable threads are
 grouped by project and worktrees provide isolation, alongside Folio's category colours and typed
 tree edges. Ovis follows its native tab and sidebar names because a terminal tab can contain
-several agent panes. No Zed or Folio code or pixels are copied.
+several agent panes. The hierarchy and labels are independently written.
 Recorded endpoints map onto their represented tabs; parallel endpoint pairs combine into one
 counted relationship. Same-tab activity produces no duplicate node or self-link. Unrepresented
 agent sessions appear as recorded activity in the directly related tab’s inspector, behind a
