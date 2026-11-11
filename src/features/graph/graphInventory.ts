@@ -1,4 +1,5 @@
-import type { GraphRegistry } from "../../../shared/graph-registry.ts";
+import { graphCliPageValue, graphCliTerminalKey } from "../../../shared/graph-cli.ts";
+import type { GraphCliPage, GraphRegistry } from "../../../shared/graph-registry.ts";
 import { graphBinding, graphRowTarget, sameGraphBinding, type GraphRegistryRow } from "../../../shared/graph-registry-inventory.ts";
 import type { Machine, PaneTarget } from "../../../shared/machines.ts";
 import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
@@ -36,6 +37,23 @@ export function graphInventory(registry: GraphRegistry | null, rows: readonly Gr
     }
   }
   const endpoints = new Map<string, Set<string>>();
+  const cliPages = new Map<Machine, GraphCliPage | null>();
+  for (const tab of tabs) {
+    let cli = cliPages.get(tab.machine);
+    if (cli === undefined) {
+      const candidate = tab.machine.snapshot?.graph_cli;
+      cli = graphCliPageValue(candidate) ? candidate : null;
+      cliPages.set(tab.machine, cli);
+    }
+    if (!cli || cli.boot_id !== tab.machine.snapshot?.herdr_lifetime || tab.machine.state !== "connected") continue;
+    for (const pane of tab.panes) {
+      if (!pane.terminal_id || pane.restore_error) continue;
+      const endpoint = `terminal:${graphCliTerminalKey({ server_id: cli.server_id, boot_id: cli.boot_id, terminal_id: pane.terminal_id })}`;
+      const represented = endpoints.get(endpoint) ?? new Set<string>();
+      represented.add(tab.node.id); endpoints.set(endpoint, represented);
+    }
+  }
+
   for (const row of rows) {
     const tab = rowTab(row, tabs);
     if (!tab) continue;

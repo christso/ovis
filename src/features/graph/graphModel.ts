@@ -27,7 +27,7 @@ export interface GraphEdge {
   evidence: string;
   eventCount?: number;
   lastObservedAt?: string;
-  sources?: readonly ("codex" | "herdr")[];
+  sources?: readonly ("codex" | "herdr" | "herdr-cli")[];
 }
 export interface GraphActivity {
   id: string;
@@ -37,7 +37,7 @@ export interface GraphActivity {
   direction: "incoming" | "outgoing";
   eventCount: number;
   lastObservedAt: string;
-  sources: readonly ("codex" | "herdr")[];
+  sources: readonly ("codex" | "herdr" | "herdr-cli")[];
 }
 export interface GraphGroup { id: string; label: string; machineId: string; nodeIds: readonly string[] }
 export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[]; groups?: readonly GraphGroup[] }

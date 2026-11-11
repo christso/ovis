@@ -1,4 +1,5 @@
-import type { GraphObservation, GraphRegistry, GraphStoredObservation, HerdrCoordinationEndpoint, HerdrCoordinationPage } from "./graph-registry.ts";
+import type { GraphObservation, GraphRegistry, GraphStoredObservation, GraphCliTerminal, HerdrCoordinationEndpoint, HerdrCoordinationPage } from "./graph-registry.ts";
+import { graphCliObservationKey, graphCliTerminalKey } from "./graph-cli.ts";
 import type { GraphRegistryRow } from "./graph-registry-inventory.ts";
 import type { Machine, PaneTarget } from "./machines.ts";
 import type { HerdrPane } from "./protocol.ts";
@@ -23,7 +24,7 @@ export function graphHerdrEndpointKey(endpoint: HerdrCoordinationEndpoint): stri
   return JSON.stringify([endpoint.server_id, endpoint.boot_id, endpoint.terminal_id, endpoint.agent_instance_id]);
 }
 export function graphCoordinationValue(value: unknown): value is HerdrCoordinationPage {
-  if (!object(value) || value.version !== 1 || !text(value.server_id) || !text(value.boot_id)
+  if (!object(value) || value.version !== 1 || value.producer !== undefined || !text(value.server_id) || !text(value.boot_id)
     || !Array.isArray(value.agents) || !Array.isArray(value.receipts)
     || !(value.cursor === null || text(value.cursor))) return false;
   const identities = new Set<string>();
@@ -48,8 +49,8 @@ export function graphObservationValue(value: unknown): value is GraphObservation
     && typeof value.target_native_session_id === "string" && uuid.test(value.target_native_session_id)
     && value.source_native_session_id.toLowerCase() !== value.target_native_session_id.toLowerCase();
 }
-export interface GraphRelationshipEndpoint { id: string; label: string; machine_id: string; agent: string; native_session_id: string; session_id: string | null; herdr?: HerdrCoordinationEndpoint }
-export interface GraphRelationship { id: string; kind: GraphObservation["kind"]; source: GraphRelationshipEndpoint; target: GraphRelationshipEndpoint; count: number; first_at: string; last_at: string; sources: ("codex" | "herdr")[] }
+export interface GraphRelationshipEndpoint { id: string; label: string; machine_id: string; agent: string; native_session_id: string; session_id: string | null; herdr?: HerdrCoordinationEndpoint; terminal?: GraphCliTerminal }
+export interface GraphRelationship { id: string; kind: GraphObservation["kind"]; source: GraphRelationshipEndpoint; target: GraphRelationshipEndpoint; count: number; first_at: string; last_at: string; sources: ("codex" | "herdr" | "herdr-cli")[] }
 
 /** Historical execution bindings carry relationships through an explicit session move. */
 export function graphRelationshipEndpoint(registry: GraphRegistry, machineId: string, nativeId: string, agent = "codex"): GraphRelationshipEndpoint {
@@ -72,7 +73,11 @@ export function graphHerdrRelationshipEndpoint(registry: GraphRegistry, endpoint
 
 /** Current daemon occupancy is a location proof, never proof of a native transcript/session. */
 export function graphCurrentHerdrEndpoint(machine: Machine, pane: HerdrPane): HerdrCoordinationEndpoint | null {
-  const snapshot = machine.snapshot, coordination = snapshot?.flock_coordination;
+  const snapshot = machine.snapshot, cli = snapshot?.graph_cli;
+  // Source boundaries validate whole pages; location resolution checks endpoints without
+  // rescanning historical receipts once per pane.
+  const coordination = snapshot?.flock_coordination ?? (cli?.version === 1 && cli.boot_id === snapshot?.herdr_lifetime && Array.isArray(cli.current_agents)
+    ? { version: 1, server_id: cli.server_id, boot_id: cli.boot_id, agents: cli.current_agents } : undefined);
   if (machine.state !== "connected" || !snapshot?.herdr_lifetime || !coordination || coordination.version !== 1 || !Array.isArray(coordination.agents) || pane.restore_error) return null;
   const matches = coordination.agents.filter((endpoint) => graphHerdrEndpointValue(endpoint) && endpoint.server_id === coordination.server_id && endpoint.boot_id === coordination.boot_id
     && endpoint.pane_id === pane.pane_id && endpoint.terminal_id === pane.terminal_id && endpoint.agent === pane.agent);
@@ -116,6 +121,16 @@ export function graphRelationships(registry: GraphRegistry): GraphRelationship[]
     if (!resolved) { resolved = graphHerdrRelationshipEndpoint(registry, value); endpoints.set(key, resolved); }
     return resolved;
   };
+  const append = (kind: GraphRelationship["kind"], source: GraphRelationshipEndpoint, target: GraphRelationshipEndpoint, occurredAt: string, producer: GraphRelationship["sources"][number]) => {
+    const id = JSON.stringify([kind, source.id, target.id]);
+    const before = relations.get(id);
+    if (before) {
+      before.count += 1;
+      if (!before.sources.includes(producer)) before.sources.push(producer);
+      if (Date.parse(occurredAt) < Date.parse(before.first_at)) before.first_at = occurredAt;
+      if (Date.parse(occurredAt) > Date.parse(before.last_at)) before.last_at = occurredAt;
+    } else relations.set(id, { id, kind, source, target, count: 1, first_at: occurredAt, last_at: occurredAt, sources: [producer] });
+  };
   for (const event of registry.observations ?? []) {
     const receipt = graphReceiptKey(event);
     if (receipts.has(receipt)) continue;
@@ -123,14 +138,16 @@ export function graphRelationships(registry: GraphRegistry): GraphRelationship[]
     const source = event.source === "herdr" ? herdrEndpoint(event.source_endpoint) : endpoint(event.machine_id, event.source_native_session_id);
     const target = event.source === "herdr" ? herdrEndpoint(event.target_endpoint) : endpoint(event.machine_id, event.target_native_session_id);
     if (source.id === target.id) continue;
-    const id = JSON.stringify([event.kind, source.id, target.id]);
-    const before = relations.get(id);
-    if (before) {
-      before.count += 1;
-      if (!before.sources.includes(event.source)) before.sources.push(event.source);
-      if (Date.parse(event.occurred_at) < Date.parse(before.first_at)) before.first_at = event.occurred_at;
-      if (Date.parse(event.occurred_at) > Date.parse(before.last_at)) before.last_at = event.occurred_at;
-    } else relations.set(id, { id, kind: event.kind, source, target, count: 1, first_at: event.occurred_at, last_at: event.occurred_at, sources: [event.source] });
+    append(event.kind, source, target, event.occurred_at, event.source);
+  }
+  for (const event of registry.cli_observations ?? []) {
+    const receipt = graphCliObservationKey(event);
+    if (receipts.has(receipt)) continue;
+    receipts.add(receipt);
+    const terminal = (value: GraphCliTerminal): GraphRelationshipEndpoint => ({ id: `terminal:${graphCliTerminalKey(value)}`,
+      label: value.name ?? `${value.agent ?? "Terminal"} ${value.terminal_id.slice(-8)}`, machine_id: "", agent: value.agent ?? "", native_session_id: "", session_id: null, terminal: value });
+    const source = terminal(event.source_terminal), target = terminal(event.target_terminal);
+    append(event.kind, source, target, event.occurred_at, "herdr-cli");
   }
   return [...relations.values()];
 }

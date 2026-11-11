@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, win32 } from "node:path";
@@ -21,6 +22,12 @@ import type { HerdrCoreLayout, HerdrIdentity } from "../../shared/machines.ts";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const diagnostics = new ConnectionDiagnostics("herdr.rpc");
+const diagnosticsSuppressed = new AsyncLocalStorage<true>();
+
+/** A CLI's optional metadata probes must not add diagnostics to the real command's stderr. */
+export function withoutHerdrDiagnostics<T>(read: () => Promise<T>): Promise<T> {
+  return diagnosticsSuppressed.run(true, read);
+}
 let pendingRpcs = 0;
 
 /** herdr's default socket: ~/.config/herdr on Unix, %APPDATA%\herdr on Windows. */
@@ -383,11 +390,11 @@ export async function herdrRpc(
           writeRequest();
         }, connectFailed);
     });
-    diagnostics.recovered(key, fields());
+    if (!diagnosticsSuppressed.getStore()) diagnostics.recovered(key, fields());
     return result;
   } catch (error) {
     const code = error instanceof HerdrError ? transportFailureCode(error.code) : null;
-    if (code !== null) diagnostics.failed(key, code, fields());
+    if (code !== null && !diagnosticsSuppressed.getStore()) diagnostics.failed(key, code, fields());
     throw error;
   } finally {
     pendingRpcs--;

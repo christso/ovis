@@ -1,4 +1,5 @@
 import type { GraphBinding, GraphCommand, GraphRegistry } from "./graph-registry.ts";
+import { graphCliObservationKey, graphCliObservationValue } from "./graph-cli.ts";
 import { sameGraphBinding } from "./graph-registry-inventory.ts";
 import { graphHerdrEndpointKey, graphHerdrEndpointValue, graphObservationKey, graphObservationValue } from "./graph-relationships.ts";
 
@@ -21,6 +22,16 @@ export function graphRegistryValue(raw: unknown): raw is GraphRegistry {
     for (const association of raw.herdr_associations) {
       if (!isJsonObject(association) || !graphHerdrEndpointValue(association.endpoint) || !text(association.machine_id) || !nullableText(association.native_session_id)) return false;
       const key = JSON.stringify([graphHerdrEndpointKey(association.endpoint), association.machine_id, association.native_session_id]);
+      if (seen.has(key)) return false;
+      seen.add(key);
+    }
+  }
+  if (raw.cli_observations !== undefined) {
+    if (!Array.isArray(raw.cli_observations)) return false;
+    const seen = new Set<string>();
+    for (const event of raw.cli_observations) {
+      if (!graphCliObservationValue(event) || !isJsonObject(event) || !text(event.machine_id)) return false;
+      const key = graphCliObservationKey(event);
       if (seen.has(key)) return false;
       seen.add(key);
     }

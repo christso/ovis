@@ -31,6 +31,10 @@ import { RUNTIME_MOVE_JA } from "./i18n/runtime-move.ja.ts";
  * in English. Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Terminal activity": "ターミナルのアクティビティ",
+  "Recorded activity": "記録された活動",
+  "Related items: {count}": "関連項目: {count}",
+  "These records have no verified tab to open.": "これらの記録には開ける確認済みのタブがありません。",
   "Recorded agent activity": "記録されたエージェントの活動",
   "Related agent sessions: {count}": "関連するエージェントセッション {count} 件",
   "These sessions have no verified tab to open.": "これらのセッションには、開くことができる確認済みのタブがありません。",

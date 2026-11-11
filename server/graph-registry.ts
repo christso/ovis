@@ -1,3 +1,4 @@
+import { graphCliObservationKey, graphCliObservationMetadata, graphCliPageValue } from "../shared/graph-cli.ts";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { GraphCommand, GraphRegistry, HerdrCoordinationEndpoint } from "../shared/graph-registry.ts";
@@ -27,6 +28,7 @@ export class GraphRegistryStore {
   observe(sources: readonly Machine[]): GraphRegistry {
     const next = this.read();
     const seen = new Set((next.observations ?? []).map(graphReceiptKey));
+    const seenCli = new Set((next.cli_observations ?? []).map(graphCliObservationKey));
     const associations = new Set((next.herdr_associations ?? []).map((item) => JSON.stringify([graphHerdrEndpointKey(item.endpoint), item.machine_id, item.native_session_id])));
     let changed = false;
     for (const machine of sources) {
@@ -54,6 +56,13 @@ export class GraphRegistryStore {
           (next.observations ??= []).push({ ...event, source_endpoint: graphHerdrEndpointMetadata(event.source_endpoint), target_endpoint: graphHerdrEndpointMetadata(event.target_endpoint), machine_id: machine.id });
           seen.add(key); changed = true;
         }
+      }
+      const cli = machine.snapshot.graph_cli;
+      if (graphCliPageValue(cli)) for (const event of cli.receipts) {
+        const key = graphCliObservationKey(event);
+        if (seenCli.has(key)) continue;
+        (next.cli_observations ??= []).push({ ...graphCliObservationMetadata(event), machine_id: machine.id });
+        seenCli.add(key); changed = true;
       }
       for (const event of machine.snapshot.flock_observations ?? []) {
         if (!graphObservationValue(event) || event.source !== "codex" || !machine.snapshot.flock_bindings?.some((binding) => binding.agent === "codex" && binding.native_session_id.toLowerCase() === event.source_native_session_id.toLowerCase())) continue;
@@ -133,7 +142,8 @@ export async function handleGraphRequest(request: Request, store: GraphRegistryS
         return { ...machine, snapshot: machine.snapshot ? { ...machine.snapshot,
           flock_bindings: readSource ? [] : machine.snapshot.flock_bindings,
           flock_observations: readSource ? [] : machine.snapshot.flock_observations,
-          flock_coordination: readSource ? undefined : machine.snapshot.flock_coordination } : null };
+          flock_coordination: readSource ? undefined : machine.snapshot.flock_coordination,
+          graph_cli: readSource ? undefined : machine.snapshot.graph_cli } : null };
       }));
       return reply({ ...store.observe(sources), sources: sources.map((source) => ({ ...source, snapshot: source.snapshot ? presentSnapshot(source.snapshot) : null })) });
     }

@@ -162,8 +162,8 @@ operations in its private daemon journal. Ovis reads its optional `agent.coordin
 extension in bounded pages and retains closed-agent history. The daemon's server, boot, terminal
 and occupancy identities distinguish agents even when names or pane IDs are reused. A pane move
 does not create a new agent relationship. This capture works across the CLI kinds Herdr recognizes;
-it does not depend on parsing shell commands or message text. Stock Herdr has no such extension,
-so its ordinary CLI commands remain unattributed. Missing support disables only that capture.
+it does not depend on parsing shell commands or message text. Stock Herdr has no such extension; the optional CLI shim described below supplies local operation
+observations without modifying Herdr. Missing support disables only that capture.
 Prose mentions, failed operations and old bridges without either producer supply no links.
 
 Current Herdr occupancy is a terminal-location proof, not a native-session ownership proof. Only
@@ -185,3 +185,100 @@ The native format is pinned to [Codex0.166's activity item](https://github.com/o
 and [successful message dispatch](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs).
 Watch-only devices cannot read the registry or coordination inventory through either direct or
 per-machine proxy routes.
+
+## Stock Herdr CLI capture
+
+Linux and macOS can capture ordinary `herdr agent start` and `herdr agent prompt` calls through
+an optional PATH shim. Keep the fork where agent-instance and saved-machine attribution are needed;
+installing this tool does not switch Herdr runtimes. It executes the installed Herdr binary directly; Ovis is not in the command
+path and need not be running. Each confirmed operation writes one private, atomic, fsynced metadata
+record locally. Ovis reads those records when Graph next reads its source, retaining history and
+counting each receipt once. Native Codex capture continues independently. A fork journal takes precedence for receipts from the current boot whose source and target both
+belong to that same daemon. Earlier-boot and cross-session receipts retain their CLI provenance:
+source fork capability alone cannot prove that another daemon captured the operation. Cross-session
+history from both producers can overlap because their event IDs do not establish a shared receipt.
+
+Install into a new directory from a stable Ovis checkout:
+
+```sh
+bun scripts/herdr-shim.ts install \
+  --real /absolute/path/to/the/installed/herdr \
+  --directory /absolute/path/to/ovis-herdr-bin
+```
+
+The installer bundles its code into that directory and writes a launcher named `herdr`. It refuses
+an existing destination or another Ovis shim as the real executable, and never overwrites Herdr,
+changes shell files, edits Herdr configuration or restarts a service. The installed Bun executable
+must remain available. Install a later shim version into a new directory, then change PATH; the
+installer never upgrades or deletes an unknown directory in place.
+
+Prepend the directory to PATH in the environment that launches agents, for example:
+
+```sh
+export PATH="/absolute/path/to/ovis-herdr-bin:$PATH"
+```
+
+This applies to newly launched processes; existing agents keep their inherited PATH. Herdr's shell
+configuration can replace PATH, so verify `command -v herdr` inside the actual agent environment.
+Removing the PATH entry restores direct Herdr resolution. The real executable stays available at
+its original absolute path and remains managed by Herdr's normal updater.
+
+The default journal is `$XDG_STATE_HOME/ovis/herdr-cli`, or `~/.local/state/ovis/herdr-cli` when
+XDG_STATE_HOME is unset. `--journal /absolute/directory` chooses another location at installation;
+set `OVIS_HERDR_CLI_DIR` to that same directory for Ovis to read it. A journal contains a stable,
+versioned namespace identity and version 1 files shaped as `{ version: 1, receipt }`, owned by
+`server/herdr/cli-observations.ts`. Records are immutable and survive both Ovis and Herdr restarts. Keep the
+journal and `flock.json` when backing up relationship history. An unreadable or unknown identity
+format is never replaced; unknown, malformed, oversized and partial event files are skipped.
+Each reader pass scans at most 1000 directory entries, keeping its place between reads; a large
+journal may take several polls to catch up.
+
+Namespace identity, Herdr socket incarnation and terminal ID distinguish CLI event endpoints.
+An event describes activity at a terminal, projected onto that terminal's current tab. Agent names
+and kinds are captured labels, not identities. A successful start does not prove which process now
+occupies that terminal: even when a worker is replaced before the shim observes the reply, the
+record remains an operation addressed to that exact terminal. It creates no agent-instance or
+native-session association. Recreated terminals and daemon restarts cannot inherit these links.
+
+Caller validation and navigation are separate: the source's process/kernel birth is checked before
+and after execution, and stock Herdr's current process inventory provides Graph's terminal-location
+proof for supported recognized agents. An old process-specific node selection cannot open a
+replacement through a historical CLI event. Adoption and Move still require their separate
+native-session ownership proof.
+
+The caller is resolved in its inherited Herdr socket context. An explicit `--session` selects the
+operation's target, even when another server gives out the same pane ID. `--machine` and `--remote`
+commands pass through unchanged but currently produce no shim receipt. Other commands, including
+interactive attachment and Herdr's updater, execute the real CLI with inherited stdio. Supported
+start/prompt calls stream Herdr's own output and preserve its exit status and signal result;
+waiting, submission and cancellation remain Herdr's responsibility. The shim never retries or
+replays a command.
+
+A successful `prompt --wait` submission is still recorded when Herdr 0.9.3 later reports its
+specific status-wait timeout or `agent_prompt_stalled` error and the original recipient can still
+be verified. An exit status alone is not delivery evidence. Unfamiliar output, a timeout before
+submission, an unverifiable/replaced caller or a changed daemon supplies no receipt. Successful
+start/prompt replies identify their terminal even if its process later exits; a status-wait error
+with no reply terminal and no verifiable recipient supplies none. A start that times out and
+becomes ready later also supplies none. Timestamps describe the observed invocation, not a
+recipient read acknowledgement. No message text, native arguments or terminal output is persisted.
+
+This is cooperative observation, not enforced attribution or a complete audit log. An absolute
+call to the real binary, a direct socket request, interactive typing or an unwrapped remote call
+bypasses capture. A storage failure, a killed shim or another ambiguous result can leave a gap;
+commands continue even when metadata cannot be recorded. Windows installation is not supported
+by this shim yet. These limits do not prevent stock Herdr's ordinary commands from working.
+
+The persistent Graph format stays at version 1. Terminal-scoped receipts use a separate optional
+`cli_observations` array, validated by `shared/graph-cli.ts`; existing fork/Codex `observations` and
+`herdr_associations` retain their shapes and meanings. New readers label CLI evidence **Herdr CLI ·
+Terminal activity** and use neutral wording for its history. Older version 1 clients ignore the new
+array while preserving unknown fields when they write known registry changes; they keep reading
+existing native/fork history. Older Ovis releases do not read or rewrite the separate CLI journal.
+Rollback needs no migration or deletion; remove the shim's PATH entry to return to direct resolution.
+The new `graph_cli` source-snapshot field is private to authenticated Graph reads, like the existing
+legacy-named Graph evidence fields. Its optional `current_agents` array holds ephemeral process
+proof separately from terminal receipts; it is never persisted as `herdr_associations`. The legacy
+`flock_coordination` field remains fork-owned, so older managers ignore CLI process proof. Open
+rechecks the selected process against a fresh source response before navigating to its pane.
+Watch devices cannot read this history, current process evidence or namespace data.

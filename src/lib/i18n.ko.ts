@@ -29,6 +29,10 @@ import { RUNTIME_MOVE_KO } from "./i18n/runtime-move.ko.ts";
  * braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Terminal activity": "터미널 활동",
+  "Recorded activity": "기록된 활동",
+  "Related items: {count}": "관련 항목: {count}",
+  "These records have no verified tab to open.": "이 기록에 연결된 확인된 탭이 없습니다.",
   "Recorded agent activity": "기록된 에이전트 활동",
   "Related agent sessions: {count}": "관련 에이전트 세션 {count}개",
   "These sessions have no verified tab to open.": "이 세션에는 열 수 있는 확인된 탭이 없습니다.",

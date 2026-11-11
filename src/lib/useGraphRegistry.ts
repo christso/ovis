@@ -28,8 +28,9 @@ export function useGraphRegistry(enabled: boolean) {
     const ticket = ++request.current;
     try {
       const { sources = [], ...next } = await fetchGraph();
-      if (request.current === ticket) { unreadable.current = false; take(next); setSources(Array.isArray(sources) ? sources : []); setError(null); }
+      if (request.current === ticket) { unreadable.current = false; take(next); setSources(Array.isArray(sources) ? sources : []); setError(null); return { ...next, sources }; }
     } catch (error) { if (request.current === ticket) { setSources([]); fail(error); } }
+    return null;
   }, [take, fail]);
   useEffect(() => {
     if (!enabled) return;
