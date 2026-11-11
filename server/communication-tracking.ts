@@ -1,3 +1,4 @@
+import { HERDR_SHIM_REVISION } from "../shared/communication-tracking.ts";
 /** User-owned, opt-in shell setup for the standalone CLI observer. Never changes the daemon. */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -251,7 +252,8 @@ export class CommunicationTracking implements CommunicationTrackingService {
       const intact = setup.profiles.every((profile) => { const current = file(profile.path); return current.target === profile.target && current.text.split(profile.block).length === 2; });
       if (!setup.enabled) return { ...base, state: intact ? "needs_attention" : setup.profiles.some((profile) => file(profile.path).text.includes(START)) ? "needs_attention" : "disabled", detail: intact ? "Tracking is off, but its startup block still needs cleanup. Disable it again to retry." : null };
       if (!intact || setup.shell !== context.shell || JSON.stringify(base.profiles) !== JSON.stringify(context.profiles) || !existsSync(join(this.installation, "enabled"))) return { ...base, state: "needs_attention", detail: "The shell setup changed. Disable tracking, then enable it again to verify the new setup." };
-      const config = JSON.parse(file(join(this.installation, "config.json")).text) as { enabled?: boolean };
+      const config = JSON.parse(file(join(this.installation, "config.json")).text) as { enabled?: boolean; bundle_revision?: number };
+      if (config.bundle_revision !== HERDR_SHIM_REVISION) return { ...base, state: "needs_attention", detail: "Enable communication tracking again to refresh its wrapper for peer message attribution. Existing commands keep working." };
       return config.enabled !== false && await this.verified(context)
         ? { ...base, state: "enabled" }
         : { ...base, state: "needs_attention", detail: "A new Herdr shell does not resolve herdr to the tracking wrapper. Check for a custom herdr alias or function, then try again." };
@@ -342,8 +344,8 @@ export class CommunicationTracking implements CommunicationTrackingService {
       } else {
         let complete = false;
         try {
-          const config = JSON.parse(file(join(this.installation, "config.json")).text) as { version?: unknown; real?: unknown; journal?: unknown };
-          complete = config.version === 1 && config.real === setup.real && config.journal === this.directory
+          const config = JSON.parse(file(join(this.installation, "config.json")).text) as { version?: unknown; real?: unknown; journal?: unknown; bundle_revision?: unknown };
+          complete = config.version === 1 && config.bundle_revision === HERDR_SHIM_REVISION && config.real === setup.real && config.journal === this.directory
             && statSync(join(this.installation, "observe.js")).isFile() && statSync(join(this.installation, "herdr")).isFile();
         } catch {}
         if (complete && (await command([join(this.installation, "herdr"), "--version"], env)).ok) return;
@@ -369,7 +371,9 @@ export class CommunicationTracking implements CommunicationTrackingService {
   private setEnabled(setup: Setup, enabled: boolean): void {
     if (!this.ownsInstallation()) throw new Error("unowned_installation");
     const path = join(this.installation, "config.json"), before = file(path).text;
-    replaceFile(path, before, JSON.stringify({ version: 1, real: setup.real, journal: this.directory, enabled }) + "\n");
+    let bundle_revision: unknown;
+    try { bundle_revision = (JSON.parse(before) as { bundle_revision?: unknown }).bundle_revision; } catch {}
+    replaceFile(path, before, JSON.stringify({ version: 1, bundle_revision, real: setup.real, journal: this.directory, enabled }) + "\n");
     if (!enabled) rmSync(join(this.installation, "enabled"), { force: true });
   }
 

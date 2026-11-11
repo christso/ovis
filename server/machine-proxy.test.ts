@@ -1,3 +1,8 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ConversationTurn } from "../shared/protocol.ts";
+import { preparePeerMessage, publishPeerMessage, peerMessageTurn } from "./message-sources.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 
 import { agentRowTokens } from "./herdr-sidebar.ts";
@@ -16,10 +21,14 @@ const worktreesAsked: string[] = [];
 const faviconAsked: { search: string; authorization: string | null; cookie: string | null }[] = [];
 const textAsked: { method: string; body: string; authorization: string | null; contentType: string | null }[] = [];
 const diffAsked: { path: string; search: string; authorization: string | null; cookie: string | null; forwarded: string | null }[] = [];
+let peerTurn: ConversationTurn | null = null;
+const peerAsked: string[] = [];
 const remote = Bun.serve({
   port: 0,
   fetch(request) {
     const path = new URL(request.url).pathname;
+    if (path.startsWith("/api/pane/message-source")) { peerAsked.push(path); return Response.json({ private_process: "not for watchers" }); }
+    if (path === "/api/pane/conversation" && new URL(request.url).searchParams.get("pane_id") === "peer-fixture") return Response.json({ source: "codex-transcript", turns: [peerTurn] });
     if (path === "/api/pane/conversation/image") return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "content-type": "image/png" } });
     if (path === "/api/pane/conversation/tool-output") return new Response("complete remote output", { headers: { "content-type": "text/plain; charset=utf-8" } });
     if (path === "/api/fs/file") return new Response("%PDF-1.7", { headers: { "content-type": "application/pdf" } });
@@ -322,4 +331,24 @@ it("passes a PC's session on without the token values this server's sidebar rows
   // a server whose config names no rows passes the session on whole
   const whole = await handleMachineRequest(new Request("http://127.0.0.1/api/machines/pc1/session"), manager, undefined, undefined, true, { get: () => null, subscribe: () => () => undefined });
   expect(await whole.text()).toContain("off · private");
+});
+
+it("proxies authenticated peer content to watchers without private source identities or source lookup access", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-peer-proxy-"));
+  const source = { server_id: "private-source-server", boot_id: "private-source-boot", terminal_id: "private-source-terminal", agent_instance_id: "private-source-process", pane_id: "private-source-pane", agent: "codex", name: "Worker" };
+  const target = { ...source, terminal_id: "recipient", agent_instance_id: "recipient-process" };
+  try {
+    const prepared = preparePeerMessage("Peer update", source, target, root)!; publishPeerMessage(prepared, root);
+    peerTurn = peerMessageTurn({ role: "user", ts: null, parts: [{ kind: "text", text: prepared.text }] }, target, root);
+    const response = await handleMachineRequest(new Request("http://127.0.0.1/api/machines/pc1/pane/conversation?pane_id=peer-fixture"), manager, undefined, undefined, true);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).not.toContain("private-source-");
+    expect(JSON.parse(body).turns[0].sender).toEqual({ id: prepared.id, name: "Worker" });
+    for (const suffix of ["message-source", "message-source/resolve"]) {
+      const lookup = await handleMachineRequest(new Request(`http://127.0.0.1/api/machines/pc1/pane/${suffix}?id=${prepared.id}`), manager, undefined, undefined, true);
+      expect(lookup.status).toBe(403);
+    }
+    expect(peerAsked).toEqual([]);
+  } finally { peerTurn = null; rmSync(root, { recursive: true, force: true }); }
 });

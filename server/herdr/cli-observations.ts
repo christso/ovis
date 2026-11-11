@@ -44,6 +44,32 @@ export function herdrCliOperation(args: readonly string[]): HerdrCliOperation | 
   return target ? { kind: command === "start" ? "delegation" : "communication", target, session } : null;
 }
 
+/** A deliberately strict argv subset for body replacement; everything else stays byte-for-byte passthrough. */
+export function herdrCliPrompt(args: readonly string[]): { body: number } | null {
+  let index = 0;
+  if (args[index] === "--session") index += 2;
+  else if (args[index]?.startsWith("--session=")) index += 1;
+  if (args[index++] !== "agent" || args[index++] !== "prompt") return null;
+  const operands: number[] = [], seen = new Set<string>();
+  let literal = false;
+  for (; index < args.length; index++) {
+    const word = args[index]!;
+    if (word === "--" && !literal) { literal = true; continue; }
+    if (!literal && word.startsWith("-")) {
+      const equals = word.indexOf("=");
+      const flag = equals === -1 ? word : word.slice(0, equals), inline = equals === -1 ? undefined : word.slice(equals + 1);
+      if (!flag || seen.has(flag)) return null;
+      seen.add(flag);
+      if (flag === "--wait" && inline === undefined) continue;
+      if (flag !== "--timeout" && flag !== "--until") return null;
+      const value = inline ?? args[++index];
+      if (!value || (flag === "--timeout" ? !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) : !["idle", "working", "blocked", "done", "unknown"].includes(value))) return null;
+    } else operands.push(index);
+  }
+  if (operands.length !== 2 || !args[operands[0]!] || !args[operands[1]!]!.trim() || args[operands[1]!]!.includes("\u0000")) return null;
+  return herdrCliOperation(args)?.kind === "communication" ? { body: operands[1]! } : null;
+}
+
 /** These two wait errors are emitted only after successful submission in the supported Herdr CLI. */
 export function herdrCliSubmitted(kind: HerdrCliOperation["kind"], code: number | null, response: unknown): boolean {
   if (!response || typeof response !== "object") return false;

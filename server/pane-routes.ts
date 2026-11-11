@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import { readPeerMessage, peerMessageTurn, resolvePeerSource } from "./message-sources.ts";
+import { herdrCliEndpoint } from "./herdr/cli-observations.ts";
+import { herdrSocketPath } from "./herdr/client.ts";
+import { graphHerdrEndpointValue } from "../shared/graph-relationships.ts";
 /**
  * The pane routes: what the browser reads from a pane (its screen, scroll, selection, commands,
  * files and native conversation) and what it does to one (type, rename, close, split, zoom, swap,
@@ -28,7 +33,7 @@ import { ConversationDiagnostics } from "./conversation-diagnostics.ts";
 const conversationDiagnostics = new ConversationDiagnostics();
 
 /** the native stores createServer was given; unset, each reader finds its own */
-export type PaneStores = { codexHome?: string; grokHome?: string; museData?: string; opencodeDb?: string; devinDbPath?: string; hermesHome?: string; openCodeStateDir?: string };
+export type PaneStores = { readOnly?: boolean; messageSourcesDirectory?: string; codexHome?: string; grokHome?: string; museData?: string; opencodeDb?: string; devinDbPath?: string; hermesHome?: string; openCodeStateDir?: string };
 
 /** the sides herdr's pane.swap and pane.resize take, and a move's side of its target; anything else is refused before the RPC, which would answer invalid_request */
 const isPaneDirection = (value: unknown): value is PaneDirection => value === "left" || value === "right" || value === "up" || value === "down";
@@ -47,6 +52,19 @@ function pagePromptsOf(raw: string | null): number | undefined {
 }
 
 export async function handlePaneRequest(request: Request, url: URL, pathname: string, options: PaneStores): Promise<Response | null> {
+
+  if (pathname === "/api/pane/message-source" || pathname === "/api/pane/message-source/resolve") {
+    setRequestRoute(pathname);
+    if (request.method !== "GET") return badRequest("method_not_allowed", "use GET");
+    if (pathname.endsWith("/resolve")) {
+      let source: unknown;
+      try { source = JSON.parse(url.searchParams.get("source") ?? "null"); } catch {}
+      if (!graphHerdrEndpointValue(source)) return badRequest("invalid_source", "A complete source identity is required");
+      return jsonResponse({ pane_id: await resolvePeerSource(source, options.messageSourcesDirectory) }, 200, { "cache-control": "no-store" });
+    }
+    const receipt = readPeerMessage(url.searchParams.get("id") ?? "", options.messageSourcesDirectory);
+    return jsonResponse({ sender: receipt ? { id: receipt.id, source: receipt.source } : null }, 200, { "cache-control": "no-store" });
+  }
 
   if (pathname === "/api/pane/rename") {
     setRequestRoute(pathname);
@@ -314,6 +332,11 @@ export async function handlePaneRequest(request: Request, url: URL, pathname: st
     };
     try {
       const { version, ...conversation } = await paneConversation(paneId, options.codexHome, page, options.devinDbPath, options.opencodeDb, options.hermesHome, options.grokHome, options.museData);
+      if (!options.readOnly && conversation.turns.some((turn) => turn.role === "user" && turn.parts.some((part) => part.kind === "text" && part.text.startsWith("[Ovis peer message from ")))) {
+        const target = await herdrCliEndpoint(herdrSocketPath(), paneId, options.messageSourcesDirectory);
+        if (target) conversation.turns = conversation.turns.map((turn) => peerMessageTurn(turn, target, options.messageSourcesDirectory));
+      }
+      const peerVersion = conversation.turns.some((turn) => turn.sender) ? `-peer${createHash("sha256").update(JSON.stringify(conversation.turns.map((turn) => turn.sender ?? null))).digest("hex").slice(0, 16)}` : "";
       conversationDiagnostics.recovered(paneId, requestIdContext.getStore()?.id);
       // omp's transcript counts the tokens a request filled but never names the window; its own
       // status bar does (server/omp-status.ts), so the chat's ring gets a percent from there
@@ -323,7 +346,7 @@ export async function handlePaneRequest(request: Request, url: URL, pathname: st
       // no-store keeps the browser's own cache out of it, so the chat sees the 304.
       // weak: the same answer goes out gzipped or plain (compress.ts), which are not the same bytes
       // the screen's figure is not in `version`, so it is named here: a changed percent is a new answer
-      const etag = `W/"${version}${screenContext === null ? "" : `-ctx${screenContext.used}:${screenContext.window}`}"`;
+      const etag = `W/"${version}${peerVersion}${screenContext === null ? "" : `-ctx${screenContext.used}:${screenContext.window}`}"`;
       // the turns' times are on this PC's clock, which the browser's can run ahead of (src/lib/sentWaiting.ts):
       // an unchanged answer says it too, so an idle chat's bound stays as fresh as its last read
       const serverTime = new Date().toISOString();

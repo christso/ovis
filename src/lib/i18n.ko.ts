@@ -29,6 +29,10 @@ import { RUNTIME_MOVE_KO } from "./i18n/runtime-move.ko.ts";
  * braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Peer content from {name}": "{name}의 동료 에이전트 콘텐츠",
+  "Open message source": "메시지 출처 열기",
+  "Message source is unavailable": "메시지 출처를 사용할 수 없습니다",
+
   "Terminal in workspace": "작업 공간의 터미널",
   "Terminal in worktree": "워크트리의 터미널",
   "These records have no verified terminal to open.": "이 기록에 연결된 확인된 터미널이 없습니다.",

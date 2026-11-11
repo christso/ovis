@@ -51,3 +51,12 @@ test("a call's recorded state changes the revision; its id stays the same", () =
   const revisions = [call("pending"), call("ok"), call("error"), call()].map((value) => turnRevision(value, true));
   expect(new Set(revisions).size).toBe(4);
 });
+
+test("peer correlation and source identity changes invalidate an otherwise identical chat row", () => {
+  const plain: ConversationTurn = { role: "user", ts: null, parts: [{ kind: "text", text: "same body" }] };
+  const first: ConversationTurn = { ...plain, sender: { id: "first", name: "Worker" } };
+  const second = { ...first, sender: { ...first.sender!, id: "second" } };
+  expect(turnRevision(first)).not.toBe(turnRevision(plain));
+  expect(turnRevision(second)).not.toBe(turnRevision(first));
+  expect(turnRevision({ ...first, sender: { ...first.sender!, name: "Other worker" } })).not.toBe(turnRevision(first));
+});

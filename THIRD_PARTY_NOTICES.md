@@ -2519,3 +2519,13 @@ schemes in d3-scale-chromatic.
    See the License for the specific language governing permissions and
    limitations under the License.
 ```
+
+## Rakazo — peer message design precedent
+
+The sender-attributed peer content and source action were informed by
+[elie222/rakazo](https://github.com/elie222/rakazo/tree/290bdc5e6af35670d9012628fd237e1f4f66bac4),
+commit `290bdc5e6af35670d9012628fd237e1f4f66bac4`, specifically
+`packages/adapters/src/bot-messages.ts`, `packages/core/src/bot-messages.ts`, and
+`apps/web/src/pages/shell/message-view.tsx`. Rakazo is Copyright 2026 Rakazo contributors,
+licensed under [Apache-2.0](https://github.com/elie222/rakazo/blob/290bdc5e6af35670d9012628fd237e1f4f66bac4/LICENSE).
+This is design inspiration only; no Rakazo source code or assets are included or adapted.

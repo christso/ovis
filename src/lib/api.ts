@@ -1674,3 +1674,11 @@ export async function saveVoiceConfig(update: VoiceConfigUpdate): Promise<VoiceS
   if (!response.ok) throw await errorFrom("/api/voice/config", response);
   return (await response.json()) as VoiceStatus;
 }
+
+/** Resolve only metadata registered by the optional shim on the receiving PC. */
+export function fetchMessageSource(id: string, machineId: string): Promise<{ sender: import("../../shared/message-source.ts").MessageSourceProof | null }> {
+  return getJson(machinePath(machineId, `pane/message-source?id=${encodeURIComponent(id)}`));
+}
+export function resolveMessageSource(source: import("../../shared/graph-registry.ts").HerdrCoordinationEndpoint, machineId: string): Promise<{ pane_id: string | null }> {
+  return getJson(machinePath(machineId, `pane/message-source/resolve?source=${encodeURIComponent(JSON.stringify(source))}`));
+}

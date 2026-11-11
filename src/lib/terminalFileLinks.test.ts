@@ -404,3 +404,20 @@ describe("terminal file links", () => {
     term.dispose();
   });
 });
+
+it("maps a peer source locator across soft wraps and refuses stale or malformed locators", async () => {
+  const term = new Terminal({ cols: 28, rows: 12, allowProposedApi: true });
+  const uri = "ovis-source://11111111-1111-4111-8111-111111111111";
+  try {
+    await new Promise<void>((resolve) => term.write(`Source: ${uri}`, resolve));
+    const opened: string[] = [];
+    const links = terminalFileLinks(term.buffer.active, 2, (value) => opened.push(value));
+    expect(links.map((link) => link.text)).toEqual([uri]);
+    links[0]!.activate({} as MouseEvent);
+    expect(opened).toEqual([uri]);
+    await new Promise<void>((resolve) => term.write("\u001b[2J\u001b[HSource: ovis-source://not-a-receipt", resolve));
+    links[0]!.activate({} as MouseEvent);
+    expect(opened).toEqual([uri]);
+    expect(terminalFileLinks(term.buffer.active, 1, () => {})).toEqual([]);
+  } finally { term.dispose(); }
+});

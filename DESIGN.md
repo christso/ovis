@@ -4832,3 +4832,19 @@ Setup status is machine-owned state, never a synced browser setting. A watching 
 control. An older bridge or unsupported shell is identified in the row. Cancellation writes nothing;
 installation failures stay in the confirmation for retry. The usual modal focus and keyboard handling
 apply, and the confirmation uses the normal action color because enabling is reversible.
+
+## Peer message source markers
+
+Future supported Ovis shim prompts identify peer content in the real receiving terminal. Chat
+shows the independently authenticated body under a compact sender marker and a standard source
+button, with text explaining when its source is unavailable. Desktop clicks and touch taps use the
+same browser-only source action. Labels are escaped and stripped of control characters; navigation
+uses daemon, stable terminal and process proof, never the displayed name. Authentic copied content
+retains its original correlation ID and is labeled as peer content rather than a new direct send.
+
+The design follows Rakazo's structured received bot messages, separate sender-attributed wake
+prompt and CollaborationMarker at commit
+[`290bdc5e6af35670d9012628fd237e1f4f66bac4`](https://github.com/elie222/rakazo/tree/290bdc5e6af35670d9012628fd237e1f4f66bac4).
+Rakazo's click opens peer exchanges; Ovis resolves the source terminal instead. Rakazo is a design
+precedent, not a literal terminal-to-terminal implementation. Ovis's implementation is independent;
+no Rakazo code or assets are copied or adapted.

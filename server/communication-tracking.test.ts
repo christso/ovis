@@ -231,3 +231,22 @@ describe.skipIf(process.platform === "win32")("communication tracking setup", ()
     } finally { rmSync(f.root, { recursive: true, force: true }); }
   });
 });
+
+it.skipIf(process.platform !== "linux")("refreshes an owned older wrapper only through explicit setup", async () => {
+  const f = fixture();
+  try {
+    expect((await f.service.enable()).state).toBe("enabled");
+    const configPath = join(f.journal, "installation", "config.json"), bundle = join(f.journal, "installation", "observe.js");
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    delete config.bundle_revision;
+    writeFileSync(configPath, JSON.stringify(config));
+    writeFileSync(bundle, "// preserved old bundle until explicit setup\n" + readFileSync(bundle, "utf8"));
+    const old = readFileSync(bundle, "utf8");
+    expect((await f.service.status()).state).toBe("needs_attention");
+    expect(readFileSync(bundle, "utf8")).toBe(old);
+    expect((await f.service.enable()).state).toBe("enabled");
+    expect(readFileSync(bundle, "utf8")).not.toContain("preserved old bundle");
+    expect(JSON.parse(readFileSync(configPath, "utf8")).bundle_revision).toBe(2);
+    expect((await f.service.disable()).state).toBe("disabled");
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});

@@ -1,3 +1,5 @@
+import { MessageSourceContext } from "../lib/messageSourceContext.tsx";
+import { messageSourceId } from "../../shared/message-source.ts";
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { fontSettled } from "../lib/fontFamily.ts";
 import { Terminal } from "@xterm/xterm";
@@ -214,8 +216,14 @@ export function PaneTerminal({
   const activeRef = useRef(active);
   activeRef.current = active;
   const openFile = useContext(OpenFileContext);
+  const openSource = useContext(MessageSourceContext);
   const openFileRef = useRef(openFile);
-  openFileRef.current = openFile;
+  openFileRef.current = (path) => {
+    const id = messageSourceId(path);
+    if (id === null) { openFile?.(path); return; }
+    if (openSource) void openSource(machineId, id).then((ok) => { if (!ok) setInputError(t("Message source is unavailable")); }, () => setInputError(t("Message source is unavailable")));
+    else setInputError(t("Message source is unavailable"));
+  };
   const openWebPage = useContext(WebPanelContext);
   const machineId = useMachineId();
   const commands = usePaneCommands(paneId, agent);

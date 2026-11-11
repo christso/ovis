@@ -1390,6 +1390,8 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
   if (path === "/api/agent-catalog") return json(DEMO_AGENT_CATALOG, 200, { "cache-control": "no-store" });
   if (path === "/api/agent-catalog/install" || path === "/api/agent-catalog/sign-in") return error("demo", "The demo installs nothing. Install agents on your own PC.", 409);
   if (path === "/api/integrations") return json({ integrations: integrationsFixture } satisfies IntegrationsResponse);
+  if (path === "/api/pane/message-source") return json({ sender: null });
+  if (path === "/api/pane/message-source/resolve") return json({ pane_id: null });
   if (path === "/api/agents/communication-tracking") return method === "GET"
     ? json({ state: "unsupported", shell: null, profiles: [], detail: null, can_manage: false })
     : error("demo", "The demo changes no shell files. Set up communication tracking on your own PC.", 409);

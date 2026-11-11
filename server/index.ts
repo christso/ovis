@@ -172,6 +172,8 @@ export function createServer(
     tailnet?: TailnetIdentitySource;
     /** Native Codex store; defaults to CODEX_HOME. Tests use an isolated store. */
     codexHome?: string;
+    /** Isolated metadata-only peer message journal root; defaults to the shim journal. */
+    messageSourcesDirectory?: string;
     grokHome?: string;
     /** Muse Code's data directory; defaults to XDG_DATA_HOME/muse or ~/.local/share/muse. Tests use an isolated store. */
     museData?: string;

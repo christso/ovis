@@ -17,6 +17,7 @@ export function turnRevision(turn: ConversationTurn, immutable = false): string 
     for (let index = 0; index < value.length; index++) hash = Math.imul(hash ^ value.charCodeAt(index), 0x01000193);
     hash = Math.imul(hash ^ 0x1f, 0x01000193);
   };
+  if (turn.sender) add(JSON.stringify(turn.sender));
   for (const part of turn.parts) {
     add(part.kind);
     if (part.kind === "text" || part.kind === "thinking" || part.kind === "compact" || part.kind === "notice") add(part.text);

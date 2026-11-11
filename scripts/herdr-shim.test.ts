@@ -226,3 +226,22 @@ print(json.dumps(results))
     rmSync(root, { recursive: true, force: true });
   }
 }, 15000);
+
+it("rewrites only an unambiguous supported prompt body argument", async () => {
+  const { herdrCliPrompt } = await import("../server/herdr/cli-observations.ts");
+  expect(herdrCliPrompt(["--session", "two", "agent", "prompt", "worker", "--wait", "body", "--timeout", "123"])).toEqual({ body: 6 });
+  expect(herdrCliPrompt(["agent", "prompt", "worker", "body", "--until=done"])).toEqual({ body: 3 });
+  for (const args of [
+    ["--machine", "remote", "agent", "prompt", "worker", "body"],
+    ["agent", "start", "worker", "--", "body"],
+    ["agent", "prompt", "worker", "body", "extra"],
+    ["agent", "prompt", "worker", "--future", "body"],
+    ["agent", "prompt", "worker", "body", "--timeout", "bad"],
+    ["agent", "prompt", "worker", "body", "--timeout", "1", "--timeout", "2"],
+    ["agent", "prompt", "worker", ""],
+    ["agent", "prompt", "worker", "--help"],
+    ["agent", "prompt", "worker", "body", "--timeout=1=garbage"],
+    ["agent", "prompt", "worker", "body", "--until=done=garbage"],
+  ]) expect(herdrCliPrompt(args)).toBeNull();
+  expect(herdrCliPrompt(["agent", "prompt", "worker", "--", "--a body"])).toEqual({ body: 4 });
+});
