@@ -80,8 +80,9 @@ try {
           const disc = element.querySelector(".graph-node-disc") as SVGCircleElement, arc = element.querySelector(".graph-working-arc") as SVGPathElement, glow = element.querySelector(".graph-working-glow") as SVGCircleElement;
           const matrix = disc.getScreenCTM()!, scale = Math.hypot(matrix.a, matrix.b);
           const width = (circle: SVGGraphicsElement) => parseFloat(getComputedStyle(circle).strokeWidth) * (getComputedStyle(circle).vectorEffect === "non-scaling-stroke" ? 1 : scale);
-          return { arcWidth: width(arc), glowWidth: width(glow), offset: (glow.r.baseVal.value - disc.r.baseVal.value) * scale };
+          return { arcWidth: width(arc), glowWidth: width(glow), offset: (glow.r.baseVal.value - disc.r.baseVal.value) * scale, arcFraction: arc.getTotalLength() / (2 * Math.PI * glow.r.baseVal.value) };
         });
+        assert.ok(Math.abs(geometry.arcFraction - 0.5) < 0.005, "the rotating arc stays half a circle at every zoom");
         assert.ok(geometry.arcWidth >= 2.9 && geometry.glowWidth >= 9.9, "halo and glow keep their screen thickness while zoomed out");
         assert.ok(geometry.glowWidth / 2 > geometry.offset + 2, "the glow overlaps the node interior");
         // Compare the actual rendered halo, rather than only its changing CSS transform.

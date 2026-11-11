@@ -205,7 +205,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
           <circle className="graph-node-disc" r={style.radius} />
           {node.status === "working" && <g className="graph-working-halo" aria-hidden="true" style={{ "--graph-glow-blur": `${2 / viewport.k}px` } as CSSProperties}>
             <circle className="graph-working-glow" r={haloRadius} vectorEffect="non-scaling-stroke" />
-            <path className="graph-working-arc" d={`M 0 ${-haloRadius} A ${haloRadius} ${haloRadius} 0 1 1 ${-haloRadius / 2} ${haloRadius * Math.sqrt(3) / 2}`} vectorEffect="non-scaling-stroke" />
+            <path className="graph-working-arc" d={`M 0 ${-haloRadius} A ${haloRadius} ${haloRadius} 0 0 1 0 ${haloRadius}`} vectorEffect="non-scaling-stroke" />
           </g>}
           {Icon && <Icon x={style.radius - 7} y={-style.radius - 7} width={14} height={14} aria-hidden="true" className="graph-status-icon" />}
           {label && <text textAnchor="middle" x={label.x} y={label.y} style={{ fontSize: 12 / viewport.k, strokeWidth: 4 / viewport.k }} className="graph-node-label">{label.text}</text>}
