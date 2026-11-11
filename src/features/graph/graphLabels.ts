@@ -5,6 +5,10 @@ import type { GraphKind, GraphNode, GraphRelation, GraphStatus } from "./graphMo
 export const GRAPH_KINDS: GraphKind[] = ["workspace", "worktree", "terminal"];
 export const GRAPH_STATUSES: GraphStatus[] = ["working", "blocked", "waiting", "done", "idle", "unknown"];
 export const graphStatusLabel = (t: Translate, status: GraphStatus) => t(STATUS_WORD[status]);
+export function graphNodeStatusLabel(t: Translate, node: GraphNode): string {
+  const status = graphStatusLabel(t, node.status ?? "unknown");
+  return node.hasWorkingTerminals && node.status !== "working" ? `${status} · ${graphStatusLabel(t, "working")}` : status;
+}
 export function graphKindLabel(t: Translate, kind: GraphKind): string {
   switch (kind) {
     case "workspace": return t("Workspace");

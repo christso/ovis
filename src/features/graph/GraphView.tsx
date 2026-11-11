@@ -5,7 +5,7 @@ import { copyText } from "../../lib/clipboard.ts";
 import { useMediaQuery } from "../../lib/useMediaQuery.ts";
 import { DEFAULT_HIDDEN_KINDS, projectGraph, type GraphData, type GraphEdge, type GraphFilters, type GraphKind } from "./graphModel.ts";
 import { fitGraph, zoomAt, type Viewport } from "./graphLayout.ts";
-import { GRAPH_KINDS, GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
+import { GRAPH_KINDS, GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel, graphNodeStatusLabel } from "./graphLabels.ts";
 import { useGraphSimulation } from "./useGraphSimulation.ts";
 import { graphAppearance, graphNodeColour } from "./graphAppearance.ts";
 import { graphMachineClouds } from "./graphMachineClouds.ts";
@@ -137,7 +137,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
       <aside className="graph-details" aria-label={t("Graph details")}>
         {selected && <h2>{selected.label}</h2>}
         {selected ? <>
-          <p className="graph-selected-meta"><span>{graphKindLabel(t, selected.kind)} · {graphStatusLabel(t, selected.status ?? "unknown")}</span>
+          <p className="graph-selected-meta"><span>{graphKindLabel(t, selected.kind)} · {graphNodeStatusLabel(t, selected)}</span>
           {selected.freshness && <span className={selected.freshness === "live" ? undefined : "graph-warning"}>{graphFreshnessLabel(t, selected.freshness)}</span>}</p>
         </> : <p className="graph-selection-hint">{state.selected ? t("The selected node is unavailable.") : t("Select a node to inspect its status and relationships.")}</p>}
         <div className="graph-selection-actions">

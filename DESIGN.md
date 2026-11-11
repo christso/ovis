@@ -4717,7 +4717,10 @@ dark themes and darker in light themes. A soft ten-pixel glow overlaps the disc.
 arc, two-pixel gap and blur retain their screen size at every zoom; node radius still follows
 connections. Other statuses retain their distinct icons, and stale sources have a dashed outline.
 Reduced motion and unavailable sources keep both indicators static; working status ending removes
-them. Labels and edges do not pulse.
+them. Labels and edges do not pulse. Workspace and worktree activity is independent of their attention
+status: any working terminal below the hub activates its halo, including child worktrees, while
+Done/Input badges retain Herdr’s priority. Selection does not change activity, and the Working
+filter includes these active parents.
 Accessible names still include status and freshness. This extends the static, node-coloured local
 centre halo in [Folio's GraphCanvas](https://github.com/evergreen-it-dev/folio/blob/main/web/src/app/graph/GraphCanvas.tsx)
 to indicate active work in Ovis. Unlike Zed's project/thread list, the graph reserves node fills for

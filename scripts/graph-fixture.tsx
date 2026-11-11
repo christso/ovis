@@ -7,10 +7,10 @@ import { SettingsProvider } from "../src/lib/settings.ts";
 
 const fixture: GraphData = {
   nodes: [
-    { id: "repo", kind: "workspace", label: "Orchard", machineId: "north", repositoryKey: "orchard" },
+    { id: "repo", kind: "workspace", label: "Orchard", status: "done", hasWorkingTerminals: true, freshness: "live", machineId: "north", repositoryKey: "orchard" },
     { id: "harbour", kind: "workspace", label: "Harbour", machineId: "south", repositoryKey: "harbour" },
     { id: "quay", kind: "worktree", label: "Quay", machineId: "south" },
-    { id: "checkout", kind: "worktree", label: "Seedling", machineId: "north", detail: "/fictional/orchard/seedling" },
+    { id: "checkout", kind: "worktree", label: "Seedling", status: "blocked", hasWorkingTerminals: true, freshness: "live", machineId: "north", detail: "/fictional/orchard/seedling" },
     { id: "session", kind: "terminal", label: "Prune branches", status: "working", machineId: "north", freshness: "live" },
     { id: "execution", kind: "terminal", label: "Prune branches", status: "working", machineId: "north", freshness: "live" },
     { id: "done", kind: "terminal", label: "Harvest", machineId: "north", status: "done", freshness: "stale" },

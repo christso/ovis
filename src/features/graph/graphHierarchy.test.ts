@@ -81,12 +81,35 @@ test("completed rollups keep workspace and worktree context for active tabs", ()
   const branch = graph.nodes.find((node) => node.kind === "worktree")!;
   const workingTabs = graph.nodes.filter((node) => node.kind === "terminal" && node.status === "working");
   expect(root.status).toBe("done");
+  expect(root.hasWorkingTerminals).toBe(true);
+  expect(branch.hasWorkingTerminals).toBe(true);
   expect(visible.nodes).toContainEqual(root);
   expect(visible.nodes).toContainEqual(branch);
   expect(workingTabs).toHaveLength(2);
   for (const tab of workingTabs) expect(visible.nodes).toContainEqual(tab);
   expect(visible.edges).toContainEqual(expect.objectContaining({ source: branch.id, target: root.id }));
   expect(visible.nodes.some((node) => node.kind === "terminal" && node.status === "done")).toBe(false);
+});
+
+test("workspace activity includes child worktrees and ignores selected tabs", () => {
+  const state = inventory();
+  state.snapshot.panes[1]!.agent_status = "working";
+  state.snapshot.focused_workspace_id = "notes";
+  state.snapshot.focused_tab_id = "tab-notes";
+  const hubs = () => state.graph().nodes.filter((node) => node.kind !== "terminal");
+  const root = () => hubs().find((node) => node.label === "Orchard")!;
+  const branch = () => hubs().find((node) => node.kind === "worktree")!;
+  expect(root().hasWorkingTerminals).toBe(true);
+  expect(root().status).toBe("working");
+  expect(branch().hasWorkingTerminals).toBe(true);
+  expect(hubs().find((node) => node.label === "Plain notes")!.hasWorkingTerminals).toBe(false);
+  state.snapshot.panes[1]!.agent_status = "done";
+  expect(root().hasWorkingTerminals).toBe(false);
+  expect(branch().hasWorkingTerminals).toBe(false);
+  state.snapshot.panes[1]!.agent_status = "working";
+  state.machine.state = "disconnected";
+  expect(root().hasWorkingTerminals).toBe(false);
+  expect(branch().hasWorkingTerminals).toBe(false);
 });
 
 test("hub opening skips unverified own tabs without substituting a child worktree", () => {

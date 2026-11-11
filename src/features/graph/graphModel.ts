@@ -11,6 +11,7 @@ export interface GraphNode {
   label: string;
   namedTerminal?: boolean;
   status?: GraphStatus;
+  hasWorkingTerminals?: boolean;
   machineId?: string;
   freshness?: "live" | "stale" | "disconnected" | "unavailable" | "unsupported";
   detail?: string;
@@ -18,6 +19,7 @@ export interface GraphNode {
   repositoryName?: string;
   activity?: readonly GraphActivity[];
 }
+export const graphNodeIsWorking = (node: GraphNode): boolean => node.status === "working" || node.hasWorkingTerminals === true;
 export interface GraphEdge {
   id: string;
   source: string;
@@ -78,7 +80,7 @@ export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.
   const words = filters.search.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
   const allowed = (node: GraphNode) => !(filters.hiddenKinds ?? DEFAULT_HIDDEN_KINDS).includes(node.kind) && (filters.showCompleted || node.kind !== "terminal" || node.status !== "done") && (!focused || focused.has(node.id));
   const kept = new Set(data.nodes.filter((node) => allowed(node)
-    && (!filters.status || (node.status ?? "unknown") === filters.status)
+    && (!filters.status || (node.status ?? "unknown") === filters.status || (filters.status === "working" && graphNodeIsWorking(node)))
     && (!filters.machine || node.machineId === filters.machine)
     && words.every((word) => `${node.label}\n${node.detail ?? ""}`.toLocaleLowerCase().includes(word))).map((node) => node.id));
   const queue = [...kept];

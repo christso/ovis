@@ -17,6 +17,9 @@ Herdr or sending input.
 Colours identify node types: blue for workspace, orange for worktree, green for terminal.
 These hues stay consistent across palettes, with darker shades in light mode. The legend sits below the
 canvas and can be collapsed; that preference survives reloads.
+Workspace and worktree halos reflect any working terminal beneath them, including child worktrees,
+regardless of the selected tab. Done and Input badges remain visible alongside that activity;
+the Working filter also includes these active parents.
 Working nodes have a soft rotating halo around their edge instead of a small spinner icon. It
 keeps the node's type hue, with a lighter halo in dark themes and a darker one in light themes.
 The glow overlaps the node, and its thickness stays visible when zoomed out. The disc slowly dims

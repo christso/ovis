@@ -33,6 +33,7 @@ export function graphHierarchy(machines: readonly Machine[], terminals: readonly
       const node: GraphNode = { id: `${kind}:${JSON.stringify([machine.id, snapshot.herdr_lifetime ?? null, workspace.workspace_id, occupants])}`, kind,
         label: workspace.label, machineId: machine.id,
         status: live ? members.length ? rollupStatus(members.map((terminal) => terminal.node.status ?? "unknown")) : "idle" : "unknown",
+        hasWorkingTerminals: live && members.some((terminal) => terminal.node.status === "working" && terminal.node.freshness === "live"),
         freshness: live ? "live" : machine.state !== "connected" ? "disconnected" : "unavailable",
         detail: [...new Set([workspace.worktree?.repo_root, workspace.worktree?.checkout_path, workspace.tokens?.["branch"], ...paths].filter((value): value is string => typeof value === "string" && !!value))].join("\n") };
       const hub = { node, terminals: members }; native.set(workspace.workspace_id, hub); hubs.push(hub);
@@ -42,8 +43,10 @@ export function graphHierarchy(machines: readonly Machine[], terminals: readonly
       const root = native.get(workspace.workspace_id)!;
       for (const child of children) {
         const branch = native.get(child.workspace_id)!;
+        root.node.hasWorkingTerminals ||= branch.node.hasWorkingTerminals;
         edges.push({ id: `parent:${branch.node.id}`, source: branch.node.id, target: root.node.id, kind: "worktree-in-workspace", evidence: "Herdr" });
       }
+      if (root.node.hasWorkingTerminals) root.node.status = rollupStatus([root.node.status, "working"]);
       for (const member of [workspace, ...children]) {
         const members = member === workspace ? [workspace, ...children] : [member];
         groups.push({ id: `workspace:${JSON.stringify([machine.id, member.workspace_id])}`, label: member.label, machineId: machine.id,

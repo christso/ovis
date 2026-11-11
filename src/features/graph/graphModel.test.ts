@@ -43,6 +43,12 @@ describe("Graph projection", () => {
     expect(focused.nodes.some((node) => node.id === "session")).toBe(true);
     expect(focused.edges.map((edge) => edge.id)).toEqual(["d"]);
   });
+  it("keeps an active Done workspace in the working filter when terminals are hidden", () => {
+    const data: GraphData = { ...fixture, nodes: fixture.nodes.map((node) => node.id === "repo" ? { ...node, status: "done", hasWorkingTerminals: true } : node) };
+    const view = projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, status: "working", hiddenKinds: ["terminal"] });
+    expect(view.nodes.map((node) => node.id)).toEqual(["repo"]);
+    expect(view.nodes[0]!.status).toBe("done");
+  });
   it("filters communication by recent activity without treating messages as containment", () => {
     const now = Date.parse("2026-11-08T00:00:00Z");
     const data = { ...fixture, edges: [...fixture.edges,

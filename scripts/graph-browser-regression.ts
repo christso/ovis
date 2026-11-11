@@ -33,13 +33,22 @@ try {
       await page.goto(`http://127.0.0.1:${server.port}`);
       const node = page.locator('[data-graph-node="session"]');
       await node.waitFor();
+      for (const [id, status] of [["repo", "done"], ["checkout", "blocked"]]) {
+        const parent = page.locator(`[data-graph-node="${id}"]`);
+        assert.ok((await parent.getAttribute("class"))?.includes(`graph-status-${status}`));
+        assert.equal(await parent.locator(".graph-status-icon").count(), 1, "attention status remains visible alongside activity");
+        assert.equal(await parent.locator(".graph-working-arc").count(), 1, "parent activity remains visible despite Done or Input status");
+        assert.ok((await parent.getAttribute("aria-label"))?.includes("RUN"), "the parent's working activity is accessible");
+      }
       const arc = node.locator(".graph-working-arc");
       assert.equal(await arc.count(), 1);
       await page.waitForFunction(() => {
-        const node = document.querySelector('[data-graph-node="session"]')!;
-        return [".graph-working-arc", ".graph-node-disc", ".graph-working-halo"].every((selector) => {
-          const animation = node.querySelector(selector)!.getAnimations()[0];
-          return animation?.playState === "running" && Number(animation.currentTime) > 200;
+        return ["session", "repo", "checkout"].every((id) => {
+          const node = document.querySelector(`[data-graph-node="${id}"]`)!;
+          return [".graph-working-arc", ".graph-node-disc", ".graph-working-halo"].every((selector) => {
+            const animation = node.querySelector(selector)!.getAnimations()[0];
+            return animation?.playState === "running" && Number(animation.currentTime) > 200;
+          });
         });
       });
       const rotation = await arc.evaluate(async (element) => {
