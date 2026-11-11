@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:04.616
+See the whole herd
+Four real agents, two demo projects, and recorded coordination.
+
+2
+00:00:04.616 --> 00:00:11.586
+Spot active work
+Filter to working agents. Their checkouts and workspace stay active too.
+
+3
+00:00:11.586 --> 00:00:19.676
+Follow the coordinator
+Select an agent to inspect its recorded delegation and communication.
+
+4
+00:00:19.676 --> 00:00:29.345
+Zoom out to checkouts
+Hide terminals. Recorded relationships stay visible between checkouts.
+
+5
+00:00:29.345 --> 00:00:37.193
+See the project-level picture
+Hide worktrees too. Keep the recorded relationships between projects.
+
+6
+00:00:37.193 --> 00:00:46.636
+Keep the agents, skip a level
+Restore terminals while worktrees are hidden: Workspace connects directly to Terminal.
+
+7
+00:00:46.636 --> 00:00:59.304
+Jump straight to the terminal
+Open the selected agent's workspace from the Graph.
+
+8
+00:00:59.304 --> 00:01:04.600
+One map to herd the work
+An Obsidian-inspired overview for coordinating parallel agents.

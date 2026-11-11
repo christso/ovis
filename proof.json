@@ -1,0 +1,159 @@
+{
+  "video": {
+    "sha256": "73083b3d8bc2b75145580f8720324ba13ad435c7ca53876e25116147028abc1e",
+    "bytes": 4025168,
+    "duration": 64.6,
+    "width": 1920,
+    "height": 1080,
+    "codec": "H.264",
+    "pixel_format": "yuv420p",
+    "fast_start": true,
+    "revision": "2504d40b01e2877dc1786581a47893c87a4dcedf",
+    "chapters": [
+      {
+        "at": 0,
+        "title": "See the whole herd",
+        "subtitle": "Four real agents, two demo projects, and recorded coordination."
+      },
+      {
+        "at": 4.616000175476074,
+        "title": "Spot active work",
+        "subtitle": "Filter to working agents. Their checkouts and workspace stay active too."
+      },
+      {
+        "at": 11.586000204086304,
+        "title": "Follow the coordinator",
+        "subtitle": "Select an agent to inspect its recorded delegation and communication."
+      },
+      {
+        "at": 19.676000118255615,
+        "title": "Zoom out to checkouts",
+        "subtitle": "Hide terminals. Recorded relationships stay visible between checkouts."
+      },
+      {
+        "at": 29.34500002861023,
+        "title": "See the project-level picture",
+        "subtitle": "Hide worktrees too. Keep the recorded relationships between projects."
+      },
+      {
+        "at": 37.193000078201294,
+        "title": "Keep the agents, skip a level",
+        "subtitle": "Restore terminals while worktrees are hidden: Workspace connects directly to Terminal."
+      },
+      {
+        "at": 46.63600015640259,
+        "title": "Jump straight to the terminal",
+        "subtitle": "Open the selected agent's workspace from the Graph."
+      },
+      {
+        "at": 59.30400013923645,
+        "title": "One map to herd the work",
+        "subtitle": "An Obsidian-inspired overview for coordinating parallel agents."
+      }
+    ],
+    "checks": [
+      {
+        "name": "whole graph",
+        "nodes": 9,
+        "terminals": 4,
+        "worktrees": 3,
+        "workspaces": 2,
+        "communication": 3,
+        "delegation": 3,
+        "active": 3
+      },
+      {
+        "name": "working filter",
+        "nodes": 5,
+        "terminals": 2,
+        "worktrees": 2,
+        "workspaces": 1,
+        "communication": 1,
+        "delegation": 1,
+        "active": 5
+      },
+      {
+        "name": "coordinator selection",
+        "nodes": 9,
+        "terminals": 4,
+        "worktrees": 3,
+        "workspaces": 2,
+        "communication": 3,
+        "delegation": 3,
+        "active": 5
+      },
+      {
+        "name": "hide terminals",
+        "nodes": 5,
+        "terminals": 0,
+        "worktrees": 3,
+        "workspaces": 2,
+        "communication": 3,
+        "delegation": 3,
+        "active": 3
+      },
+      {
+        "name": "projects only",
+        "nodes": 2,
+        "terminals": 0,
+        "worktrees": 0,
+        "workspaces": 2,
+        "communication": 1,
+        "delegation": 1,
+        "active": 0
+      },
+      {
+        "name": "workspace to terminal",
+        "nodes": 6,
+        "terminals": 4,
+        "worktrees": 0,
+        "workspaces": 2,
+        "communication": 3,
+        "delegation": 3,
+        "active": 0
+      },
+      {
+        "name": "final overview",
+        "nodes": 9,
+        "terminals": 4,
+        "worktrees": 3,
+        "workspaces": 2,
+        "communication": 3,
+        "delegation": 3,
+        "active": 0
+      }
+    ],
+    "source_duration": 90.933333,
+    "retained_source_ranges": [
+      [
+        0,
+        46.63600015640259
+      ],
+      [
+        72.97100019454956,
+        90.933333
+      ]
+    ]
+  },
+  "demo": {
+    "revision": "2504d40b01e2877dc1786581a47893c87a4dcedf",
+    "agents": 4,
+    "workspaces": 4,
+    "graph_workspace_nodes": 2,
+    "graph_checkout_nodes": 3,
+    "observed_delegations": 3,
+    "observed_communications": 10,
+    "producer_sources": [
+      "herdr"
+    ]
+  },
+  "browser_playback": {
+    "width": 1920,
+    "height": 1080,
+    "duration": 64.6,
+    "browser": "desktop Chrome",
+    "playback_rate": 8,
+    "ended": true,
+    "error": null
+  }
+}
