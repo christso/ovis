@@ -3,7 +3,7 @@ import { ChevronDown, Focus, Link, Minus, Plus, RotateCcw, SlidersHorizontal } f
 import { useT } from "../../lib/i18n.ts";
 import { copyText } from "../../lib/clipboard.ts";
 import { useMediaQuery } from "../../lib/useMediaQuery.ts";
-import { projectGraph, type GraphData, type GraphEdge, type GraphFilters, type GraphKind } from "./graphModel.ts";
+import { DEFAULT_HIDDEN_KINDS, projectGraph, type GraphData, type GraphEdge, type GraphFilters, type GraphKind } from "./graphModel.ts";
 import { fitGraph, zoomAt, type Viewport } from "./graphLayout.ts";
 import { GRAPH_KINDS, GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
 import { useGraphSimulation } from "./useGraphSimulation.ts";
@@ -41,7 +41,8 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const filtersId = useId(), detailsId = useId(), legendId = useId();
-  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent", ...(state.filters.hiddenKinds ?? [])].filter(Boolean).length;
+  const hiddenKinds = state.filters.hiddenKinds ?? DEFAULT_HIDDEN_KINDS;
+  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent", ...hiddenKinds.filter((kind) => kind !== "pane"), !hiddenKinds.includes("pane")].filter(Boolean).length;
   const host = useRef<HTMLDivElement>(null);
   const fitted = useRef(saved);
   const [reset, setReset] = useState(0);
@@ -71,7 +72,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
 
   const filter = (patch: Partial<GraphFilters>) => setState((previous) => ({ ...previous, filters: { ...previous.filters, ...patch } }));
   const toggleKind = (kind: GraphKind) => setState((previous) => {
-    const hidden = previous.filters.hiddenKinds ?? [];
+    const hidden = previous.filters.hiddenKinds ?? DEFAULT_HIDDEN_KINDS;
     return { ...previous, filters: { ...previous.filters, hiddenKinds: hidden.includes(kind) ? hidden.filter((value) => value !== kind) : [...hidden, kind] } };
   });
   const zoom = (factor: number) => {
@@ -129,7 +130,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           <button type="button" className="graph-legend-toggle" aria-expanded={state.legendOpen} aria-controls={legendId} onClick={() => setState((previous) => ({ ...previous, legendOpen: !previous.legendOpen }))}>
             <ChevronDown size={16} aria-hidden="true" />{t("Legend")}
           </button>
-          <div className="graph-kind-legend" id={legendId} hidden={!state.legendOpen}>{kinds.map((kind) => <button type="button" key={kind} aria-pressed={!state.filters.hiddenKinds?.includes(kind)} onClick={() => toggleKind(kind)}><i aria-hidden="true" style={{ background: graphNodeColour(kind) }} />{graphKindLabel(t, kind)}</button>)}</div>
+          <div className="graph-kind-legend" id={legendId} hidden={!state.legendOpen}>{kinds.map((kind) => <button type="button" key={kind} aria-pressed={!hiddenKinds.includes(kind)} onClick={() => toggleKind(kind)}><i aria-hidden="true" style={{ background: graphNodeColour(kind) }} />{graphKindLabel(t, kind)}</button>)}</div>
         </div>}
       </div>
       <aside className="graph-details" aria-label={t("Graph details")}>
@@ -163,7 +164,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           </details>}
         </>}
         <p className="graph-help">{t("Drag to pan or move nodes. Pinch or scroll to zoom. Use arrow keys to pan, +/− to zoom and 0 to fit.")}</p>
-        <p className="graph-help">{t("Hierarchy links show workspaces, worktrees and tabs. Communication and delegation links show recorded activity.")}</p>
+        <p className="graph-help">{t("Hierarchy links show workspaces, worktrees, tabs and panes. Communication and delegation links show recorded activity.")}</p>
         <p className="graph-help">{t("Recorded activity uses Herdr operations and supported Codex success receipts. Older servers may have no relationship history.")}</p>
         <p className="graph-help" aria-live="polite">{t("{nodes} nodes · {edges} links", { nodes: view.nodes.length, edges: view.edges.length })}</p>
         </div>

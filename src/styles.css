@@ -105,6 +105,7 @@
   --graph-workspace: #3b82f6;
   --graph-worktree: #f97316;
   --graph-tab: #22c55e;
+  --graph-pane: #a78bfa;
 
   /* type (comfortable density; compact overrides below) */
   --font-ui: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Malgun Gothic", sans-serif;
@@ -314,6 +315,7 @@
   --graph-workspace: #2563eb;
   --graph-worktree: #c2410c;
   --graph-tab: #15803d;
+  --graph-pane: #7c3aed;
 }
 
 /* Charcoal in light: plain paper with ink for the accent and the cursor */

@@ -93,6 +93,7 @@ const DESIGN_ROWS: readonly (readonly [label: string, token: string])[] = [
   ["Graph/workspace", "--graph-workspace"],
   ["Graph/worktree", "--graph-worktree"],
   ["Graph/tab", "--graph-tab"],
+  ["Graph/pane", "--graph-pane"],
   ["Alert/background", "--droplet-bg"],
   ["Alert/text", "--droplet-text"],
   ["Alert/dim text", "--droplet-text-dim"],

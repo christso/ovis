@@ -12,7 +12,7 @@ registry, existing associations and migration APIs remain intact. Legacy `page=t
 Graph. Open in Workspace resolves the selected node's verified current target without focusing
 Herdr or sending input.
 
-Colours identify the three node types: blue for workspace, orange for worktree and green for tab.
+Colours identify node types: blue for workspace, orange for worktree, green for tab and purple for pane.
 These hues stay consistent across palettes, with darker shades in light mode. The legend sits below the
 canvas and can be collapsed; that preference survives reloads.
 Each legend entry also toggles its node type. Hidden entries stay faded and crossed out, ready
@@ -20,6 +20,13 @@ to restore with another click, tap, Enter or Space. Hiding a type removes its no
 links and lets the graph settle into a new layout. Worktree tabs are never reconnected to a
 workspace when their worktree is hidden; only tabs directly on the workspace keep that link.
 Type visibility survives reloads and is included in copied graph links.
+
+Panes are hidden by default. Click **Pane** in the legend to reveal individual terminals under
+their tab: workspace → worktree → tab → pane, or workspace → tab → pane for a main workspace tab.
+Each pane shows its own name and status. **Open in Workspace** selects that exact verified live
+terminal; a disconnected, restored or replaced occupant cannot inherit an old action.
+Showing pane links increases their tab's size. Hiding tabs removes those links without reconnecting
+panes to a worktree or workspace. Communication and delegation remain on tabs.
 
 Short, strong hierarchy links keep each workspace's worktrees and tabs together, while weaker
 communication links connect clusters. Node radius counts distinct visible connections of every type: hierarchy, communication and
@@ -61,13 +68,22 @@ current tab belonging to that hub; it never substitutes a tab from a child workt
 have no terminal action. Hub identity includes its machine, daemon, workspace and pane/terminal set,
 so an old selection cannot open a replacement terminal.
 
-Graph layout and legend preferences live only in the browser's `ovis:graph:v2` localStorage key,
+Graph layout and legend disclosure preferences live in the browser's `ovis:graph:v2` localStorage key,
 owned by `graphState.ts` and `useGraphState.ts`. On the first v2 read, supported v1 selection,
 filters and machine grouping are retained, while coordinates and viewport are reset once to
 form the new hierarchy. The original `ovis:graph:v1` bytes remain unchanged: older tabs and
 rollback releases keep reading/writing v1, and current tabs write only v2. An existing unknown
 version, layout or malformed v2 value is never overwritten. Saved v2 coordinates and viewport
 continue to win on subsequent reloads. These preferences do not change any HTTP/WS contract.
+
+Type visibility is also owned by `graphState.ts`/`useGraphState.ts`. The existing
+`ovis:graph:kinds:v1` record stays `{ version: 1, hiddenKinds: [...] }` for workspace, worktree
+and tab. Pane visibility uses its own `ovis:graph:panes:v1` record,
+`{ version: 1, visible: boolean }`, defaulting to false. Older tabs and rollback clients never
+write this key, so saving their other preferences cannot erase the pane choice. Readers and writers
+preserve malformed or unsupported-version records byte-for-byte. Copied URLs use `gk` for the
+original three types and `gp=1` to show panes; old links without `gp` keep panes hidden.
+No server registry, file format or HTTP/WS contract changes.
 
 Graph was previously named Flock. Its modules, types and navigation now use Graph. The stored
 `flock.json` filename, `/api/flock` route, `flock=1` inventory query, `flock_*` snapshot fields and

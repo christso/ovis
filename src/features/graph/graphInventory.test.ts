@@ -28,6 +28,51 @@ function source(names = ["obsidian", "phone", "social"]) {
 const tabNodes = (graph: GraphData) => graph.nodes.filter((node) => node.kind === "tab");
 const relationships = (graph: GraphData) => graph.edges.filter((edge) => edge.kind === "communication" || edge.kind === "delegation");
 
+it("exposes individual split panes under their tab, hidden by default", () => {
+  const state = source(["Code"]), first = state.snapshot.panes[0]!;
+  first.label = "Build shell";
+  state.snapshot.panes.push({ ...first, pane_id: "split-shell", terminal_id: "split-terminal", label: "Test shell", agent_status: "working" });
+  const data = state.graph(), panes = data.nodes.filter((node) => node.kind === "pane");
+  expect(panes.map((node) => node.label)).toEqual(["Build shell", "Test shell"]);
+  expect(panes.map((node) => node.status)).toEqual(["idle", "working"]);
+  expect(projectGraph(data, DEFAULT_GRAPH_STATE.filters).nodes.some((node) => node.kind === "pane")).toBe(false);
+  const visible = projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: [] });
+  expect(visible.nodes.filter((node) => node.kind === "pane")).toHaveLength(2);
+  const parent = tabNodes(data)[0]!.id;
+  expect(data.edges.filter((edge) => edge.kind === "pane-in-tab").map((edge) => edge.target)).toEqual([parent, parent]);
+  for (const [index, node] of panes.entries()) expect(graphTarget(state.registry, state.rows(), node.id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: state.snapshot.panes[index]!.pane_id });
+});
+
+it("keeps pane identity through sibling changes and refuses a replaced pane occupant", () => {
+  const state = source(["Code"]), first = agent(state, 0);
+  const selected = state.graph().nodes.find((node) => node.kind === "pane")!.id;
+  state.snapshot.panes.push({ ...first, pane_id: "sibling", terminal_id: "sibling-terminal", agent: null, agent_session: null });
+  first.label = "Renamed"; first.cwd = "/fictional/new-place";
+  expect(state.graph().nodes.find((node) => node.kind === "pane" && node.label === "Renamed")!.id).toBe(selected);
+  const open = () => graphTarget(state.registry, state.rows(), selected, state.machines);
+  expect(open()).toEqual({ machine_id: state.machine.id, pane_id: first.pane_id });
+  state.machine.state = "disconnected"; expect(open()).toBeNull();
+  state.machine.state = "connected"; first.restore_error = "fixture"; expect(open()).toBeNull();
+  delete first.restore_error;
+  first.terminal_id = "replacement"; expect(open()).toBeNull();
+  first.terminal_id = "terminal-0";
+  first.agent_session!.value = "replacement-session";
+  expect(open()).toBeNull();
+});
+
+it("keeps a healthy shell pane openable when another split lacks an agent proof", () => {
+  const state = source(["Code"]), first = state.snapshot.panes[0]!;
+  first.label = "Healthy shell";
+  state.snapshot.panes.push({ ...first, pane_id: "unverified", terminal_id: "unverified-terminal", label: "Unverified agent", agent: "codex", agent_session: null });
+  const data = state.graph();
+  const shell = data.nodes.find((node) => node.kind === "pane" && node.label === "Healthy shell")!;
+  const unverified = data.nodes.find((node) => node.kind === "pane" && node.label === "Unverified agent")!;
+  expect(shell.freshness).toBe("live");
+  expect(unverified.freshness).toBe("unsupported");
+  expect(graphTarget(state.registry, state.rows(), shell.id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: first.pane_id });
+  expect(graphTarget(state.registry, state.rows(), unverified.id, state.machines)).toBeNull();
+});
+
 function agent(state: ReturnType<typeof source>, index: number, native = `00000000-0000-4000-8000-00000000000${index}`) {
   const pane = state.snapshot.panes[index]!;
   pane.agent = "codex"; pane.agent_status = "working";
@@ -164,34 +209,38 @@ describe("workspace tabs in Graph", () => {
 });
 
 it("guards Herdr-only occupants using private inventory rows when the ordinary roster omits proofs", () => {
-  const state = source(["obsidian", "phone"]);
-  const pane = state.snapshot.panes[0]!; pane.agent = "claude";
-  const endpoint = { server_id: "server", boot_id: "boot", terminal_id: pane.terminal_id, agent_instance_id: "occupant", agent: pane.agent, pane_id: pane.pane_id, name: "Review worker" };
-  state.snapshot.flock_coordination = { version: 1, server_id: "server", boot_id: "boot", agents: [endpoint], receipts: [], cursor: null };
-  const raw = () => state.machines.map((machine) => ({ ...machine, snapshot: { ...machine.snapshot!, flock_bindings: undefined, flock_coordination: undefined } }));
-  const selected = graphInventory(state.registry, state.rows(), raw()).nodes[0]!.id;
-  const open = () => graphTarget(state.registry, state.rows(), selected, raw());
-  expect(open()).toEqual({ machine_id: state.machine.id, pane_id: pane.pane_id });
-  endpoint.agent_instance_id = "replacement";
-  expect(open()).toBeNull();
-  endpoint.agent_instance_id = "occupant";
-  expect(open()).not.toBeNull();
-  state.snapshot.flock_coordination = undefined;
-  expect(open()).toBeNull();
+  for (const kind of ["tab", "pane"] as const) {
+    const state = source(["obsidian", "phone"]);
+    const pane = state.snapshot.panes[0]!; pane.agent = "claude";
+    const endpoint = { server_id: "server", boot_id: "boot", terminal_id: pane.terminal_id, agent_instance_id: "occupant", agent: pane.agent, pane_id: pane.pane_id, name: "Review worker" };
+    state.snapshot.flock_coordination = { version: 1, server_id: "server", boot_id: "boot", agents: [endpoint], receipts: [], cursor: null };
+    const raw = () => state.machines.map((machine) => ({ ...machine, snapshot: { ...machine.snapshot!, flock_bindings: undefined, flock_coordination: undefined } }));
+    const selected = graphInventory(state.registry, state.rows(), raw()).nodes.find((node) => node.kind === kind)!.id;
+    const open = () => graphTarget(state.registry, state.rows(), selected, raw());
+    expect(open()).toEqual({ machine_id: state.machine.id, pane_id: pane.pane_id });
+    endpoint.agent_instance_id = "replacement";
+    expect(open()).toBeNull();
+    endpoint.agent_instance_id = "occupant";
+    expect(open()).not.toBeNull();
+    state.snapshot.flock_coordination = undefined;
+    expect(open()).toBeNull();
+  }
 });
 
 it("rejects an old private binding when the ordinary roster reports a replacement native session", () => {
-  const state = source(["obsidian"]); agent(state, 0);
-  const verified = state.rows();
-  const ordinary = structuredClone(state.machines);
-  ordinary[0]!.snapshot!.flock_bindings = undefined;
-  const selected = graphInventory(state.registry, verified, ordinary).nodes[0]!.id;
-  ordinary[0]!.snapshot!.panes[0]!.agent_session!.value = "replacement-native";
-  const replacement = graphInventory(state.registry, verified, ordinary).nodes[0]!;
-  expect(replacement.id).not.toBe(selected);
-  expect(replacement.freshness).toBe("unsupported");
-  expect(graphTarget(state.registry, verified, selected, ordinary)).toBeNull();
-  expect(graphTarget(state.registry, verified, replacement.id, ordinary)).toBeNull();
+  for (const kind of ["tab", "pane"] as const) {
+    const state = source(["obsidian"]); agent(state, 0);
+    const verified = state.rows();
+    const ordinary = structuredClone(state.machines);
+    ordinary[0]!.snapshot!.flock_bindings = undefined;
+    const selected = graphInventory(state.registry, verified, ordinary).nodes.find((node) => node.kind === kind)!.id;
+    ordinary[0]!.snapshot!.panes[0]!.agent_session!.value = "replacement-native";
+    const replacement = graphInventory(state.registry, verified, ordinary).nodes.find((node) => node.kind === kind)!;
+    expect(replacement.id).not.toBe(selected);
+    expect(replacement.freshness).toBe("unsupported");
+    expect(graphTarget(state.registry, verified, selected, ordinary)).toBeNull();
+    expect(graphTarget(state.registry, verified, replacement.id, ordinary)).toBeNull();
+  }
 });
 
 it("does not attach a historical session's recorded relationship using only a public native hint", () => {
