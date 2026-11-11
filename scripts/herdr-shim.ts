@@ -11,7 +11,6 @@ import { graphCliTerminalMetadata } from "../shared/graph-cli.ts";
 interface Config { version: 1; real: string; journal: string; enabled?: boolean }
 const quote = (word: string) => "'" + word.replaceAll("'", "'\\''") + "'";
 
-/** Disabling while a prompt waits also prevents its eventual receipt. */
 function captureEnabled(path: string): boolean {
   try { return (JSON.parse(readFileSync(path, "utf8")) as Config).enabled !== false; }
   catch { return false; }
@@ -45,7 +44,6 @@ async function install(args: string[]): Promise<void> {
   if (!lstatSync(actual).isFile() || actual === join(path, "herdr") || isShim(real)) throw new Error("--real must name the installed Herdr executable, not another Ovis shim");
   mkdirSync(path, { mode: 0o700 });
   try {
-    // The managed setup can recover a killed bundle build without treating an arbitrary directory as its own.
     writeFileSync(join(path, "owner.json"), JSON.stringify({ version: 1, owner: "ovis-herdr-cli-shim" }) + "\n", { mode: 0o600, flag: "wx" });
     const bundle = join(path, "observe.js");
     const built = await Bun.build({ entrypoints: [import.meta.path], target: "bun", packages: "bundle", outfile: bundle });

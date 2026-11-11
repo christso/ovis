@@ -149,6 +149,9 @@ describe.skipIf(process.platform === "win32")("communication tracking setup", ()
       record.enabled = false; writeFileSync(join(f.journal, "setup.json"), JSON.stringify(record));
       for (const name of ["observe.js", "config.json", "herdr", "enabled"]) rmSync(join(installation, name), { force: true });
       expect((await f.service.enable()).state).toBe("enabled");
+      writeFileSync(join(installation, "observe.js"), "throw new Error('damaged bundle');\n");
+      expect((await f.service.status()).state).toBe("needs_attention");
+      expect((await f.service.enable()).state).toBe("enabled");
       writeFileSync(join(installation, "config.json"), "{interrupted");
       expect((await f.service.disable()).state).toBe("disabled");
       const wrapper = Bun.spawnSync([join(installation, "herdr"), "agent", "prompt", "worker", "message"], { env: { ...f.env, HERDR_ENV: "1", HERDR_PANE_ID: "not-live" } });

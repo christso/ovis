@@ -57,7 +57,6 @@ export function CommunicationTrackingSettings() {
         let updated: CommunicationTrackingStatus;
         try { updated = await setCommunicationTracking(machineId, confirm === "enable", status); }
         catch (cause) {
-          // A partial setup can still be disabled after Cancel; keep the original error in the dialog.
           try { setStatus(await fetchCommunicationTracking(machineId)); } catch {}
           throw cause;
         }

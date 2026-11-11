@@ -15,7 +15,7 @@ it.skipIf(process.platform !== "linux")("enables tracking for new stock Herdr pa
   writeFileSync(configFile, '[terminal]\ndefault_shell = "/bin/bash"\nshell_mode = "non_login"\n');
   const socket = join(config, "herdr/sessions/setup/herdr.sock"), previousSocket = process.env["HERDR_SOCKET"];
   const child = Bun.spawn([binary, "--session", "setup", "server"], {
-    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(HERDR|OMO|SENPI|PI)_/.test(key))), HOME: home, SHELL: "/bin/bash", XDG_CONFIG_HOME: config, HERDR_CONFIG_PATH: configFile,
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "SHELL" && !/^(HERDR|OMO|SENPI|PI)_/.test(key))), HOME: home, XDG_CONFIG_HOME: config, HERDR_CONFIG_PATH: configFile,
       PATH: [dirname(binary), "/usr/local/bin", "/usr/bin", "/bin"].join(":"), BASH_ENV: undefined, ENV: undefined },
     cwd: root, stdin: "ignore", stdout: "ignore", stderr: "pipe",
   });

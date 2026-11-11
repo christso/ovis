@@ -10,6 +10,7 @@ import { herdrCliDirectory } from "./herdr/cli-observations.ts";
 import { paneProcessInfo, sessionSnapshot } from "./herdr/client.ts";
 import { servingCore } from "./herdr-core/runtime.ts";
 import { herdrConfigPath, readHerdrConfig } from "./herdr-sidebar.ts";
+import { shellQuote } from "./machine-security.ts";
 import { acquireOwnerDirectory } from "./owner-guard.ts";
 import { badRequest, errorResponse, jsonResponse, readJsonObject, setRequestRoute } from "./http.ts";
 
@@ -67,7 +68,6 @@ interface Setup {
 interface ShellContext { shell: string; kind: "bash" | "zsh" | "fish"; login: boolean; env: Record<string, string | undefined>; profiles: string[] }
 const START = "# Ovis communication tracking";
 const END = "# End Ovis communication tracking";
-const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 const ENV_KEYS = new Set(["HOME", "SHELL", "PATH", "ZDOTDIR", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "HERDR_CONFIG_PATH"]);
 const serial = new Map<string, Promise<unknown>>();
 
@@ -109,7 +109,7 @@ async function paneEnvironment(platform: NodeJS.Platform): Promise<Record<string
       const env = shellEnvironment(pid, platform);
       if (env?.["HOME"] && env["SHELL"]) return env;
     }
-  } catch { /* a disconnected daemon has no proved startup environment */ }
+  } catch {}
   return null;
 }
 
@@ -182,7 +182,6 @@ export class CommunicationTracking implements CommunicationTrackingService {
     // An absent daemon ZDOTDIR/XDG setting must stay absent, even when Ovis has its own.
     for (const key of ENV_KEYS) delete env[key];
     Object.assign(env, inherited, { HOME: this.home, HERDR_ENV: "1" });
-    // Configuration is read at the same location Herdr's shell environment names.
     const configPath = this.options.configPath ?? herdrConfigPath(inherited, this.platform, this.home);
     const config = readHerdrConfig(configPath) as { terminal?: { default_shell?: unknown; shell_mode?: unknown } } | null;
     if (config === null && existsSync(configPath)) return null;
@@ -208,7 +207,7 @@ export class CommunicationTracking implements CommunicationTrackingService {
   }
 
   private block(context: ShellContext): string {
-    const flag = quote(join(this.installation, "enabled")), path = quote(this.installation);
+    const flag = shellQuote(join(this.installation, "enabled")), path = shellQuote(this.installation);
     return `${START}\n${context.kind === "fish"
       ? `if test "$HERDR_ENV" = 1; and test -f ${flag}\n    set -gx PATH ${path} $PATH\nend`
       : `if [ "\${HERDR_ENV:-}" = 1 ] && [ -f ${flag} ]; then\n    export PATH=${path}:"$PATH"\nfi`}\n${END}\n`;
@@ -219,7 +218,6 @@ export class CommunicationTracking implements CommunicationTrackingService {
     const result = await command([context.shell, ...(context.login ? ["-l"] : []), "-i", "-c", `printf '\\n${marker}\\n'; ${context.kind === "fish" ? "type -t herdr; " : ""}command -v herdr`], context.env);
     const expected = `${context.kind === "fish" ? "file\n" : ""}${join(this.installation, "herdr")}`;
     if (!result.ok || result.output.split(`\n${marker}\n`)[1]?.trim() !== expected) return false;
-    // Lookup alone would accept a wrapper whose Bun, bundle or original executable was moved.
     return (await command([join(this.installation, "herdr"), "--version"], context.env)).ok;
   }
 
@@ -321,7 +319,6 @@ export class CommunicationTracking implements CommunicationTrackingService {
 
   private async ensureInstallation(setup: Setup, env: Record<string, string | undefined>): Promise<void> {
     if (existsSync(this.installation)) {
-      // The installer may have been killed between its mkdir and its first marker write.
       if (!this.ownsInstallation()) {
         if (!setup.enabled && readdirSync(this.installation).length === 0) rmdirSync(this.installation);
         else throw new Error("unowned_installation");
@@ -332,7 +329,7 @@ export class CommunicationTracking implements CommunicationTrackingService {
           complete = config.version === 1 && config.real === setup.real && config.journal === this.directory
             && statSync(join(this.installation, "observe.js")).isFile() && statSync(join(this.installation, "herdr")).isFile();
         } catch {}
-        if (complete) return;
+        if (complete && (await command([join(this.installation, "herdr"), "--version"], env)).ok) return;
         rmSync(this.installation, { recursive: true });
       }
     }
@@ -348,7 +345,6 @@ export class CommunicationTracking implements CommunicationTrackingService {
   }
 
   async disable(): Promise<CommunicationTrackingStatus> {
-    // An untouched/unsupported setup remains a read-only no-op.
     if (!existsSync(this.record)) return this.status();
     return this.run(async () => {
       const setup = this.saved();
