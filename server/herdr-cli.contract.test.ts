@@ -69,7 +69,7 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     expect(relations.find((item) => item.kind === "communication")?.count).toBe(2);
     expect(relations.every((item) => item.sources.includes("herdr-cli"))).toBe(true);
     const rows = graphRegistryInventory(registry, [live]), graph = graphInventory(registry, rows, [live]);
-    const targetNode = graph.nodes.find((node) => node.kind === "tab" && graphTarget(registry, rows, node.id, [live])?.pane_id === targetPane)!;
+    const targetNode = graph.nodes.find((node) => node.kind === "terminal" && graphTarget(registry, rows, node.id, [live])?.pane_id === targetPane)!;
     expect(targetNode).toBeDefined(); expect(targetNode.freshness).toBe("live"); expect(targetNode.status).toBe("idle");
     expect(graph.edges.filter((edge) => edge.kind === "communication")).toHaveLength(1); expect(graph.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
     expect(store.observe([await machine()]).revision).toBe(registry.revision);
@@ -241,7 +241,7 @@ process.stdout.write(stdout); process.stderr.write(stderr);
       await herdrRpc("pane.read", { pane_id: racePane, source: "recent", strip_ansi: true });
     }
     const beforeRace = await machine(), beforeRaceRegistry = store.observe([beforeRace]), beforeRaceRows = graphRegistryInventory(beforeRaceRegistry, [beforeRace]);
-    const oldRaceNode = graphInventory(beforeRaceRegistry, beforeRaceRows, [beforeRace]).nodes.find((node) => node.kind === "tab" && graphTarget(beforeRaceRegistry, beforeRaceRows, node.id, [beforeRace])?.pane_id === racePane)!;
+    const oldRaceNode = graphInventory(beforeRaceRegistry, beforeRaceRows, [beforeRace]).nodes.find((node) => node.kind === "terminal" && graphTarget(beforeRaceRegistry, beforeRaceRows, node.id, [beforeRace])?.pane_id === racePane)!;
     expect(oldRaceNode).toBeDefined();
     await Bun.write(raceContinue, "continue");
     const raceResult = await racing;
@@ -256,7 +256,7 @@ process.stdout.write(stdout); process.stderr.write(stderr);
     const afterRace = await machine(), afterRaceRegistry = store.observe([afterRace]), afterRaceRows = graphRegistryInventory(afterRaceRegistry, [afterRace]);
     expect(graphTarget(afterRaceRegistry, afterRaceRows, oldRaceNode.id, [afterRace])).toBeNull();
     const afterRaceGraph = graphInventory(afterRaceRegistry, afterRaceRows, [afterRace]);
-    const currentRaceNode = afterRaceGraph.nodes.find((node) => node.kind === "tab" && graphTarget(afterRaceRegistry, afterRaceRows, node.id, [afterRace])?.pane_id === racePane)!;
+    const currentRaceNode = afterRaceGraph.nodes.find((node) => node.kind === "terminal" && graphTarget(afterRaceRegistry, afterRaceRows, node.id, [afterRace])?.pane_id === racePane)!;
     expect(afterRaceGraph.edges.some((edge) => edge.kind === "delegation" && edge.target === currentRaceNode.id && edge.sources?.includes("herdr-cli"))).toBe(true);
     // Journal failure stays outside the execution path.
     const wrong = join(root, "not-a-directory"); writeFileSync(wrong, "preserve");

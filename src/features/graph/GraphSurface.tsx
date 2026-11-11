@@ -1,8 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type CSSProperties } from "react";
 import { Circle, CircleCheck, CircleHelp, CirclePause, LoaderCircle, OctagonAlert } from "lucide-react";
 import { useT } from "../../lib/i18n.ts";
-import { graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
-import type { GraphData, GraphNode } from "./graphModel.ts";
+import { graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphNodeStatusLabel } from "./graphLabels.ts";
+import { graphNodeIsWorking, type GraphData, type GraphNode } from "./graphModel.ts";
 import { graphAppearance, machineColour } from "./graphAppearance.ts";
 import { graphMachineClouds } from "./graphMachineClouds.ts";
 import { zoomAt, type Point, type Positions, type Viewport } from "./graphLayout.ts";
@@ -52,7 +52,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
   const priority = (node: GraphNode) => {
     if (node.id === highlighted) return 0;
     if (neighbours.has(node.id)) return 1;
-    if (node.namedTab) return 2;
+    if (node.namedTerminal) return 2;
     if (node.kind === "workspace") return 3;
     if (node.kind === "worktree") return 4;
     return 5;
@@ -160,7 +160,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
     svg.addEventListener("wheel", wheel, { passive: false });
     return () => svg.removeEventListener("wheel", wheel);
   });
-  const nodeLabel = (node: GraphNode) => `${node.label} · ${graphStatusLabel(t, node.status ?? "unknown")} · ${node.freshness ? graphFreshnessLabel(t, node.freshness) : graphKindLabel(t, node.kind)}`;
+  const nodeLabel = (node: GraphNode) => `${node.label} · ${graphNodeStatusLabel(t, node)} · ${node.freshness ? graphFreshnessLabel(t, node.freshness) : graphKindLabel(t, node.kind)}`;
   return <svg ref={svgRef} className="graph-surface" role="group" aria-label={t("Interactive graph")} tabIndex={0}
     onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onPointerLeave={() => setHovered(null)} onLostPointerCapture={() => { onEndMove(); onViewport(viewport); gesture.current = null; pointers.current.clear(); pinch.current = null; }} onKeyDown={keyDown}>
     <defs><marker id={arrowId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" className="graph-arrowhead" /></marker></defs>
@@ -195,7 +195,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
         const style = appearance.get(node.id)!;
         const haloRadius = style.radius + 2 / viewport.k;
         const label = labels.get(node.id);
-        return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-node-kind-${node.kind} graph-status-${node.status ?? "unknown"}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}${highlighted ? neighbours.has(node.id) ? " graph-related" : " graph-muted" : ""}`}
+        return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-node-kind-${node.kind} graph-status-${node.status ?? "unknown"}${graphNodeIsWorking(node) ? " graph-active" : ""}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}${highlighted ? neighbours.has(node.id) ? " graph-related" : " graph-muted" : ""}`}
           style={{ "--node-colour": style.colour } as CSSProperties} data-degree={style.degree} data-radius={style.radius} transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={nodeLabel(node)} aria-pressed={selected === node.id}
           onPointerEnter={(event) => { if (event.pointerType === "mouse" && event.buttons === 0) setHovered(node.id); }} onPointerLeave={() => setHovered(null)}
           onClick={(event) => { if (event.detail === 0) { setHovered(null); onSelect(node.id); } }}
@@ -203,7 +203,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
           <title>{nodeLabel(node)}</title>
           <circle className="graph-node-hit" r={Math.max(style.radius + 5, 23 / viewport.k)} />
           <circle className="graph-node-disc" r={style.radius} />
-          {node.status === "working" && <g className="graph-working-halo" aria-hidden="true" style={{ "--graph-glow-blur": `${2 / viewport.k}px` } as CSSProperties}>
+          {(graphNodeIsWorking(node)) && <g className="graph-working-halo" aria-hidden="true" style={{ "--graph-glow-blur": `${2 / viewport.k}px` } as CSSProperties}>
             <circle className="graph-working-glow" r={haloRadius} vectorEffect="non-scaling-stroke" />
             <path className="graph-working-arc" d={`M 0 ${-haloRadius} A ${haloRadius} ${haloRadius} 0 0 1 0 ${haloRadius}`} vectorEffect="non-scaling-stroke" />
           </g>}

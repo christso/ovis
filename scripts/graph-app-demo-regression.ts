@@ -9,7 +9,7 @@ import { chromium, type Browser } from "playwright-core";
 import fixture from "../site/demo/fixtures/machines.json";
 import type { Machine } from "../shared/machines.ts";
 import { graphBinding, graphRegistryInventory } from "../shared/graph-registry-inventory.ts";
-import { graphTabs } from "../src/features/graph/graphTabs.ts";
+import { graphTerminals } from "../src/features/graph/graphTerminals.ts";
 import { GraphRegistryStore, handleGraphRequest } from "../server/graph-registry.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
@@ -110,9 +110,9 @@ try {
     store.change(0, { type: "create-work", name: "Orchard work" }, machines);
     store.change(1, { type: "adopt", binding: graphBinding(machines[0]!, machines[0]!.snapshot!.panes[0]!)!, work_id: store.read().works[0]!.id, name: "Prune orchard" }, machines);
     const session = store.read().sessions[0]!;
-    const tabId = (machineId: string, tab = chosen.tab_id) => graphTabs(machines, {}, undefined, graphRegistryInventory(store.read(), machines)).find((item) => item.machine.id === machineId && item.panes[0]?.tab_id === tab)!.node.id;
-    const sourceId = tabId(original.id);
-    let selectedTabId = sourceId;
+    const terminalId = (machineId: string, pane = chosen.pane_id) => graphTerminals(machines, {}, undefined, graphRegistryInventory(store.read(), machines)).find((item) => item.machine.id === machineId && item.panes[0]?.pane_id === pane)!.node.id;
+    const sourceId = terminalId(original.id);
+    let selectedTerminalId = sourceId;
     const context = await browser.newContext({ viewport: { width, height }, ...(videoDir ? { recordVideo: { dir: videoDir, size: { width, height } } } : {}), locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
     await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme, fileOpen: "panel" })), theme);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
@@ -122,7 +122,7 @@ try {
     const base = `http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/`;
     const openGraph = () => openGraphFromSidebar(page);
     const graphNode = (id: string) => page.locator(`[data-graph-node=${JSON.stringify(id)}]`);
-    const node = () => graphNode(selectedTabId);
+    const node = () => graphNode(selectedTerminalId);
     const options = async (open: boolean) => {
       const button = page.getByRole("button", { name: /^Graph filters/ });
       if (mobile && await button.getAttribute("aria-expanded") !== String(open)) await button.click();
@@ -146,13 +146,11 @@ try {
       const beforePane = new URL(page.url()).searchParams.get("pane");
       await openGraphFromSidebar(page);
       await node().waitFor();
-      const paneToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Pane", exact: true });
-      assert.equal(await paneToggle.getAttribute("aria-pressed"), "false");
-      assert.equal(await page.locator(".graph-node-kind-pane").count(), 0, "the real app keeps individual panes hidden initially");
+      assert.equal(await page.locator(".graph-kind-legend").getByRole("button").count(), 3);
+      assert.equal(await page.locator(".graph-node-kind-pane, .graph-node-kind-tab").count(), 0);
       if (theme === "dark" && (width === 1280 || (width === 320 && height === 844))) {
         stage = "exact split pane target";
-        await paneToggle.click();
-        const split = page.locator('.graph-node-kind-pane[aria-label^="Split test shell ·"]');
+        const split = page.locator('.graph-node-kind-terminal[aria-label^="Split test shell ·"]');
         await split.waitFor(); await inspect((await split.getAttribute("data-graph-node"))!);
         await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
         await page.waitForURL((url) => url.searchParams.get("pane") === "graph-split-shell" && !url.searchParams.has("page"));
@@ -160,14 +158,14 @@ try {
         await openNativeAgent(page, "local", chosen.pane_id);
         await page.waitForURL((url) => url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
         await openGraphFromSidebar(page); await node().waitFor();
-        await paneToggle.click(); await inspect(selectedTabId);
+        await inspect(selectedTerminalId);
       }
       await options(true);
       const focus = page.getByRole("combobox", { name: "Focus graph", exact: true });
       const infraFocus = await focus.locator("option").evaluateAll((options) => options.find((option) => option.textContent?.startsWith("infra ·"))!.getAttribute("value")!);
       await focus.selectOption(infraFocus);
-      assert.equal(await page.locator("[data-graph-node]").count(), 6, "workspace focus includes its hub, nested worktree and four native tabs");
-      assert.equal(await page.locator('.graph-node-kind-tab[aria-label^="social ·"]').count(), 1, "a worktree numbered tab uses the sidebar workspace name");
+      assert.equal(await page.locator("[data-graph-node]").count(), 7, "workspace focus includes its hub, nested worktree and five individual terminals");
+      assert.equal(await page.locator('.graph-node-kind-terminal[aria-label^="social ·"]').count(), 1, "a worktree numbered tab uses the sidebar workspace name");
       await focus.selectOption(""); await options(false);
       const researchNode = page.locator('[data-graph-node][aria-label^="research ·"]');
       await researchNode.waitFor();
@@ -180,7 +178,7 @@ try {
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("pane") === idlePane.pane_id && !url.searchParams.has("page"));
       await openGraphFromSidebar(page);
-      const social = page.locator('.graph-node-kind-tab[aria-label^="social ·"]');
+      const social = page.locator('.graph-node-kind-terminal[aria-label^="social ·"]');
       await social.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("pane") === "social-pane" && !url.searchParams.has("page"));
@@ -216,15 +214,15 @@ try {
       assert.equal(await page.getByRole("button", { name: "Graph", exact: true, includeHidden: true }).getAttribute("aria-current"), "page");
       assert.equal(new URL(page.url()).searchParams.get("pane"), beforePane);
       await page.getByText(/Inventory is incomplete for:.*Graph awaiting inventory/).waitFor();
-      await inspect(selectedTabId);
+      await inspect(selectedTerminalId);
       assert.equal(await page.locator(".graph-edge-delegation, .graph-edge-communication").count(), 0, "unmapped agent activity never adds graph links or nodes");
-      assert.equal(await page.locator(".graph-surface [data-graph-node]").count(), 10, "native workspace and worktree hubs connect the six tabs");
+      assert.equal(await page.locator(".graph-surface [data-graph-node]").count(), 11, "native workspace and worktree hubs connect seven individual terminals");
       await options(true);
       assert.equal(await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").filter({ hasText: "Codex 01a1a426" }).count(), 0, "unmapped sessions cannot be selected as nodes");
       await options(false);
       const activity = await showActivity();
       await activity.getByText("Related agent sessions: 1", { exact: true }).waitFor();
-      await activity.getByText("These sessions have no verified tab to open.", { exact: true }).waitFor();
+      await activity.getByText("These sessions have no verified terminal to open.", { exact: true }).waitFor();
       await activity.locator("li").filter({ hasText: "Recorded delegation → Codex 01a1a426" }).waitFor();
       await activity.locator("li").filter({ hasText: "2 recorded events" }).waitFor();
       assert.equal(await activity.locator("button, a").count(), 0, "recorded history has no nonfunctional navigation controls");
@@ -253,7 +251,7 @@ try {
       await page.getByLabel("Search graph", { exact: true }).fill("Prune orchard");
       await options(true);
       await page.getByRole("combobox", { name: "Status", exact: true }).selectOption("working");
-      await page.getByRole("combobox", { name: "Focus graph", exact: true }).selectOption(selectedTabId);
+      await page.getByRole("combobox", { name: "Focus graph", exact: true }).selectOption(selectedTerminalId);
       await options(false);
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
       await page.getByRole("button", { name: "Zoom in", exact: true }).click();
@@ -286,10 +284,10 @@ try {
       store.change(store.read().revision, { type: "adopt", binding: graphBinding(machines[1]!, machines[1]!.snapshot!.panes[0]!)!, session_id: session.id }, machines);
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
-      const remoteId = tabId(remote.id);
+      const remoteId = terminalId(remote.id);
       await graphNode(remoteId).waitFor();
       assert.equal(await node().getAttribute("aria-pressed"), "true", "a tab selection stays with its physical source after a logical move");
-      selectedTabId = remoteId; await inspect(selectedTabId);
+      selectedTerminalId = remoteId; await inspect(selectedTerminalId);
       assert.equal(store.read().observations?.length, 3, "replaying the copied rollout on its destination does not import receipts twice");
       assert.equal(await page.locator(".graph-edge-communication").count(), 0, "recorded history stays outside the graph after a move");
       await (await showActivity()).locator("li").filter({ hasText: "2 recorded events" }).waitFor();
@@ -298,7 +296,7 @@ try {
         const withFile = new URL(page.url()); withFile.searchParams.delete("page"); withFile.searchParams.set("file", "README.md");
         await page.goto(withFile.href);
         await page.locator("aside.file-panel .file-viewer").waitFor();
-        await openGraph(); await node().waitFor(); await inspect(selectedTabId);
+        await openGraph(); await node().waitFor(); await inspect(selectedTerminalId);
       }
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
@@ -311,7 +309,7 @@ try {
       assert.equal(await node().getAttribute("aria-pressed"), "true");
       stage = "forward"; await page.goForward();
       await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && !url.searchParams.has("page"));
-      await openGraph(); await inspect(selectedTabId);
+      await openGraph(); await inspect(selectedTerminalId);
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && !url.searchParams.has("page"));
       await page.goBack(); await node().waitFor();
@@ -334,7 +332,7 @@ try {
       await openGraph(); await inspect(sourceId);
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => !url.searchParams.has("machine") && url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
-      await openGraph(); await inspect(selectedTabId);
+      await openGraph(); await inspect(selectedTerminalId);
       machines[1]!.state = "disconnected";
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       await page.waitForFunction(() => (document.querySelector('.graph-details button') as HTMLButtonElement)?.disabled === true);
@@ -345,14 +343,14 @@ try {
       await page.waitForFunction(() => document.querySelector(".graph-selection-hint")?.textContent?.includes("unavailable"));
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0, "reused native identity cannot navigate");
       await options(true);
-      const unproven = await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").evaluateAll((options) => options.find((option) => option.textContent?.includes("research · Tab"))?.getAttribute("value"));
+      const unproven = await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").evaluateAll((options) => options.find((option) => option.textContent?.includes("research · Terminal"))?.getAttribute("value"));
       assert.ok(unproven); await inspect(unproven);
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true);
       await page.getByText("Identity unavailable", { exact: true }).last().waitFor();
       future = true; await page.getByRole("button", { name: "Refresh", exact: true }).click();
       await page.getByText(/format cannot be read/).waitFor();
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0, "unreadable registry exposes no terminal action");
-      future = false; await page.getByRole("button", { name: "Refresh", exact: true }).click(); selectedTabId = sourceId; await node().waitFor(); await inspect(selectedTabId);
+      future = false; await page.getByRole("button", { name: "Refresh", exact: true }).click(); selectedTerminalId = sourceId; await node().waitFor(); await inspect(selectedTerminalId);
       // Browser history restores the Graph page and its filters, without selecting Herdr focus.
       await page.getByLabel("Search graph", { exact: true }).fill("Prune orchard");
       await openNativeAgent(page, "local", chosen.pane_id);
@@ -377,7 +375,7 @@ try {
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
       await page.waitForFunction(() => document.querySelectorAll(".graph-edge-delegation").length === 0);
       const terminalHistory = await showActivity();
-      await terminalHistory.getByText("These records have no verified tab to open.", { exact: true }).waitFor();
+      await terminalHistory.getByText("These records have no verified terminal to open.", { exact: true }).waitFor();
       assert.match(await terminalHistory.locator("summary").innerText(), /Recorded activity/);
       assert.equal(await terminalHistory.locator("button, a").count(), 0, "historical terminal evidence creates no navigation action");
       assert.equal(store.read().cli_observations?.length, 1, "refresh/recreated terminals do not duplicate or reinterpret a receipt");
@@ -387,7 +385,7 @@ try {
       cliSnapshot.graph_cli.current_agents = [{ ...terminal(cliPane.pane_id, cliPane.terminal_id), agent: "codex", agent_instance_id: "old-cli-process" }];
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
-      const oldCliId = graphTabs([cliMachine], {}, undefined, graphRegistryInventory(store.read(), [cliMachine])).find((tab) => tab.panes.some((pane) => pane.pane_id === cliPane.pane_id))!.node.id;
+      const oldCliId = graphTerminals([cliMachine], {}, undefined, graphRegistryInventory(store.read(), [cliMachine])).find((tab) => tab.panes.some((pane) => pane.pane_id === cliPane.pane_id))!.node.id;
       await inspect(oldCliId);
       const staleOpen = page.getByRole("button", { name: "Open in Workspace", exact: true });
       assert.equal(await staleOpen.isEnabled(), true);
@@ -397,7 +395,7 @@ try {
       await page.locator(".graph-selection-hint").filter({ hasText: "unavailable" }).waitFor({ timeout: 3000 });
       assert.equal(new URL(page.url()).searchParams.get("page"), "graph", "Open checks the selected process before navigating");
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0);
-      const currentCliId = graphTabs([cliMachine], {}, undefined, graphRegistryInventory(store.read(), [cliMachine])).find((tab) => tab.panes.some((pane) => pane.pane_id === cliPane.pane_id))!.node.id;
+      const currentCliId = graphTerminals([cliMachine], {}, undefined, graphRegistryInventory(store.read(), [cliMachine])).find((tab) => tab.panes.some((pane) => pane.pane_id === cliPane.pane_id))!.node.id;
       await inspect(currentCliId);
       // Hold the user's source read across a due automatic poll, without waiting on wall time.
       await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
@@ -439,10 +437,10 @@ try {
       await watch.close();
       stage = "empty inventory reload";
       store = new GraphRegistryStore(join(root, `empty-${width}-${height}-${theme}`));
-      await page.evaluate(() => localStorage.removeItem("ovis:graph:v2"));
+      await page.evaluate(() => localStorage.removeItem("ovis:graph:v3"));
       await page.goto(`${base}?page=graph`);
       await page.getByText("No graph nodes match these filters.", { exact: true }).waitFor();
-      await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem("ovis:graph:v2") ?? "null")?.positions ?? {}).length === 0);
+      await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem("ovis:graph:v3") ?? "null")?.positions ?? {}).length === 0);
       await page.reload(); await page.locator(".graph-surface").waitFor();
       machines = structuredClone(pristine);
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);

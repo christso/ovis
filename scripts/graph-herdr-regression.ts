@@ -9,7 +9,7 @@ import { chromium, type Browser, type Page } from "playwright-core";
 import roster from "../site/demo/fixtures/machines.json";
 import type { HerdrCoordinationEndpoint } from "../shared/graph-registry.ts";
 import { graphRegistryInventory } from "../shared/graph-registry-inventory.ts";
-import { graphTabs } from "../src/features/graph/graphTabs.ts";
+import { graphTerminals } from "../src/features/graph/graphTerminals.ts";
 import type { Machine } from "../shared/machines.ts";
 import { handleGraphRequest } from "../server/graph-registry.ts";
 import { moveFlowFixture } from "../server/session-move/flow.fixture.ts";
@@ -85,7 +85,7 @@ try {
     })];
     const tabId = (machineId: string, nativeTab = "owned-tab") => {
       const sources = machines();
-      return graphTabs(sources, {}, undefined, graphRegistryInventory(flow.graphRegistry.read(), sources)).find((tab) => tab.machine.id === machineId && tab.panes[0]?.tab_id === nativeTab)!.node.id;
+      return graphTerminals(sources, {}, undefined, graphRegistryInventory(flow.graphRegistry.read(), sources)).find((tab) => tab.machine.id === machineId && tab.panes[0]?.tab_id === nativeTab)!.node.id;
     };
     let selectedTabId = tabId("owned-source");
     const mobile = width < 700, viewport = { width, height: 844 };

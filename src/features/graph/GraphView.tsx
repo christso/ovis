@@ -5,7 +5,7 @@ import { copyText } from "../../lib/clipboard.ts";
 import { useMediaQuery } from "../../lib/useMediaQuery.ts";
 import { DEFAULT_HIDDEN_KINDS, projectGraph, type GraphData, type GraphEdge, type GraphFilters, type GraphKind } from "./graphModel.ts";
 import { fitGraph, zoomAt, type Viewport } from "./graphLayout.ts";
-import { GRAPH_KINDS, GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel } from "./graphLabels.ts";
+import { GRAPH_KINDS, GRAPH_STATUSES, graphFreshnessLabel, graphKindLabel, graphRelationLabel, graphStatusLabel, graphNodeStatusLabel } from "./graphLabels.ts";
 import { useGraphSimulation } from "./useGraphSimulation.ts";
 import { graphAppearance, graphNodeColour } from "./graphAppearance.ts";
 import { graphMachineClouds } from "./graphMachineClouds.ts";
@@ -42,7 +42,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const [detailsOpen, setDetailsOpen] = useState(false);
   const filtersId = useId(), detailsId = useId(), legendId = useId();
   const hiddenKinds = state.filters.hiddenKinds ?? DEFAULT_HIDDEN_KINDS;
-  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent", ...hiddenKinds.filter((kind) => kind !== "pane"), !hiddenKinds.includes("pane")].filter(Boolean).length;
+  const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent", ...hiddenKinds].filter(Boolean).length;
   const host = useRef<HTMLDivElement>(null);
   const fitted = useRef(saved);
   const [reset, setReset] = useState(0);
@@ -137,7 +137,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
       <aside className="graph-details" aria-label={t("Graph details")}>
         {selected && <h2>{selected.label}</h2>}
         {selected ? <>
-          <p className="graph-selected-meta"><span>{graphKindLabel(t, selected.kind)} · {graphStatusLabel(t, selected.status ?? "unknown")}</span>
+          <p className="graph-selected-meta"><span>{graphKindLabel(t, selected.kind)} · {graphNodeStatusLabel(t, selected)}</span>
           {selected.freshness && <span className={selected.freshness === "live" ? undefined : "graph-warning"}>{graphFreshnessLabel(t, selected.freshness)}</span>}</p>
         </> : <p className="graph-selection-hint">{state.selected ? t("The selected node is unavailable.") : t("Select a node to inspect its status and relationships.")}</p>}
         <div className="graph-selection-actions">
@@ -157,7 +157,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           })}</ul>
           {activity.length > 0 && <details className="graph-recorded-activity">
             <summary>{terminalActivity ? t("Recorded activity") : t("Recorded agent activity")}<small>{terminalActivity ? t("Related items: {count}", { count: relatedSessions }) : t("Related agent sessions: {count}", { count: relatedSessions })}</small></summary>
-            <p>{terminalActivity ? t("These records have no verified tab to open.") : t("These sessions have no verified tab to open.")}</p>
+            <p>{terminalActivity ? t("These records have no verified terminal to open.") : t("These sessions have no verified terminal to open.")}</p>
             <ul className="graph-relations">{activity.map((item) => <li key={item.id}>
               {graphRelationLabel(t, item.kind)} {item.direction === "outgoing" ? "→" : "←"} {item.label}
               <RecordedEvents value={item} />
@@ -165,7 +165,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           </details>}
         </>}
         <p className="graph-help">{t("Drag to pan or move nodes. Pinch or scroll to zoom. Use arrow keys to pan, +/− to zoom and 0 to fit.")}</p>
-        <p className="graph-help">{t("Hierarchy links show workspaces, worktrees, tabs and panes. Communication and delegation links show recorded activity.")}</p>
+        <p className="graph-help">{t("Hierarchy links show workspaces, worktrees and terminals. Communication and delegation links show recorded activity.")}</p>
         <p className="graph-help">{t("Recorded activity uses Herdr operations and supported Codex success receipts. Older servers may have no relationship history.")}</p>
         <p className="graph-help" aria-live="polite">{t("{nodes} nodes · {edges} links", { nodes: view.nodes.length, edges: view.edges.length })}</p>
         </div>

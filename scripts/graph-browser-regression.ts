@@ -33,13 +33,22 @@ try {
       await page.goto(`http://127.0.0.1:${server.port}`);
       const node = page.locator('[data-graph-node="session"]');
       await node.waitFor();
+      for (const [id, status] of [["repo", "done"], ["checkout", "blocked"]]) {
+        const parent = page.locator(`[data-graph-node="${id}"]`);
+        assert.ok((await parent.getAttribute("class"))?.includes(`graph-status-${status}`));
+        assert.equal(await parent.locator(".graph-status-icon").count(), 1, "attention status remains visible alongside activity");
+        assert.equal(await parent.locator(".graph-working-arc").count(), 1, "parent activity remains visible despite Done or Input status");
+        assert.ok((await parent.getAttribute("aria-label"))?.includes("RUN"), "the parent's working activity is accessible");
+      }
       const arc = node.locator(".graph-working-arc");
       assert.equal(await arc.count(), 1);
       await page.waitForFunction(() => {
-        const node = document.querySelector('[data-graph-node="session"]')!;
-        return [".graph-working-arc", ".graph-node-disc", ".graph-working-halo"].every((selector) => {
-          const animation = node.querySelector(selector)!.getAnimations()[0];
-          return animation?.playState === "running" && Number(animation.currentTime) > 200;
+        return ["session", "repo", "checkout"].every((id) => {
+          const node = document.querySelector(`[data-graph-node="${id}"]`)!;
+          return [".graph-working-arc", ".graph-node-disc", ".graph-working-halo"].every((selector) => {
+            const animation = node.querySelector(selector)!.getAnimations()[0];
+            return animation?.playState === "running" && Number(animation.currentTime) > 200;
+          });
         });
       });
       const rotation = await arc.evaluate(async (element) => {
@@ -178,7 +187,7 @@ try {
       const legend = page.locator(".graph-kind-legend");
       const worktreeToggle = legend.getByRole("button", { name: "Worktree", exact: true });
       const workspaceToggle = legend.getByRole("button", { name: "Workspace", exact: true });
-      const tabToggle = legend.getByRole("button", { name: "Tab", exact: true });
+      const terminalToggle = legend.getByRole("button", { name: "Terminal", exact: true });
       const beforeKinds = await page.locator("[data-graph-node]").evaluateAll((nodes) => Object.fromEntries(nodes.map((node) => [node.getAttribute("data-graph-node"), node.getAttribute("transform")])));
       if (mobile) await worktreeToggle.tap(); else await worktreeToggle.click();
       assert.equal(await worktreeToggle.getAttribute("aria-pressed"), "false");
@@ -202,43 +211,24 @@ try {
       await page.locator('[data-graph-node="checkout"]').waitFor();
       assert.equal(await worktreeToggle.getAttribute("aria-pressed"), "true", "keyboard restores worktrees");
       assert.equal(await page.locator(".graph-edge").count(), 5);
-      for (const toggle of [workspaceToggle, worktreeToggle, tabToggle]) await toggle.click();
+      for (const toggle of [workspaceToggle, worktreeToggle, terminalToggle]) await toggle.click();
       assert.equal(await page.locator("[data-graph-node], .graph-edge").count(), 0);
-      assert.equal(await legend.getByRole("button").count(), 4, "all hidden types remain available to restore");
+      assert.equal(await legend.getByRole("button").count(), 3, "all hidden types remain available to restore");
       await workspaceToggle.focus(); await page.keyboard.press("Space");
       await page.locator('[data-graph-node="repo"]').waitFor();
       assert.equal(await page.locator("[data-graph-node]").count(), 2);
       assert.equal(await page.locator(".graph-edge").count(), 0);
-      await worktreeToggle.click(); await tabToggle.click();
+      await worktreeToggle.click(); await terminalToggle.click();
       await node.waitFor();
       assert.equal(await page.locator(".graph-edge").count(), 5);
       if (mobile) assert.ok((await worktreeToggle.boundingBox())!.height >= 44, "legend type toggles meet phone touch size");
-      stage = "optional split panes";
-      const paneToggle = legend.getByRole("button", { name: "Pane", exact: true });
-      assert.equal(await paneToggle.getAttribute("aria-pressed"), "false", "panes start hidden");
-      assert.equal(await page.locator(".graph-node-kind-pane").count(), 0);
+      stage = "one terminal node type";
+      assert.equal(await legend.getByRole("button", { name: "Tab", exact: true }).count(), 0);
+      assert.equal(await legend.getByRole("button", { name: "Pane", exact: true }).count(), 0);
+      assert.equal(await page.locator(".graph-node-kind-tab, .graph-node-kind-pane").count(), 0);
+      assert.equal(await page.locator(".graph-node-kind-terminal").count(), 3);
       assert.equal(await node.getAttribute("data-degree"), "1");
-      if (mobile) await paneToggle.tap(); else await paneToggle.click();
-      await page.waitForURL((url) => url.searchParams.get("gp") === "1");
-      await page.locator('[data-graph-node="pane-build"]').waitFor();
-      assert.equal(await page.locator(".graph-node-kind-pane").count(), 2);
-      assert.equal(await node.getAttribute("data-degree"), "3", "visible split panes enlarge their tab");
-      await page.reload(); await node.waitFor();
-      assert.equal(await paneToggle.getAttribute("aria-pressed"), "true", "pane visibility survives reload");
-      await screenshot("panes-visible");
-      await tabToggle.click();
-      assert.equal(await page.locator(".graph-edge-pane-in-tab").count(), 0, "hidden tabs do not reparent panes");
-      assert.equal(await page.locator('[data-graph-node="pane-build"]').getAttribute("data-degree"), "0");
-      await tabToggle.click(); await node.waitFor();
-      const pane = page.locator('[data-graph-node="pane-build"]');
-      await pane.focus(); await page.keyboard.press("Enter");
-      await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
-      assert.equal(await page.getByLabel("Opened target", { exact: true }).innerText(), "pane-build");
-      await page.locator(".graph-surface").focus(); await page.keyboard.press("Escape");
-      await paneToggle.click();
-      assert.equal(await node.getAttribute("data-degree"), "1", "hiding panes restores the overview size");
-      await page.waitForURL((url) => !url.searchParams.has("gp"));
-      await screenshot("panes-hidden");
+      await screenshot("terminals-visible");
       if (mobile) {
         await filters.waitFor();
         assert.equal(await filters.getAttribute("aria-expanded"), "false", "phone filters start collapsed");
@@ -445,10 +435,10 @@ try {
       await options(true);
       await page.getByLabel("Focus graph", { exact: true }).selectOption("");
       await page.locator('[data-graph-node="session"]').waitFor();
-      await page.evaluate(() => localStorage.removeItem("ovis:graph:v2"));
+      await page.evaluate(() => localStorage.removeItem("ovis:graph:v3"));
       stage = "empty inventory reload";
       await page.goto(`http://127.0.0.1:${server.port}?empty=1`);
-      await page.waitForFunction(() => JSON.parse(localStorage.getItem("ovis:graph:v2") ?? "null")?.version === 2);
+      await page.waitForFunction(() => JSON.parse(localStorage.getItem("ovis:graph:v3") ?? "null")?.version === 3);
       await page.reload();
       await page.getByRole("button", { name: "Load inventory", exact: true }).click();
       await node.waitFor();
@@ -456,9 +446,9 @@ try {
       await page.evaluate((url) => history.replaceState(history.state, "", url), loaded.href);
       await page.waitForFunction(() => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== "translate(160 100) scale(1)");
       assert.ok((await node.boundingBox())!.x < width!, "an empty persisted default frame is framed when inventory arrives");
-      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v3")!));
       stage = "custom saved viewport";
-      await page.evaluate((saved) => localStorage.setItem("ovis:graph:v2", JSON.stringify({ ...saved, positions: {}, viewport: { x: 61, y: 83, k: 0.63 } })), saved);
+      await page.evaluate((saved) => localStorage.setItem("ovis:graph:v3", JSON.stringify({ ...saved, positions: {}, viewport: { x: 61, y: 83, k: 0.63 } })), saved);
       await page.reload(); await node.waitFor();
       assert.equal(await page.locator(".graph-surface > g").getAttribute("transform"), "translate(61 83) scale(0.63)", "even a saved viewport without positions is not silently reset");
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
@@ -474,7 +464,7 @@ try {
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
       const resetDefaults = await page.locator("[data-graph-node]").evaluateAll((nodes) => Object.fromEntries(nodes.map((node) => [node.getAttribute("data-graph-node"), node.getAttribute("transform")])));
       await node.focus(); await page.keyboard.press("Enter");
-      const beforeReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
+      const beforeReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v3")!));
       const dragBox = (await node.locator(".graph-node-disc").boundingBox())!;
       const start = { x: dragBox.x + dragBox.width / 2, y: dragBox.y + dragBox.height / 2 };
       if (mobile) {
@@ -493,12 +483,12 @@ try {
       await page.waitForFunction((defaults) => [...document.querySelectorAll("[data-graph-node]")].every((node) => node.getAttribute("transform") === defaults[node.getAttribute("data-graph-node")!]), resetDefaults);
       await page.waitForFunction((frame) => document.querySelector(".graph-surface > g")?.getAttribute("transform") !== frame, draggedFrame);
       assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), draggedFrame, "reset refits the graph");
-      const afterReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
+      const afterReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v3")!));
       assert.equal(afterReset.selected, beforeReset.selected, "reset preserves selection");
       assert.deepEqual(afterReset.filters, beforeReset.filters, "reset preserves filters");
       assert.equal(afterReset.groupMachine, true, "reset preserves grouping");
       await page.reload(); await node.waitFor();
-      assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!).positions), afterReset.positions, "reset positions survive reload");
+      assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v3")!).positions), afterReset.positions, "reset positions survive reload");
       assert.equal(await node.getAttribute("transform"), resetDefaults.session);
       if (mobile) {
         assert.ok((await reset.boundingBox())!.height >= 44, "reset meets phone touch size");
@@ -538,21 +528,21 @@ try {
         await cdp.detach();
       }
       await page.goto(`http://127.0.0.1:${server.port}/storage.html`);
-      await page.evaluate(() => { localStorage.removeItem("ovis:graph:v2"); localStorage.setItem("ovis:graph:v1", JSON.stringify({ version: 1, selected: "session", filters: { search: "prune", status: "", machine: "", focus: "", showCompleted: false, communication: "recent" }, groupMachine: false, positions: { session: { x: 9999, y: 9999 } }, viewport: { x: 1, y: 2, k: 1 } })); });
+      await page.evaluate(() => { localStorage.removeItem("ovis:graph:v3"); localStorage.setItem("ovis:graph:v1", JSON.stringify({ version: 1, selected: "session", filters: { search: "prune", status: "", machine: "", focus: "", showCompleted: false, communication: "recent" }, groupMachine: false, positions: { session: { x: 9999, y: 9999 } }, viewport: { x: 1, y: 2, k: 1 } })); });
       await page.goto(`http://127.0.0.1:${server.port}`); await node.waitFor();
       assert.equal(await node.getAttribute("aria-pressed"), "true", "v1 migration preserves selected identity");
       assert.equal(await page.getByLabel("Search graph", { exact: true }).inputValue(), "prune", "v1 migration preserves filters");
-      const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
+      const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v3")!));
       assert.equal(migrated.layout, "force");
       assert.notDeepEqual(migrated.positions.session, { x: 9999, y: 9999 }, "the previous scattered positions receive a hierarchy layout once");
-      await page.evaluate(() => localStorage.setItem("ovis:graph:v2", '{"version":99,"future":"keep"}'));
+      await page.evaluate(() => localStorage.setItem("ovis:graph:v3", '{"version":99,"future":"keep"}'));
       await page.reload();
       await page.getByLabel("Search graph", { exact: true }).fill("future reader");
-      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v2")), '{"version":99,"future":"keep"}', "future storage is never overwritten");
-      await page.evaluate(() => localStorage.setItem("ovis:graph:v2", '{"version":'));
+      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v3")), '{"version":99,"future":"keep"}', "future storage is never overwritten");
+      await page.evaluate(() => localStorage.setItem("ovis:graph:v3", '{"version":'));
       await page.reload();
       await page.getByLabel("Search graph", { exact: true }).fill("malformed reader");
-      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v2")), '{"version":', "unparseable storage bytes are preserved while controls remain usable");
+      assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v3")), '{"version":', "unparseable storage bytes are preserved while controls remain usable");
       assert.deepEqual(errors, []);
       console.log(`PASS Graph ${width}x${height} ${theme}: compact disclosures, readable fresh view, saved viewport, long labels, selection, filters, stale target, update, view switch, deep link, keyboard/touch viewport`);
     } catch (error) {
@@ -587,7 +577,7 @@ try {
       assert.ok(await discWidth("sizing-hub") / await discWidth("sizing-leaf-0") >= 1.7, "zoom preserves the visible size contrast");
       const hit = (await page.locator('[data-graph-node="sizing-isolated"] .graph-node-hit').boundingBox())!;
       assert.ok(hit.width >= 44 && hit.height >= 44, "small isolated nodes retain a touch target after zooming out");
-      const tabs = page.locator(".graph-kind-legend").getByRole("button", { name: "Tab", exact: true });
+      const tabs = page.locator(".graph-kind-legend").getByRole("button", { name: "Terminal", exact: true });
       await tabs.click();
       assert.equal(await hub.getAttribute("data-degree"), "0");
       assert.ok(Math.abs(await discWidth("sizing-hub") - await discWidth("sizing-isolated")) < 0.1, "hiding connections shrinks the visible disc");
@@ -606,21 +596,17 @@ try {
     await node.waitFor();
     const colour = (id: string) => page.locator(`[data-graph-node="${id}"] .graph-node-disc`).evaluate((disc) => getComputedStyle(disc).fill);
     assert.equal(await colour("repo"), await colour("harbour"), "workspace colour is independent of repository");
-    assert.equal(await colour("session"), await colour("execution"), "tabs share their type colour");
-    assert.equal(new Set([await colour("repo"), await colour("checkout"), await colour("session")]).size, 3, "workspace, worktree and tab colours are distinct");
-    const paneToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Pane", exact: true });
-    await paneToggle.click(); await page.locator('[data-graph-node="pane-build"]').waitFor();
-    assert.equal(new Set([await colour("repo"), await colour("checkout"), await colour("session"), await colour("pane-build")]).size, 4);
+    assert.equal(await colour("session"), await colour("execution"), "terminals share their type colour");
+    assert.equal(new Set([await colour("repo"), await colour("checkout"), await colour("session")]).size, 3, "workspace, worktree and terminal colours are distinct");
     const originalTheme = await page.evaluate(() => ({ theme: document.documentElement.getAttribute("data-theme"), palette: document.documentElement.getAttribute("data-palette") }));
     for (const entry of SUPPORTED_ENTRIES) {
       await page.evaluate(({ id, mode }) => { document.documentElement.setAttribute("data-theme", mode); document.documentElement.setAttribute("data-palette", id); }, entry);
-      const fills = [await colour("repo"), await colour("checkout"), await colour("session"), await colour("pane-build")];
+      const fills = [await colour("repo"), await colour("checkout"), await colour("session")];
       const channels = fills.map((fill) => fill.match(/[\d.]+/g)!.map(Number));
-      const [blue, orange, green, purple] = channels as [number[], number[], number[], number[]];
+      const [blue, orange, green] = channels as [number[], number[], number[]];
       assert.ok(blue[2]! > blue[1]! * 1.2 && blue[2]! > blue[0]! * 1.5, `workspace stays blue in ${entry.id}/${entry.mode}`);
       assert.ok(orange[0]! > orange[1]! && orange[1]! > orange[2]! * 2, `worktree stays orange in ${entry.id}/${entry.mode}`);
-      assert.ok(green[1]! > green[0]! * 1.5 && green[1]! > green[2]! * 1.2, `tab stays green in ${entry.id}/${entry.mode}`);
-      assert.ok(purple[2]! > purple[1]! && purple[0]! > purple[1]!, `pane stays purple in ${entry.id}/${entry.mode}`);
+      assert.ok(green[1]! > green[0]! * 1.5 && green[1]! > green[2]! * 1.2, `terminal stays green in ${entry.id}/${entry.mode}`);
       assert.deepEqual(await page.locator(".graph-kind-legend i").evaluateAll((dots) => dots.map((dot) => getComputedStyle(dot).backgroundColor)), fills, "legend swatches match node fills");
     }
     await page.evaluate(({ theme, palette }) => {
@@ -628,7 +614,6 @@ try {
         if (value === null) document.documentElement.removeAttribute(name!); else document.documentElement.setAttribute(name!, value!);
       }
     }, originalTheme);
-    await paneToggle.click();
     const beforeTypeToggle = await node.getAttribute("transform");
     const worktreeToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Worktree", exact: true });
     await worktreeToggle.click();
@@ -647,11 +632,11 @@ try {
     await page.getByRole("combobox", { name: "Communication links", exact: true }).selectOption("recent");
     const box = (await node.locator(".graph-node-disc").boundingBox())!;
     const before = await neighbour.getAttribute("transform");
-    const storedBefore = await page.evaluate(() => localStorage.getItem("ovis:graph:v2"));
+    const storedBefore = await page.evaluate(() => localStorage.getItem("ovis:graph:v3"));
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 60, { steps: 8 });
     await page.waitForFunction((before) => document.querySelector('[data-graph-node="execution"]')?.getAttribute("transform") !== before, before);
-    assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v2")), storedBefore, "animated ticks do not persist unfinished coordinates");
+    assert.equal(await page.evaluate(() => localStorage.getItem("ovis:graph:v3")), storedBefore, "animated ticks do not persist unfinished coordinates");
     const held = await node.getAttribute("transform");
     await page.getByRole("button", { name: "Add neighbour", exact: true }).evaluate((button: HTMLButtonElement) => button.click());
     await page.locator('[data-graph-node="new-neighbour"]').waitFor();
@@ -667,7 +652,7 @@ try {
     assert.equal(heldAfterTopology.drift, false, "a held drag remains pinned under the cursor through topology replacement and subsequent simulation frames");
     assert.equal(heldAfterTopology.neighbourMoved, true, "the new force simulation actually advances while preserving the dragged pin");
     await page.mouse.up();
-    const released = await page.evaluate(() => { const point = JSON.parse(localStorage.getItem("ovis:graph:v2")!).positions.session; return `translate(${point.x} ${point.y})`; });
+    const released = await page.evaluate(() => { const point = JSON.parse(localStorage.getItem("ovis:graph:v3")!).positions.session; return `translate(${point.x} ${point.y})`; });
     await page.getByRole("button", { name: "Switch view", exact: true }).click();
     await page.getByRole("button", { name: "Switch view", exact: true }).click(); await node.waitFor();
     assert.equal(await node.getAttribute("transform"), released, "a normal-motion drag checkpoints at release so an immediate view departure preserves the released layout");
@@ -679,7 +664,7 @@ try {
       const began = performance.now(); let stableFrames = 0, last = "";
       await new Promise<void>((resolve, reject) => {
         const frame = () => {
-          const saved = JSON.parse(localStorage.getItem("ovis:graph:v2") ?? "null"), nodes = [...document.querySelectorAll("[data-graph-node]")];
+          const saved = JSON.parse(localStorage.getItem("ovis:graph:v3") ?? "null"), nodes = [...document.querySelectorAll("[data-graph-node]")];
           const signature = nodes.map((node) => node.getAttribute("transform")).join("|");
           const matches = saved && nodes.every((node) => { const point = saved.positions[node.getAttribute("data-graph-node")!]; return point && node.getAttribute("transform") === `translate(${point.x} ${point.y})`; });
           stableFrames = matches && signature === last ? stableFrames + 1 : 0; last = signature;
@@ -701,9 +686,9 @@ try {
     });
     assert.equal(stable.changed, false, "settled status/order polling never reheats, remounts, jitters or refits the graph");
     await page.getByRole("button", { name: "Reset graph layout", exact: true }).click(); await settled();
-    const savedReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!));
+    const savedReset = await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v3")!));
     await page.reload(); await node.waitFor();
-    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v2")!).positions), savedReset.positions, "settled reset survives reload without a simulation restart");
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("ovis:graph:v3")!).positions), savedReset.positions, "settled reset survives reload without a simulation restart");
     await page.getByLabel("Group by machine", { exact: true }).check(); await settled();
     const cloud = page.locator('[data-machine-cloud="north"] path');
     const cloudBefore = await cloud.getAttribute("d"), cloudNode = (await node.locator(".graph-node-disc").boundingBox())!;
@@ -735,19 +720,15 @@ try {
     const labels = await page.locator(".graph-node-label").evaluateAll((labels) => labels.map((label) => { const box = label.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }; }));
     assert.ok(labels.length >= 5, "dense overview retains meaningful readable labels");
     for (const [index, a] of labels.entries()) for (const b of labels.slice(index + 1)) assert.ok(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top, "shown dense overview labels do not overlap");
-    assert.equal(await page.locator(".graph-kind-legend").getByRole("button").count(), 4);
-    const paneToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Pane", exact: true });
-    await paneToggle.tap();
-    await page.waitForFunction(() => document.querySelectorAll("[data-graph-node]").length === 275);
-    assert.equal(await page.locator("[data-graph-node]").count(), 275, "the dense graph can reveal its 125 individual panes");
-    assert.equal(await page.locator(".graph-edge-pane-in-tab").count(), 125);
-    const tabs = page.locator(".graph-kind-legend").getByRole("button", { name: "Tab", exact: true });
-    await tabs.tap();
-    assert.equal(await page.locator(".graph-edge-pane-in-tab").count(), 0);
-    assert.equal(await page.locator(".graph-node-kind-pane").count(), 125);
-    await tabs.tap(); await paneToggle.tap();
+    assert.equal(await page.locator(".graph-kind-legend").getByRole("button").count(), 3);
+    assert.equal(await page.locator(".graph-node-kind-terminal").count(), 125);
+    const terminalToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Terminal", exact: true });
+    await terminalToggle.tap();
+    await page.waitForFunction(() => document.querySelectorAll("[data-graph-node]").length === 25);
+    assert.equal(await page.locator(".graph-node-kind-terminal").count(), 0);
+    assert.equal(await page.locator(".graph-edge-terminal-in-worktree").count(), 0);
+    await terminalToggle.tap();
     await page.waitForFunction(() => document.querySelectorAll("[data-graph-node]").length === 150);
-    assert.equal(await page.locator("[data-graph-node]").count(), 150);
     await page.getByRole("button", { name: "Fit graph", exact: true }).click();
     if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "graph-dense-390-overview.png") });
     const surface = page.locator(".graph-surface");

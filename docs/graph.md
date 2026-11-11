@@ -1,20 +1,25 @@
 # Graph and its work registry
 
-Graph opens a force-directed graph of native workspaces, linked worktrees and tabs. Regular tabs
-connect directly to their workspace; linked worktrees use workspace → worktree → tab, following
-the sidebar's native grouping. Each tab appears once, even with several split panes or agents.
-Plain folders need no Git repository to have a workspace hub. Empty workspaces remain visible;
-a worktree whose main workspace is not open has its own independent hub. Repository, branch,
-checkout and session information appears in the inspector.
+Graph opens a force-directed graph of native workspaces, linked worktrees and terminals.
+Terminals connect directly to their workspace or use workspace → worktree → terminal for a linked
+worktree. Each pane appears exactly once as a green Terminal node; tabs remain navigation
+containers without adding graph nodes. A single-terminal tab uses its native tab name, while
+split terminals use their individual names and statuses. Plain folders need no Git repository to
+have a workspace hub. Empty workspaces remain visible; a worktree whose main workspace is not
+open has its own independent hub. Repository, branch, checkout and session information appears
+in the inspector.
 Ovis's native Agents section remains the single agent list and keeps its existing filters. The
 old Table view and association/work-renaming/Move controls are retired from navigation; the
 registry, existing associations and migration APIs remain intact. Legacy `page=table` links open
 Graph. Open in Workspace resolves the selected node's verified current target without focusing
 Herdr or sending input.
 
-Colours identify node types: blue for workspace, orange for worktree, green for tab and purple for pane.
+Colours identify node types: blue for workspace, orange for worktree, green for terminal.
 These hues stay consistent across palettes, with darker shades in light mode. The legend sits below the
 canvas and can be collapsed; that preference survives reloads.
+Workspace and worktree halos reflect any working terminal beneath them, including child worktrees,
+regardless of the selected tab. Done and Input badges remain visible alongside that activity;
+the Working filter also includes these active parents.
 Working nodes have a soft rotating halo around their edge instead of a small spinner icon. It
 keeps the node's type hue, with a lighter halo in dark themes and a darker one in light themes.
 The glow overlaps the node, and its thickness stays visible when zoomed out. The disc slowly dims
@@ -23,20 +28,18 @@ Reduced motion stops both animations; stale or disconnected working reports also
 statuses keep their distinct icons, and status remains available in each node's accessible name.
 Each legend entry also toggles its node type. Hidden entries stay faded and crossed out, ready
 to restore with another click, tap, Enter or Space. Hiding a type removes its nodes and incident
-links and lets the graph settle into a new layout. Worktree tabs are never reconnected to a
-workspace when their worktree is hidden; only tabs directly on the workspace keep that link.
+links and lets the graph settle into a new layout. Worktree terminals are never reconnected to a
+workspace when their worktree is hidden; only terminals directly on the workspace keep that link.
 Type visibility survives reloads and is included in copied graph links.
 
-Panes are hidden by default. Click **Pane** in the legend to reveal individual terminals under
-their tab: workspace → worktree → tab → pane, or workspace → tab → pane for a main workspace tab.
-Each pane shows its own name and status. **Open in Workspace** selects that exact verified live
-terminal; a disconnected, restored or replaced occupant cannot inherit an old action.
-Showing pane links increases their tab's size. Hiding tabs removes those links without reconnecting
-panes to a worktree or workspace. Communication and delegation remain on tabs.
+All three node types start visible. **Open in Workspace** selects the exact verified live
+terminal; a disconnected, restored or replaced occupant cannot inherit an old action. Adding or
+removing another split does not change an existing terminal's identity. Communication and
+delegation connect the actual terminals, including two terminals inside the same tab.
 
-Short, strong hierarchy links keep each workspace's worktrees and tabs together, while weaker
+Short, strong hierarchy links keep each workspace's worktrees and terminals together, while weaker
 communication links connect clusters. Node radius counts distinct visible connections of every type: hierarchy, communication and
-delegation. More direct tabs and worktrees make their parent hub larger. Folio-style capped
+delegation. More direct terminals and worktrees make their parent hub larger. Folio-style capped
 square-root growth makes a five-connection hub roughly three times the area of a one-connection
 node at the same zoom. Hidden connections shrink their nodes; large hubs have a size cap.
 Names use native
@@ -47,8 +50,8 @@ intentional framing actions, and polling does not move an idle graph.
 **Group by machine** also draws a translucent, named cloud behind each machine's visible nodes.
 The clouds follow the nodes as they move, while node colours identify their types.
 Filtering updates each cloud and removes empty ones; Fit includes the cloud boundaries. Clouds
-do not block selection, dragging or panning. Dragging tabs across a cluster can overlap clouds
-without changing which machine a tab belongs to.
+do not block selection, dragging or panning. Dragging terminals across a cluster can overlap clouds
+without changing which machine a terminal belongs to.
 
 The retained registry gives each logical session its own ID and a current execution ID. An execution records the machine,
 Herdr lifetime, pane, agent kind and native session ID. A later execution can belong to the same
@@ -62,34 +65,32 @@ shows **Identity unavailable**. Native Workspace/Agents controls remain availabl
 requires either exact current Herdr occupancy or independently verified native ownership.
 Repository and branch metadata appear only when known. Live branch labels reuse the sidebar's
 Git reader. A recorded checkout is physical metadata, not an inferred global repository identity
-or a promise that it still exists on disk. Graph uses exact machine, daemon, tab and pane/terminal membership to distinguish tabs. Agent
+or a promise that it still exists on disk. Graph uses exact machine, daemon, workspace, tab and individual pane/terminal occupancy to distinguish terminals. Agent
 occupant identity also guards navigation; metadata names never authorize a target. Old selections
 do not follow a logical session to a different tab after a move.
 
 Workspace focus follows the sidebar’s native worktree grouping, including its nearest preceding
-main-checkout workspace rule. A workspace filter includes its horizontal tabs and the tabs in its
+main-checkout workspace rule. A workspace filter includes its terminals and the terminals in its
 nested worktrees. A worktree’s sole numbered tab uses the sidebar workspace name; several or
 explicitly named worktree tabs include workspace context. Hub opening chooses only a verified
-current tab belonging to that hub; it never substitutes a tab from a child worktree. Empty hubs
+current terminal belonging to that hub; it never substitutes a terminal from a child worktree. Empty hubs
 have no terminal action. Hub identity includes its machine, daemon, workspace and pane/terminal set,
 so an old selection cannot open a replacement terminal.
 
-Graph layout and legend disclosure preferences live in the browser's `ovis:graph:v2` localStorage key,
-owned by `graphState.ts` and `useGraphState.ts`. On the first v2 read, supported v1 selection,
-filters and machine grouping are retained, while coordinates and viewport are reset once to
-form the new hierarchy. The original `ovis:graph:v1` bytes remain unchanged: older tabs and
-rollback releases keep reading/writing v1, and current tabs write only v2. An existing unknown
-version, layout or malformed v2 value is never overwritten. Saved v2 coordinates and viewport
-continue to win on subsequent reloads. These preferences do not change any HTTP/WS contract.
+Graph preferences live in the browser's `ovis:graph:v3` localStorage key, owned by
+`graphState.ts` and `useGraphState.ts`: `{ version: 3, layout: "force", selected, filters,
+groupMachine, legendOpen, positions, viewport }`. `filters.hiddenKinds` contains workspace,
+worktree or terminal. Current pages read and write v3 only. On the first read without v3, supported
+v2 (or v1 when v2 is absent) search, status, machine, completion and communication filters,
+grouping and legend disclosure are derived passively. Coordinates and viewport reset once for the
+new topology. Retired tab/pane selections and focus are cleared; workspace focus remains.
 
-Type visibility is also owned by `graphState.ts`/`useGraphState.ts`. The existing
-`ovis:graph:kinds:v1` record stays `{ version: 1, hiddenKinds: [...] }` for workspace, worktree
-and tab. Pane visibility uses its own `ovis:graph:panes:v1` record,
-`{ version: 1, visible: boolean }`, defaulting to false. Older tabs and rollback clients never
-write this key, so saving their other preferences cannot erase the pane choice. Readers and writers
-preserve malformed or unsupported-version records byte-for-byte. Copied URLs use `gk` for the
-original three types and `gp=1` to show panes; old links without `gp` keep panes hidden.
-No server registry, file format or HTTP/WS contract changes.
+Old hidden-tab preferences become hidden terminals; the old optional pane visibility never hides
+terminals. The v1/v2 graph records, `ovis:graph:kinds:v1` and `ovis:graph:panes:v1` are left unchanged.
+Older open pages keep reading/writing those stores, cannot erase v3, and rollback reads its original
+data. Unknown versions, unknown layouts and malformed records are never overwritten. No server
+registry or HTTP/WS contract carries these browser preferences. Copied URLs use `gk=terminal` for
+hidden terminals; old `gk=tab` maps to terminal and `gp` is retired without changing Ovis pane selection.
 
 Graph was previously named Flock. Its modules, types and navigation now use Graph. The stored
 `flock.json` filename, `/api/flock` route, `flock=1` inventory query, `flock_*` snapshot fields and
