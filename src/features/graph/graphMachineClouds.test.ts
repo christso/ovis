@@ -3,10 +3,10 @@ import type { GraphNode } from "./graphModel.ts";
 import { graphMachineClouds } from "./graphMachineClouds.ts";
 
 const nodes: GraphNode[] = [
-  { id: "a", kind: "tab", label: "One", machineId: "north" },
-  { id: "b", kind: "tab", label: "Two", machineId: "north" },
-  { id: "c", kind: "tab", label: "Three", machineId: "south" },
-  { id: "unknown", kind: "tab", label: "Unknown" },
+  { id: "a", kind: "terminal", label: "One", machineId: "north" },
+  { id: "b", kind: "terminal", label: "Two", machineId: "north" },
+  { id: "c", kind: "terminal", label: "Three", machineId: "south" },
+  { id: "unknown", kind: "terminal", label: "Unknown" },
 ];
 const positions = { a: { x: 0, y: 0 }, b: { x: 100, y: 0 }, c: { x: 500, y: 200 }, unknown: { x: -1000, y: -1000 } };
 const radii = new Map(nodes.map((node) => [node.id, { radius: 15 }]));

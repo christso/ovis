@@ -5,14 +5,14 @@ import { projectGraph, type GraphData } from "./graphModel.ts";
 const data: GraphData = { nodes: [
   { id: "repo", kind: "workspace", label: "Orchard", repositoryKey: "Orchard" },
   { id: "checkout", kind: "worktree", label: "Feature" },
-  { id: "agent", kind: "tab", label: "Prune" },
+  { id: "agent", kind: "terminal", label: "Prune" },
   { id: "other", kind: "workspace", label: "Harbour", repositoryKey: "Harbour" },
-  { id: "root-tab", kind: "tab", label: "Notes" },
+  { id: "root-tab", kind: "terminal", label: "Notes" },
   { id: "empty", kind: "workspace", label: "Empty" },
 ], edges: [
-  { id: "direct", source: "root-tab", target: "repo", kind: "tab-in-workspace", evidence: "inventory" },
+  { id: "direct", source: "root-tab", target: "repo", kind: "terminal-in-workspace", evidence: "inventory" },
   { id: "a", source: "checkout", target: "repo", kind: "worktree-in-workspace", evidence: "inventory" },
-  { id: "b", source: "agent", target: "checkout", kind: "tab-in-worktree", evidence: "inventory" },
+  { id: "b", source: "agent", target: "checkout", kind: "terminal-in-worktree", evidence: "inventory" },
   { id: "parallel", source: "checkout", target: "repo", kind: "worktree-in-workspace", evidence: "inventory", eventCount: 999 },
   { id: "message", source: "agent", target: "other", kind: "communication", evidence: "receipt", eventCount: 999 },
   { id: "reply", source: "other", target: "agent", kind: "communication", evidence: "receipt" },
@@ -56,26 +56,25 @@ test("node colours identify workspace, worktree and tab kinds regardless of repo
     { id: "workspace-a", kind: "workspace", label: "Orchard", repositoryKey: "apple" },
     { id: "workspace-b", kind: "workspace", label: "Harbour", repositoryKey: "pear" },
     { id: "worktree", kind: "worktree", label: "Feature", repositoryKey: "apple" },
-    { id: "tab-a", kind: "tab", label: "Code", repositoryKey: "apple" },
-    { id: "tab-b", kind: "tab", label: "Notes" },
-    { id: "pane", kind: "pane", label: "Shell" },
+    { id: "tab-a", kind: "terminal", label: "Code", repositoryKey: "apple" },
+    { id: "tab-b", kind: "terminal", label: "Notes" },
+    { id: "terminal", kind: "terminal", label: "Shell" },
   ];
   const style = graphAppearance({ nodes, edges: [] });
   expect(style.get("workspace-a")!.colour).toBe(style.get("workspace-b")!.colour);
   expect(style.get("tab-a")!.colour).toBe(style.get("tab-b")!.colour);
   expect(new Set([style.get("workspace-a")!.colour, style.get("worktree")!.colour, style.get("tab-a")!.colour]).size).toBe(3);
-  expect(new Set([...style.values()].map((node) => node.colour)).size).toBe(4);
+  expect(new Set([...style.values()].map((node) => node.colour)).size).toBe(3);
 });
-test("visible panes grow their tab, with no change to the default overview size", () => {
-  const detail: GraphData = { nodes: [...data.nodes, { id: "pane", kind: "pane", label: "Shell" }],
-    edges: [...data.edges, { id: "pane-parent", source: "pane", target: "root-tab", kind: "pane-in-tab", evidence: "Herdr" }] };
+test("every split terminal contributes a direct workspace connection", () => {
+  const detail: GraphData = { nodes: [...data.nodes, { id: "split", kind: "terminal", label: "Shell" }],
+    edges: [...data.edges, { id: "split-parent", source: "split", target: "repo", kind: "terminal-in-workspace", evidence: "Herdr" }] };
   const filters = { search: "", status: "", machine: "", focus: "", showCompleted: true, communication: "all" as const };
-  expect(graphAppearance(projectGraph(detail, filters)).get("root-tab")!.degree).toBe(1);
-  const visible = graphAppearance(projectGraph(detail, { ...filters, hiddenKinds: [] }));
-  expect(visible.get("root-tab")!.degree).toBe(2);
-  expect(visible.get("pane")!.degree).toBe(1);
-  expect(visible.get("root-tab")!.radius).toBeGreaterThan(visible.get("pane")!.radius);
-  const detached = projectGraph(detail, { ...filters, hiddenKinds: ["tab"] });
-  expect(detached.nodes.some((node) => node.kind === "pane")).toBe(true);
-  expect(detached.edges.some((edge) => edge.kind === "pane-in-tab")).toBe(false);
+  const visible = graphAppearance(projectGraph(detail, filters));
+  expect(visible.get("repo")!.degree).toBe(3);
+  expect(visible.get("split")!.degree).toBe(1);
+  expect(visible.get("repo")!.radius).toBeGreaterThan(visible.get("split")!.radius);
+  const hidden = projectGraph(detail, { ...filters, hiddenKinds: ["terminal"] });
+  expect(hidden.nodes.some((node) => node.kind === "terminal")).toBe(false);
+  expect(hidden.edges.some((edge) => edge.kind === "terminal-in-workspace")).toBe(false);
 });

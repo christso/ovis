@@ -52,7 +52,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
   const priority = (node: GraphNode) => {
     if (node.id === highlighted) return 0;
     if (neighbours.has(node.id)) return 1;
-    if (node.namedTab) return 2;
+    if (node.namedTerminal) return 2;
     if (node.kind === "workspace") return 3;
     if (node.kind === "worktree") return 4;
     return 5;

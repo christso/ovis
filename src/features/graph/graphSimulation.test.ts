@@ -4,10 +4,10 @@ import type { GraphData } from "./graphModel.ts";
 const data: GraphData = { nodes: [
   { id: "repo", kind: "workspace", label: "Orchard" },
   { id: "checkout", kind: "worktree", label: "Branches" },
-  { id: "agent", kind: "tab", label: "Prune" },
+  { id: "agent", kind: "terminal", label: "Prune" },
 ], edges: [
   { id: "a", source: "checkout", target: "repo", kind: "worktree-in-workspace", evidence: "inventory" },
-  { id: "b", source: "agent", target: "checkout", kind: "tab-in-worktree", evidence: "inventory" },
+  { id: "b", source: "agent", target: "checkout", kind: "terminal-in-worktree", evidence: "inventory" },
 ] };
 test("a dragged node pulls its linked neighbours and the released graph settles", () => {
   const force = graphSimulation(data, {}).tick(300);
@@ -39,8 +39,8 @@ test("workspace and worktree links cluster their tabs without repository-colour 
     nodes.push({ id: `${group}-branch`, kind: "worktree", label: "Feature" });
     edges.push({ id: `${group}-branch`, source: `${group}-branch`, target: group, kind: "worktree-in-workspace", evidence: "Herdr" });
     for (let i = 0; i < 6; i++) {
-      const id = `${group}-${i}`; nodes.push({ id, kind: "tab", label: id });
-      edges.push({ id, source: id, target: i % 2 ? `${group}-branch` : group, kind: i % 2 ? "tab-in-worktree" : "tab-in-workspace", evidence: "Herdr" });
+      const id = `${group}-${i}`; nodes.push({ id, kind: "terminal", label: id });
+      edges.push({ id, source: id, target: i % 2 ? `${group}-branch` : group, kind: i % 2 ? "terminal-in-worktree" : "terminal-in-workspace", evidence: "Herdr" });
     }
   }
   edges.push({ id: "message", source: "left-0", target: "right-0", kind: "communication", evidence: "receipt" });

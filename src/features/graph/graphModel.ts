@@ -1,15 +1,15 @@
 import type { KnownStatus } from "../../lib/status.ts";
 
-export type GraphKind = "workspace" | "worktree" | "tab" | "pane";
+export type GraphKind = "workspace" | "worktree" | "terminal";
 export type GraphStatus = KnownStatus;
-export type GraphRelation = "worktree-in-workspace" | "tab-in-workspace" | "tab-in-worktree" | "pane-in-tab" | "delegation" | "communication";
-export const DEFAULT_HIDDEN_KINDS: readonly GraphKind[] = ["pane"];
+export type GraphRelation = "worktree-in-workspace" | "terminal-in-workspace" | "terminal-in-worktree" | "delegation" | "communication";
+export const DEFAULT_HIDDEN_KINDS: readonly GraphKind[] = [];
 
 export interface GraphNode {
   id: string;
   kind: GraphKind;
   label: string;
-  namedTab?: boolean;
+  namedTerminal?: boolean;
   status?: GraphStatus;
   machineId?: string;
   freshness?: "live" | "stale" | "disconnected" | "unavailable" | "unsupported";
@@ -43,7 +43,7 @@ export interface GraphGroup { id: string; label: string; machineId: string; node
 export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[]; groups?: readonly GraphGroup[] }
 export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean; communication?: "recent" | "all" | "none"; hiddenKinds?: readonly GraphKind[] }
 
-const RELATIONS = new Set<GraphRelation>(["worktree-in-workspace", "tab-in-workspace", "tab-in-worktree", "pane-in-tab", "delegation", "communication"]);
+const RELATIONS = new Set<GraphRelation>(["worktree-in-workspace", "terminal-in-workspace", "terminal-in-worktree", "delegation", "communication"]);
 
 /** Filters match work first; established outgoing containment links retain its context. */
 export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.now()) {
@@ -76,7 +76,7 @@ export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.
     }
   }
   const words = filters.search.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
-  const allowed = (node: GraphNode) => !(filters.hiddenKinds ?? DEFAULT_HIDDEN_KINDS).includes(node.kind) && (filters.showCompleted || (node.kind !== "tab" && node.kind !== "pane") || node.status !== "done") && (!focused || focused.has(node.id));
+  const allowed = (node: GraphNode) => !(filters.hiddenKinds ?? DEFAULT_HIDDEN_KINDS).includes(node.kind) && (filters.showCompleted || node.kind !== "terminal" || node.status !== "done") && (!focused || focused.has(node.id));
   const kept = new Set(data.nodes.filter((node) => allowed(node)
     && (!filters.status || (node.status ?? "unknown") === filters.status)
     && (!filters.machine || node.machineId === filters.machine)

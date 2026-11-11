@@ -25,30 +25,29 @@ function source(names = ["obsidian", "phone", "social"]) {
   const graph = () => graphInventory(registry, rows(), machines);
   return { machine, snapshot, workspace, registry, machines, rows, graph };
 }
-const tabNodes = (graph: GraphData) => graph.nodes.filter((node) => node.kind === "tab");
+const tabNodes = (graph: GraphData) => graph.nodes.filter((node) => node.kind === "terminal");
 const relationships = (graph: GraphData) => graph.edges.filter((edge) => edge.kind === "communication" || edge.kind === "delegation");
 
-it("exposes individual split panes under their tab, hidden by default", () => {
+it("shows split terminals once, directly under their workspace and visible by default", () => {
   const state = source(["Code"]), first = state.snapshot.panes[0]!;
   first.label = "Build shell";
   state.snapshot.panes.push({ ...first, pane_id: "split-shell", terminal_id: "split-terminal", label: "Test shell", agent_status: "working" });
-  const data = state.graph(), panes = data.nodes.filter((node) => node.kind === "pane");
+  const data = state.graph(), panes = data.nodes.filter((node) => node.kind === "terminal");
   expect(panes.map((node) => node.label)).toEqual(["Build shell", "Test shell"]);
   expect(panes.map((node) => node.status)).toEqual(["idle", "working"]);
-  expect(projectGraph(data, DEFAULT_GRAPH_STATE.filters).nodes.some((node) => node.kind === "pane")).toBe(false);
-  const visible = projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: [] });
-  expect(visible.nodes.filter((node) => node.kind === "pane")).toHaveLength(2);
-  const parent = tabNodes(data)[0]!.id;
-  expect(data.edges.filter((edge) => edge.kind === "pane-in-tab").map((edge) => edge.target)).toEqual([parent, parent]);
+  expect(projectGraph(data, DEFAULT_GRAPH_STATE.filters).nodes.filter((node) => node.kind === "terminal")).toHaveLength(2);
+  expect(data.nodes).toHaveLength(3);
+  const parent = data.nodes.find((node) => node.kind === "workspace")!.id;
+  expect(data.edges.map((edge) => edge.target)).toEqual([parent, parent]);
   for (const [index, node] of panes.entries()) expect(graphTarget(state.registry, state.rows(), node.id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: state.snapshot.panes[index]!.pane_id });
 });
 
 it("keeps pane identity through sibling changes and refuses a replaced pane occupant", () => {
   const state = source(["Code"]), first = agent(state, 0);
-  const selected = state.graph().nodes.find((node) => node.kind === "pane")!.id;
+  const selected = state.graph().nodes.find((node) => node.kind === "terminal")!.id;
   state.snapshot.panes.push({ ...first, pane_id: "sibling", terminal_id: "sibling-terminal", agent: null, agent_session: null });
   first.label = "Renamed"; first.cwd = "/fictional/new-place";
-  expect(state.graph().nodes.find((node) => node.kind === "pane" && node.label === "Renamed")!.id).toBe(selected);
+  expect(state.graph().nodes.find((node) => node.kind === "terminal" && node.label === "Renamed")!.id).toBe(selected);
   const open = () => graphTarget(state.registry, state.rows(), selected, state.machines);
   expect(open()).toEqual({ machine_id: state.machine.id, pane_id: first.pane_id });
   state.machine.state = "disconnected"; expect(open()).toBeNull();
@@ -65,8 +64,8 @@ it("keeps a healthy shell pane openable when another split lacks an agent proof"
   first.label = "Healthy shell";
   state.snapshot.panes.push({ ...first, pane_id: "unverified", terminal_id: "unverified-terminal", label: "Unverified agent", agent: "codex", agent_session: null });
   const data = state.graph();
-  const shell = data.nodes.find((node) => node.kind === "pane" && node.label === "Healthy shell")!;
-  const unverified = data.nodes.find((node) => node.kind === "pane" && node.label === "Unverified agent")!;
+  const shell = data.nodes.find((node) => node.kind === "terminal" && node.label === "Healthy shell")!;
+  const unverified = data.nodes.find((node) => node.kind === "terminal" && node.label === "Unverified agent")!;
   expect(shell.freshness).toBe("live");
   expect(unverified.freshness).toBe("unsupported");
   expect(graphTarget(state.registry, state.rows(), shell.id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: first.pane_id });
@@ -125,7 +124,7 @@ describe("workspace tabs in Graph", () => {
     const state = source(["obsidian"]), pane = agent(state, 0);
     state.snapshot.panes.push({ ...pane, pane_id: "split-shell", terminal_id: "split-shell-terminal", agent: null, agent_session: null });
     const data = state.graph();
-    expect(tabNodes(data)).toHaveLength(1);
+    expect(tabNodes(data)).toHaveLength(2);
     const selected = data.nodes[0]!.id;
     expect(graphTarget(state.registry, state.rows(), selected, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: pane.pane_id });
     state.snapshot.flock_bindings = [];
@@ -152,7 +151,7 @@ describe("workspace tabs in Graph", () => {
     state.snapshot.flock_bindings![0]!.native_session_id = pane.agent_session!.value;
     expect(open()).not.toBeNull();
     state.snapshot.panes.push({ ...pane, pane_id: "new-split", terminal_id: "new-split-terminal" });
-    expect(open()).toBeNull();
+    expect(open()).not.toBeNull();
   });
   it("keeps equal labels on separate machines distinct and unknown registry non-targetable", () => {
     const state = source(["phone"]);
@@ -182,16 +181,18 @@ describe("workspace tabs in Graph", () => {
     expect(obsidian.activity![0]).toMatchObject({ label: "Codex 00000000", kind: "delegation", direction: "outgoing", eventCount: 1, lastObservedAt: "2026-11-10T00:02:00Z", sources: ["codex"] });
     expect(phone.activity).toBeUndefined();
   });
-  it("folds multiple endpoint pairs into one counted tab relationship and omits same-tab links", () => {
+  it("keeps split-terminal relationships distinct, including links within one tab", () => {
     const state = source(["obsidian", "phone"]);
     agent(state, 0); agent(state, 1);
     const third = { ...state.snapshot.panes[0]!, pane_id: "third", terminal_id: "third-terminal" };
     state.snapshot.panes.push(third); agent(state, 2);
     state.registry.observations = [[0, 1], [2, 1], [0, 2]].map(([from, to], index) => ({ id: `message-${index}`, kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: state.snapshot.panes[from!]!.agent_session!.value, target_native_session_id: state.snapshot.panes[to!]!.agent_session!.value, occurred_at: "2026-11-10T00:00:00Z" }));
     const data = state.graph();
-    expect(tabNodes(data)).toHaveLength(2);
-    expect(relationships(data)).toHaveLength(1);
-    expect(relationships(data)[0]!.eventCount).toBe(2);
+    expect(tabNodes(data)).toHaveLength(3);
+    expect(relationships(data)).toHaveLength(3);
+    expect(relationships(data).every((edge) => edge.eventCount === 1)).toBe(true);
+    const split = data.nodes.find((node) => node.detail?.split("\n").includes("third"))!;
+    expect(relationships(data).some((edge) => edge.source === data.nodes[0]!.id && edge.target === split.id)).toBe(true);
   });
   it("uses the logical session's current tab for receipts without duplicating its execution", () => {
     const state = source(["obsidian", "phone"]), pane = agent(state, 0), second = agent(state, 1);
@@ -209,7 +210,7 @@ describe("workspace tabs in Graph", () => {
 });
 
 it("guards Herdr-only occupants using private inventory rows when the ordinary roster omits proofs", () => {
-  for (const kind of ["tab", "pane"] as const) {
+  for (const kind of ["terminal"] as const) {
     const state = source(["obsidian", "phone"]);
     const pane = state.snapshot.panes[0]!; pane.agent = "claude";
     const endpoint = { server_id: "server", boot_id: "boot", terminal_id: pane.terminal_id, agent_instance_id: "occupant", agent: pane.agent, pane_id: pane.pane_id, name: "Review worker" };
@@ -228,7 +229,7 @@ it("guards Herdr-only occupants using private inventory rows when the ordinary r
 });
 
 it("rejects an old private binding when the ordinary roster reports a replacement native session", () => {
-  for (const kind of ["tab", "pane"] as const) {
+  for (const kind of ["terminal"] as const) {
     const state = source(["obsidian"]); agent(state, 0);
     const verified = state.rows();
     const ordinary = structuredClone(state.machines);
@@ -253,7 +254,7 @@ it("does not attach a historical session's recorded relationship using only a pu
   expect(relationships(data)).toEqual([]);
   expect(tabNodes(data)).toHaveLength(1);
   expect(data.nodes[0]!.activity).toBeUndefined();
-  expect(graphTarget(state.registry, state.rows(), data.nodes.find((node) => node.kind === "tab")!.id, state.machines)).toBeNull();
+  expect(graphTarget(state.registry, state.rows(), data.nodes.find((node) => node.kind === "terminal")!.id, state.machines)).toBeNull();
 });
 
 it("retains proven native identity through optional coordination changes while guarding Herdr-only occupants", () => {
@@ -286,10 +287,12 @@ it("counts recorded activity once per endpoint pair, retaining direction without
   state.registry.observations.push(structuredClone(state.registry.observations[0]!));
   state.registry.observations.push({ id: "reply", kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: missing, target_native_session_id: pane.agent_session!.value, occurred_at: "2026-11-10T00:02:00Z" });
   const data = state.graph();
-  expect(tabNodes(data).map((node) => node.label)).toEqual(["shared-action"]);
+  expect(tabNodes(data)).toHaveLength(2);
   expect(relationships(data)).toEqual([]);
   expect(data.nodes[0]!.activity).toHaveLength(2);
-  expect(data.nodes[0]!.activity!.find((item) => item.direction === "outgoing")).toMatchObject({ label: "Codex 01a1a426", kind: "communication", eventCount: 2, lastObservedAt: "2026-11-10T00:01:00Z", sources: ["codex"] });
+  expect(data.nodes[0]!.activity!.find((item) => item.direction === "outgoing")).toMatchObject({ label: "Codex 01a1a426", kind: "communication", eventCount: 1, lastObservedAt: "2026-11-10T00:00:00Z", sources: ["codex"] });
   expect(data.nodes[0]!.activity!.find((item) => item.direction === "incoming")?.eventCount).toBe(1);
   expect(new Set(data.nodes[0]!.activity!.map((item) => item.endpointId)).size).toBe(1);
+  expect(data.nodes[1]!.activity).toHaveLength(1);
+  expect(data.nodes[1]!.activity![0]).toMatchObject({ direction: "outgoing", eventCount: 1, lastObservedAt: "2026-11-10T00:01:00Z" });
 });

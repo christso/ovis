@@ -4696,7 +4696,7 @@ session identity remain separate.
 
 D3 force links pull connected nodes, repulsion separates clusters and collision keeps circles
 apart. Collision padding balances the larger circles so workspace clusters remain distinct.
-Radius grows with distinct visible connections of every type: direct tabs, worktrees,
+Radius grows with distinct visible connections of every type: direct terminals, worktrees,
 communication and delegation. Parallel links, replies, self-links and recorded event counts cannot
 inflate it. Hidden links do not contribute. The capped square-root curve follows
 [Folio's sizing model](https://github.com/evergreen-it-dev/folio/blob/94f4e0a6e9f83bd84f80ae097e47910242b7bd99/web/src/app/graph/graphModel.ts),
@@ -4704,7 +4704,7 @@ tuned to `6 + 6 × min(16, 1.5 × √degree)`: five connections give about 1.74 
 diameter and three times the area of one connection. A fixed curve keeps unrelated inventory
 changes from rescaling existing nodes, and the cap bounds crowded hubs. This connection-based sizing differs from Zed's
 project-grouped thread list because Graph also shows relationships between nodes. Node fills
-identify workspace (blue), worktree (orange), tab (green) and optional pane (purple). Dedicated theme tokens keep these
+identify workspace (blue), worktree (orange) and terminal (green). Dedicated theme tokens keep these
 hues across palettes, with darker light-mode shades and no text-colour blending, following the
 requested Folio-style category contrast. Working status replaces the small spinner icon with a soft edge halo in the node's type colour.
 A partial ring rotates smoothly once every six seconds, and the disc brightens and dims over
@@ -4728,7 +4728,7 @@ springs; root hubs repel enough to separate work contexts without inventing repo
 The legend entries are native toggle buttons: visible types are pressed, hidden types are faded
 and crossed out. Entries come from the inventory, so hiding every type never removes the controls
 needed to restore them. Hiding a type removes its nodes and incident links before layout and
-connection sizing; tabs under a hidden worktree stay independent, with no invented workspace
+connection sizing; terminals under a hidden worktree stay independent, with no invented workspace
 links. The existing force simulation reheats for the changed topology and settles again, retaining
 the user's viewport. Reduced motion settles without animation. This follows Folio's graph type
 filters rather than Zed's project/thread list; the graph needs independent type visibility while
@@ -4745,48 +4745,28 @@ machine membership in Ovis's cross-machine graph, with soft envelopes in place o
 The existing grouping force remains; dragging members between clusters can overlap their clouds
 without changing machine identity.
 
-Actual native workspace hubs connect regular tabs directly, and linked worktrees form
-workspace → worktree → tab, following the user's chosen hierarchy. Every native tab has one tab node.
-The Pane legend toggle reveals its individual terminals as tab → pane, hidden by default.
-Pane labels and statuses describe that terminal, and opening one resolves its own verified current
-target. Sibling additions and renames retain its identity; a replacement terminal or occupant does
-not inherit its action. This extends Ovis's native split terminals within the Zed-style project/thread
-hierarchy, using Folio-style category colour and visibility controls. Recorded communication and
-delegation stay on tabs; pane detail adds no duplicate activity links. Visible pane links contribute
-to tab size, and hiding tabs leaves panes independent without invented parent links.
-Plain folders have workspace hubs without Git metadata; empty
-workspaces stay visible and orphaned worktrees remain independent hubs. Repository, branch,
-physical checkout, agent and logical-session facts appear in the inspector. Workspace focus
-uses the sidebar's `worktreeGroups` membership, including the parent's tabs and nested worktrees.
-A worktree with one numbered tab takes its sidebar workspace name. Several or explicitly named
-worktree tabs include workspace context. Other names follow Ovis's native tab strip.
+Native workspace hubs connect terminals directly, and linked worktrees form
+workspace → worktree → terminal. The graph has three types: blue Workspace, orange Worktree and
+green Terminal, all visible by default. Every pane contributes exactly one terminal node; a tab
+adds no container node. A single-terminal tab keeps its native tab/worktree name, while splits
+use their individual names and statuses. This follows [Warp's pane view in vertical tabs](https://docs.warp.dev/terminal/windows/vertical-tabs/),
+which exposes each split as an individual row; Ovis adapts that model to a graph and calls each
+leaf Terminal. The implementation is independent, with no adapted Warp code or copied pixels.
 
-This adapts [Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel), where recognizable threads are
-grouped by project and worktrees provide isolation, alongside Folio's category colours and typed
-tree edges. Ovis follows its native tab and sidebar names because a terminal tab can contain
-several agent panes. The hierarchy and labels are independently written.
-Recorded endpoints map onto their represented tabs; parallel endpoint pairs combine into one
-counted relationship. Same-tab activity produces no duplicate node or self-link. Unrepresented
-agent sessions appear as recorded activity in the directly related tab’s inspector, behind a
-native details disclosure with a related-session count. They add no graph nodes, focus choices or
-terminal actions. Incoming and outgoing receipts retain their direction, counts, timestamps and
-sources; communication does not imply delegation. An activity record with no represented endpoint
-is retained in the registry without inventing a tab association. This follows the separation
-between current project threads and archived history in Zed’s Agent Panel; the graph retains
-Ovis’s native tab/worktree names. Communication-link filters affect graph edges, while the
-inspector’s recorded activity remains an archive.
+Plain folders have workspace hubs without Git metadata; empty workspaces stay visible and
+orphaned worktrees remain independent. Workspace focus follows the sidebar's worktree membership.
+Terminal identity includes machine, daemon lifetime, workspace, native tab and its own pane,
+terminal and agent occupant identity. Renames, status changes and sibling splits preserve it.
+Open resolves only its exact verified current target. A missing agent proof cannot substitute a
+shell; a healthy shell stays openable when another split is unverified. Hub opening chooses only
+one of its own verified terminals, never a child worktree; empty hubs have no terminal action.
 
-Tab identity includes machine, workspace, daemon lifetime, native tab, exact pane/terminal set and
-agent occupant identity. Renames, order and status changes keep the identity. Open resolves the
-current exact target; an agent tab still needs verified native ownership or current Herdr occupancy,
-and a mixed tab never substitutes a shell when agent proof is missing. Old selections become
-unavailable when their occupant changes and never follow a logical session to a different tab.
-Hub identity includes its native workspace and current pane/terminal set. Hub opening resolves
-only one of its own currently verified tabs, applying the same agent-proof checks as tab opening;
-empty hubs have no terminal action. Browser preferences use `ovis:graph:v2`, preserving v1 bytes
-for old tabs and rollback, and recluster once on migration; see [the storage contract](docs/graph.md).
-Visible labels stay at 12 screen pixels across zoom levels, with explicitly named tabs prioritized
-at label collisions. Complete names remain in SVG titles, accessible names and the inspector.
+Recorded endpoints map to individual terminals, including communication between splits in one
+tab. Repeated receipts for the same terminal pair are counted together; historical or ambiguous
+endpoints stay in the related terminal's activity details without invented nodes or actions.
+Incoming and outgoing records retain their counts, timestamps and sources. Communication filters
+affect graph edges while recorded activity remains an archive. Complete names remain available
+in SVG titles, accessible names and the inspector; explicitly named terminals have label priority.
 
 Dragging fixes one node temporarily and reheats the connected simulation. Release, pointer
 cancellation, lost capture, pinch takeover and unmount release fixed coordinates. The simulation
@@ -4797,19 +4777,14 @@ instead of animating it. Pan, pointer-centred wheel zoom, touch pan/pinch and ke
 retain the viewport until explicit Fit or Reset. Reset rebuilds and settles a natural layout,
 then refits while retaining selection, filters and optional machine grouping.
 
-Graph state uses `ovis:graph:v2`: selection, filters, grouping, legend visibility, settled positions
-and viewport. Migration preserves v1 bytes, selection and filters while reclustering once.
-Type visibility uses its own `ovis:graph:kinds:v1` record so an older tab rewriting the v2 graph
-record cannot erase it. Its shape is `{ version: 1, hiddenKinds: [...] }`, and unknown or damaged
-records remain untouched. Only the new Graph client reads and writes it; older clients ignore it,
-and rollback still reads the unchanged v2 layout record. No HTTP or WebSocket contract carries
-this browser-local preference. Copied links include hidden types in the graph-owned `gk` field.
-The original three-kind record stays unchanged. Pane visibility has its own
-`ovis:graph:panes:v1` record, `{ version: 1, visible: boolean }`, also owned by
-`graphState.ts`/`useGraphState.ts`. Absence defaults to hidden; old tabs and rollback clients
-ignore this key, and malformed or future-version bytes are never overwritten. The URL's `gp=1`
-reveals panes while older links keep them hidden. The default hidden panes do not count as an
-active filter; choosing to reveal them does.
+Graph state uses `ovis:graph:v3`: selection, filters (including hidden types), grouping, legend
+visibility, settled positions and viewport. The first read derives supported v2/v1 filters and
+legend disclosure passively, resets the layout once and clears retired tab/pane selections or
+focus. Old hidden tabs become hidden terminals; the optional pane choice is ignored because
+terminals are visible by default. The older graph, kind and pane stores remain unchanged for old
+open pages and rollback. Old writers cannot overwrite v3, and new writers leave older stores
+alone. No HTTP/WS contract carries this browser-local state. Copied links use `gk=terminal`, accept
+old `gk=tab` and retire `gp`; Ovis's own pane/view URL fields remain intact. See [the storage contract](docs/graph.md).
 Unknown future versions and unparseable JSON are never overwritten. Simulation frames remain
 local to the renderer; only settled layouts and completed gestures are persisted. Shareable query
 fields leave Ovis's pane/view location intact. A saved viewport wins over automatic framing;

@@ -9,7 +9,7 @@ export function machineColour(key: string): string {
 }
 
 const NODE_COLOURS: Record<GraphKind, string> = {
-  workspace: "var(--graph-workspace)", worktree: "var(--graph-worktree)", tab: "var(--graph-tab)", pane: "var(--graph-pane)",
+  workspace: "var(--graph-workspace)", worktree: "var(--graph-worktree)", terminal: "var(--graph-tab)",
 };
 export const graphNodeColour = (kind: GraphKind): string => NODE_COLOURS[kind];
 

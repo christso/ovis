@@ -7,19 +7,19 @@ const fixture: GraphData = {
   nodes: [
     { id: "repo", kind: "workspace", label: "Orchard" },
     { id: "checkout", kind: "worktree", label: "Garden", machineId: "north" },
-    { id: "session", kind: "tab", label: "Prune branches", status: "working", machineId: "north", freshness: "live" },
-    { id: "execution", kind: "tab", label: "Review branches", status: "working", machineId: "north", freshness: "live" },
-    { id: "sibling", kind: "tab", label: "Other task" },
-    { id: "sibling-execution", kind: "tab", label: "Other task" },
-    { id: "done", kind: "tab", label: "Harvest", status: "done", freshness: "stale" },
-    { id: "unrelated", kind: "tab", label: "Garden", freshness: "disconnected" },
+    { id: "session", kind: "terminal", label: "Prune branches", status: "working", machineId: "north", freshness: "live" },
+    { id: "execution", kind: "terminal", label: "Review branches", status: "working", machineId: "north", freshness: "live" },
+    { id: "sibling", kind: "terminal", label: "Other task" },
+    { id: "sibling-execution", kind: "terminal", label: "Other task" },
+    { id: "done", kind: "terminal", label: "Harvest", status: "done", freshness: "stale" },
+    { id: "unrelated", kind: "terminal", label: "Garden", freshness: "disconnected" },
   ],
   edges: [
-    { id: "a", source: "execution", target: "checkout", kind: "tab-in-worktree", evidence: "reported checkout" },
+    { id: "a", source: "execution", target: "checkout", kind: "terminal-in-worktree", evidence: "reported checkout" },
     { id: "b", source: "checkout", target: "repo", kind: "worktree-in-workspace", evidence: "reported repository" },
-    { id: "c", source: "session", target: "checkout", kind: "tab-in-worktree", evidence: "recorded tab" },
-    { id: "d", source: "sibling", target: "repo", kind: "tab-in-workspace", evidence: "recorded tab" },
-    { id: "e", source: "sibling-execution", target: "checkout", kind: "tab-in-worktree", evidence: "recorded checkout" },
+    { id: "c", source: "session", target: "checkout", kind: "terminal-in-worktree", evidence: "recorded tab" },
+    { id: "d", source: "sibling", target: "repo", kind: "terminal-in-workspace", evidence: "recorded tab" },
+    { id: "e", source: "sibling-execution", target: "checkout", kind: "terminal-in-worktree", evidence: "recorded checkout" },
     { id: "dangling", source: "missing", target: "repo", kind: "delegation", evidence: "recorded parent" },
     { id: "unsupported", source: "unrelated", target: "repo", kind: "delegation", evidence: "" },
   ],
@@ -31,8 +31,8 @@ describe("Graph projection", () => {
     expect(view.nodes.map((node) => node.id)).toEqual(["repo", "session", "execution", "sibling", "sibling-execution", "unrelated"]);
     expect(view.edges.map((edge) => edge.id)).toEqual(["d"]);
     expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["workspace"] }).edges.map((edge) => edge.id)).toEqual(["a", "c", "e"]);
-    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["tab"] }).edges.map((edge) => edge.id)).toEqual(["b"]);
-    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["workspace", "worktree", "tab"] }).nodes).toEqual([]);
+    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["terminal"] }).edges.map((edge) => edge.id)).toEqual(["b"]);
+    expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["workspace", "worktree", "terminal"] }).nodes).toEqual([]);
     expect(projectGraph(fixture, DEFAULT_GRAPH_STATE.filters).edges.map((edge) => edge.id)).toEqual(["a", "b", "c", "d", "e"]);
   });
   it("never reintroduces hidden ancestors for matching or focused tabs", () => {
@@ -77,7 +77,7 @@ describe("Graph projection", () => {
     const positions = reconcilePositions(fixture.nodes, {});
     const changed = fixture.nodes.map((node) => node.id === "session" ? { ...node, status: "blocked" as const, machineId: "south" } : node);
     changed.reverse();
-    changed.push({ id: "new", kind: "tab", label: "New growth" });
+    changed.push({ id: "new", kind: "terminal", label: "New growth" });
     const next = reconcilePositions(changed, positions);
     expect(next.session).toEqual(positions.session);
     expect(reconcilePositions(changed.slice(0, 1), next).session).toEqual(positions.session);
@@ -87,15 +87,15 @@ describe("Graph projection", () => {
 
 describe("Graph location and viewport", () => {
   it("round trips selection, filters and optional grouping without changing unrelated URL state", () => {
-    const state = { ...DEFAULT_GRAPH_STATE, selected: `tab:${"split-pane/native-identity /?&".repeat(100)}`, filters: { ...DEFAULT_GRAPH_STATE.filters, search: "tree & leaf", focus: "repo", machine: "north", status: "blocked", showCompleted: true, communication: "all" as const, hiddenKinds: ["worktree" as const] }, groupMachine: true };
+    const state = { ...DEFAULT_GRAPH_STATE, selected: `terminal:${"split-pane/native-identity /?&".repeat(100)}`, filters: { ...DEFAULT_GRAPH_STATE.filters, search: "tree & leaf", focus: "repo", machine: "north", status: "blocked", showCompleted: true, communication: "all" as const, hiddenKinds: ["worktree" as const] }, groupMachine: true };
     const url = graphLocation(new URL("https://ovis.invalid/?view=graph&pane=w7%3Ap2"), state);
     expect(readGraphLocation(url, DEFAULT_GRAPH_STATE)).toEqual(state);
     expect(url.searchParams.get("pane")).toBe("w7:p2");
   });
   it("bounds stored values and ignores malformed positions and unknown versions", () => {
     expect(sanitizeGraphState({ version: 99, selected: "future" })).toBeNull();
-    expect(sanitizeGraphState({ version: 2, layout: "future" })).toBeNull();
-    const state = sanitizeGraphState({ version: 2, viewport: { x: 0, y: 0, k: 999 }, positions: { bad: { x: Infinity, y: 2 }, fine: { x: 5, y: 7 } } })!;
+    expect(sanitizeGraphState({ version: 3, layout: "future" })).toBeNull();
+    const state = sanitizeGraphState({ version: 3, viewport: { x: 0, y: 0, k: 999 }, positions: { bad: { x: Infinity, y: 2 }, fine: { x: 5, y: 7 } } })!;
     expect(state.viewport.k).toBe(4);
     expect(state.positions).toEqual({ fine: { x: 5, y: 7 } });
   });
