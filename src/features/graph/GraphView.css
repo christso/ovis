@@ -30,10 +30,18 @@
 .graph-node:focus { outline: none; }
 .graph-node-label { fill: var(--text-strong); font-size: 12px; font-family: var(--font-ui); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
 .graph-status-icon { color: var(--text-dim); background: var(--bg); fill: var(--bg); }
-.graph-status-waiting .graph-status-icon, .graph-status-working .graph-status-icon { color: var(--status-working); }
+.graph-status-waiting .graph-status-icon { color: var(--status-working); }
 .graph-status-blocked .graph-status-icon { color: var(--status-blocked); }
 .graph-status-done .graph-status-icon { color: var(--status-done); }
 .graph-stale .graph-node-disc { stroke-dasharray: 4 3; }
+.graph-working-halo { pointer-events: none; fill: none; stroke: var(--node-colour); }
+.graph-working-glow { stroke-width: 6; opacity: 0.16; }
+.graph-working-arc { stroke-width: 3; stroke-linecap: round; stroke-dasharray: 65 35; opacity: 0.75; transform-box: fill-box; transform-origin: center; }
+.graph-status-working:not(.graph-stale) .graph-working-arc { animation: graph-working-turn 6s linear infinite; }
+@keyframes graph-working-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .graph-status-working:not(.graph-stale) .graph-working-arc { animation: none; }
+}
 .graph-tools { position: absolute; display: flex; gap: 4px; left: 12px; bottom: 12px; max-width: calc(100% - 24px); flex-wrap: wrap; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); }
 .graph-tools button { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--text); border: 0; border-radius: 5px; background: var(--bg-panel); }
 .graph-tools button:hover { background: var(--bg-hover); }

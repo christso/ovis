@@ -4505,8 +4505,10 @@ The values are the ones in `src/styles.css`.
 - From `641px` dialogs and their scrims snap open and closed; they have no entrance or exit
   animation. At `<=640px` they are bottom sheets and move as an iPhone's do (Modal, above): what a
   finger drags follows the finger, and the rest rises and drops.
-- The voice recording waveform is the one surface allowed to draw every frame: only while
-  recording, driven by the live microphone level, transform-only (`scaleY` on 7 bars). The pill is
+- The voice recording waveform draws every frame only while recording, driven by the live
+  microphone level, transform-only (`scaleY` on 7 bars). Graph's working edge halo is the other
+  smooth repeating exception: a user-requested six-second rotation, only on live working nodes
+  and outside reduced motion. Other endless indicators remain stepped. The voice pill is
   a state change, not a dialog, so the snap rule above does not apply to it.
 - `prefers-reduced-motion: reduce` removes pulses, drawer/control transitions, sheet rise and drop,
   smooth chat scrolling and settings toggle motion; a drag still follows the finger. State remains legible without animation.
@@ -4704,8 +4706,14 @@ changes from rescaling existing nodes, and the cap bounds crowded hubs. This con
 project-grouped thread list because Graph also shows relationships between nodes. Node fills
 identify workspace (blue), worktree (orange), tab (green) and optional pane (purple). Dedicated theme tokens keep these
 hues across palettes, with darker light-mode shades and no text-colour blending, following the
-requested Folio-style category contrast. Status uses its own small icon, and stale sources have a
-dashed outline. The type legend sits below the canvas, with a keyboard-accessible disclosure
+requested Folio-style category contrast. Working status replaces the small spinner icon with a soft edge halo in the node's type colour.
+A partial ring rotates smoothly once every six seconds; its faint outer glow stays still. Other
+statuses retain their distinct icons, and stale sources have a dashed outline. The halo remains
+static for reduced motion or an unavailable source, and disappears when working status ends.
+Accessible names still include status and freshness. This extends the static, node-coloured local
+centre halo in [Folio's GraphCanvas](https://github.com/evergreen-it-dev/folio/blob/main/web/src/app/graph/GraphCanvas.tsx)
+to indicate active work in Ovis. Unlike Zed's project/thread list, the graph reserves node fills for
+types, so motion sits outside the disc. The SVG and CSS are independently written. The type legend sits below the canvas, with a keyboard-accessible disclosure
 whose state survives reloads. Hierarchy springs are shorter and stronger than communication
 springs; root hubs repel enough to separate work contexts without inventing repository affinity.
 

@@ -72,6 +72,7 @@ function Fixture() {
     <nav aria-label="Fixture actions">
       <button onClick={() => setShown((value) => !value)}>Switch view</button>
       <button onClick={() => setData(fixture)}>Load inventory</button>
+      <button onClick={() => setData((previous) => ({ ...previous, nodes: previous.nodes.map((node) => node.id === "session" ? { ...node, freshness: "disconnected" } : node) }))}>Disconnect source</button>
       <button onClick={() => setData((previous) => ({ ...previous, edges: [...previous.edges,
         { id: "message-one", source: "session", target: "execution", kind: "communication", evidence: "Fictional receipt", lastObservedAt: new Date().toISOString(), eventCount: 999 },
         { id: "reply-one", source: "execution", target: "session", kind: "communication", evidence: "Fictional receipt", lastObservedAt: new Date().toISOString() },
