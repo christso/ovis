@@ -102,46 +102,54 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     expect(previous).not.toBeNull(); expect(replaced).not.toBeNull(); expect(graphHerdrEndpointKey(replaced!)).not.toBe(graphHerdrEndpointKey(previous!));
     const fresh = await machine(), updated = store.observe([fresh]), updatedRows = graphRegistryInventory(updated, [fresh]);
     expect(graphTarget(updated, updatedRows, targetNode.id, [fresh])).toBeNull();
-    // An explicit target session must not reinterpret the inherited caller's equal pane ID.
-    const remoteSession = `${process.env["HERDR_TEST_SESSION"]}-other`;
-    const remoteSocket = join(config, "herdr", "sessions", remoteSession, "herdr.sock");
-    const remote = Bun.spawn([binary, "--session", remoteSession, "server"], {
-      env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("HERDR_"))),
-      cwd: root, stdin: "ignore", stdout: "ignore", stderr: "pipe",
-    });
-    children.push(remote);
-    const reader = remote.stderr.getReader();
-    const deadline = setTimeout(() => { if (remote.exitCode === null) remote.kill(); }, 15000);
+    // Two fresh daemons guarantee equal pane IDs even when the main test daemon has
+    // already served other contract files and advanced its workspace counter.
+    const named: { socket: string; child: ReturnType<typeof Bun.spawn> }[] = [];
+    const startNamed = async (session: string) => {
+      const socket = join(config, "herdr", "sessions", session, "herdr.sock");
+      const child = Bun.spawn([binary, "--session", session, "server"], {
+        env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("HERDR_"))),
+        cwd: root, stdin: "ignore", stdout: "ignore", stderr: "pipe",
+      });
+      children.push(child); named.push({ socket, child });
+      const reader = child.stderr.getReader(), deadline = setTimeout(() => { if (child.exitCode === null) child.kill(); }, 15000);
+      try {
+        let diagnostics = "";
+        while (!diagnostics.includes(`api socket: ${socket}`)) {
+          const part = await reader.read();
+          if (part.done) throw new Error(`Owned named Herdr did not start: ${diagnostics}`);
+          diagnostics += new TextDecoder().decode(part.value);
+        }
+      } finally { clearTimeout(deadline); reader.releaseLock(); }
+      return socket;
+    };
     try {
-      let diagnostics = "";
-      while (!diagnostics.includes(`api socket: ${remoteSocket}`)) {
-        const part = await reader.read();
-        if (part.done) throw new Error(`Owned second Herdr did not start: ${diagnostics}`);
-        diagnostics += new TextDecoder().decode(part.value);
-      }
-      clearTimeout(deadline);
-      let remotePane: string | undefined;
-      for (let count = 0; count < 5 && remotePane !== sourcePane; count += 1) {
-        const created = await herdrRpc<Awaited<ReturnType<typeof workspaceCreate>>>("workspace.create", { cwd: root, label: "ovis-test-shim-other-session", env: environment }, remoteSocket);
-        remotePane = created.root_pane.pane_id;
-      }
-      expect(remotePane).toBe(sourcePane);
-      const remoteName = `${name}_other`;
-      const remoteStart = invoke(["--session", remoteSession, "agent", "start", remoteName, "--kind", "codex", "--pane", remotePane!, "--", program, log, "other"], sourcePane);
-      await ready(remotePane!, "other", remoteSocket); await idle(remotePane!, remoteSocket);
+      const collisionSocket = await startNamed(`${process.env["HERDR_TEST_SESSION"]}-collision-source`);
+      const remoteSession = `${process.env["HERDR_TEST_SESSION"]}-other`, remoteSocket = await startNamed(remoteSession);
+      const caller = await herdrRpc<Awaited<ReturnType<typeof workspaceCreate>>>("workspace.create", { cwd: root, label: "ovis-test-shim-collision-source", env: environment }, collisionSocket);
+      const destination = await herdrRpc<Awaited<ReturnType<typeof workspaceCreate>>>("workspace.create", { cwd: root, label: "ovis-test-shim-other-session", env: environment }, remoteSocket);
+      const callerPane = caller.root_pane.pane_id, remotePane = destination.root_pane.pane_id;
+      expect(remotePane).toBe(callerPane);
+      await herdrRpc("pane.send_text", { pane_id: callerPane, text: `${[executable, program, log, "collision-source"].map(quote).join(" ")}\n` }, collisionSocket);
+      await ready(callerPane, "collision-source", collisionSocket); await idle(callerPane, collisionSocket);
+      const callerPage = await herdrCliObservations(collisionSocket, journal), remoteName = `${name}_other`;
+      const sourceEnvironment = { HERDR_SOCKET_PATH: collisionSocket };
+      const remoteStart = invoke(["--session", remoteSession, "agent", "start", remoteName, "--kind", "codex", "--pane", remotePane, "--", program, log, "other"], callerPane, sourceEnvironment);
+      await ready(remotePane, "other", remoteSocket); await idle(remotePane, remoteSocket);
       expect((await remoteStart).code).toBe(0);
-      expect((await invoke(["--session", remoteSession, "agent", "prompt", remoteName, "CROSS_SESSION_PROBE"], sourcePane)).code).toBe(0);
-      const afterForward = await herdrCliObservations(socket, journal);
+      expect((await invoke(["--session", remoteSession, "agent", "prompt", remoteName, "CROSS_SESSION_PROBE"], callerPane, sourceEnvironment)).code).toBe(0);
+      const afterForward = await herdrCliObservations(collisionSocket, journal);
       const crossSession = afterForward!.receipts.filter((item) => item.source_terminal.server_id !== item.target_terminal.server_id);
       expect(crossSession.map((item) => item.kind).sort()).toEqual(["communication", "delegation"]);
-      expect(crossSession.every((item) => item.source_terminal.pane_id === item.target_terminal.pane_id && item.source_terminal.server_id === page!.server_id)).toBe(true);
+      expect(crossSession.every((item) => item.source_terminal.pane_id === item.target_terminal.pane_id && item.source_terminal.server_id === callerPage!.server_id)).toBe(true);
       const remotePage = await herdrCliObservations(remoteSocket, journal);
-      expect(remotePage?.server_id).not.toBe(page!.server_id); expect(remotePage?.receipts).toHaveLength(0);
+      expect(remotePage?.server_id).not.toBe(callerPage!.server_id); expect(remotePage?.receipts).toHaveLength(0);
       expect(crossSession.every((item) => item.target_terminal.server_id === remotePage!.server_id)).toBe(true);
     } finally {
-      clearTimeout(deadline); reader.releaseLock();
-      await herdrRpc("server.stop", {}, remoteSocket).catch(() => { if (remote.exitCode === null) remote.kill(); });
-      await remote.exited;
+      for (const { socket, child } of named.reverse()) {
+        await herdrRpc("server.stop", {}, socket).catch(() => { if (child.exitCode === null) child.kill(); });
+        await child.exited;
+      }
     }
     // Hold a real successful start reply until the same pane runs another process with the same name/kind.
     const race = await workspaceCreate({ cwd: root, label: "ovis-test-shim-start-race", env: environment }); owned.push(race.workspace.workspace_id);

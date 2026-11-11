@@ -70,7 +70,7 @@ counts = {"int": 0, "term": 0}
 with open(${JSON.stringify(join(root, "child.pid"))}, "w") as output: output.write(str(os.getpid()))
 def interrupt(signum, frame):
     counts["int"] += 1
-    print("INT:" + str(counts["int"]), flush=True)
+    os.write(1, ("INT:" + str(counts["int"]) + "\\n").encode())
 def terminate(signum, frame):
     counts["term"] += 1
     with open(${JSON.stringify(counts)}, "w") as output: json.dump(counts, output)
@@ -103,7 +103,9 @@ def until(marker):
         remaining = deadline - time.monotonic()
         if remaining <= 0: raise RuntimeError(repr(output))
         readable, _, _ = select.select([master], [], [], remaining)
-        if readable: output += os.read(master, 65536)
+        if readable:
+            try: output += os.read(master, 65536)
+            except OSError as error: raise RuntimeError("TTY closed while waiting for " + repr(marker) + ": " + repr(output)) from error
 try:
     until(b"READY:TTY=True")
     os.write(master, b"BEFORE\\n")
@@ -182,7 +184,17 @@ for label, executable in [("direct", sys.argv[1]), ("shim", sys.argv[2])]:
         assert command.stdout.readline() == b"READY\\n"
         with open(pidfile) as source: child = int(source.read())
         os.killpg(command.pid, signal.SIGQUIT)
-        code = command.wait(timeout=3)
+        try: code = command.wait(timeout=3)
+        except subprocess.TimeoutExpired as error:
+            def state(pid):
+                try:
+                    keys = ("State:", "PPid:", "NSpgid:", "NSsid:", "CoreDumping:", "SigPnd:", "ShdPnd:", "SigBlk:", "SigIgn:", "SigCgt:")
+                    with open("/proc/" + str(pid) + "/status") as status: return [line.strip() for line in status if line.startswith(keys)]
+                except OSError: return "unavailable"
+            try:
+                with open("/proc/sys/kernel/core_pattern") as pattern: core_pattern = pattern.read().strip()
+            except OSError: core_pattern = "unavailable"
+            raise RuntimeError(json.dumps({"shim": state(command.pid), "child": state(child), "core_pattern": core_pattern})) from error
         try:
             os.kill(child, 0)
             alive = True
