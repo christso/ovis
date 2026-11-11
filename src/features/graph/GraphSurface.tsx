@@ -7,7 +7,7 @@ import { graphAppearance, machineColour } from "./graphAppearance.ts";
 import { graphMachineClouds } from "./graphMachineClouds.ts";
 import { zoomAt, type Point, type Positions, type Viewport } from "./graphLayout.ts";
 
-const STATUS_ICON = { waiting: LoaderCircle, working: LoaderCircle, blocked: OctagonAlert, done: CircleCheck, idle: CirclePause, unknown: CircleHelp };
+const STATUS_ICON = { waiting: LoaderCircle, working: null, blocked: OctagonAlert, done: CircleCheck, idle: CirclePause, unknown: CircleHelp };
 
 export interface SurfaceProps extends GraphData {
   groupMachine: boolean;
@@ -202,7 +202,11 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
           <title>{nodeLabel(node)}</title>
           <circle className="graph-node-hit" r={Math.max(style.radius + 5, 23 / viewport.k)} />
           <circle className="graph-node-disc" r={style.radius} />
-          <Icon x={style.radius - 7} y={-style.radius - 7} width={14} height={14} aria-hidden="true" className="graph-status-icon" />
+          {node.status === "working" && <g className="graph-working-halo" aria-hidden="true">
+            <circle className="graph-working-glow" r={style.radius + 5} />
+            <circle className="graph-working-arc" r={style.radius + 5} pathLength={100} />
+          </g>}
+          {Icon && <Icon x={style.radius - 7} y={-style.radius - 7} width={14} height={14} aria-hidden="true" className="graph-status-icon" />}
           {label && <text textAnchor="middle" x={label.x} y={label.y} style={{ fontSize: 12 / viewport.k, strokeWidth: 4 / viewport.k }} className="graph-node-label">{label.text}</text>}
 
         </g>;

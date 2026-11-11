@@ -38,6 +38,15 @@ try {
       await page.goto(`http://127.0.0.1:${server.port}`);
       const node = page.locator('[data-graph-node="session"]');
       await node.waitFor();
+      stage = "working halo and reduced motion";
+      const halo = node.locator(".graph-working-halo");
+      assert.equal(await halo.count(), 1, "working nodes use an edge halo");
+      assert.equal(await node.locator(".graph-status-icon").count(), 0, "the working C icon is replaced");
+      assert.equal(await halo.getAttribute("aria-hidden"), "true");
+      assert.match((await node.getAttribute("aria-label"))!, /RUN/, "status remains accessible without motion");
+      assert.equal(await halo.locator(".graph-working-arc").evaluate((arc) => getComputedStyle(arc).animationName), "none", "reduced motion keeps the halo still");
+      assert.equal(await page.locator('[data-graph-node="offline"] .graph-working-halo').count(), 0);
+      assert.equal(await page.locator('[data-graph-node="offline"] .graph-status-icon').count(), 1, "blocked state keeps its distinct icon");
       stage = "bottom legend";
       const legendToggle = page.getByRole("button", { name: "Legend", exact: true });
       assert.equal(await legendToggle.getAttribute("aria-expanded"), "true");
@@ -214,6 +223,8 @@ try {
       const transform = await node.getAttribute("transform");
       await page.getByRole("button", { name: "Live update", exact: true }).click();
       assert.equal(await node.getAttribute("transform"), transform, "logical position survives status, machine and order changes");
+      assert.equal(await node.locator(".graph-working-halo").count(), 0, "the halo disappears when work stops");
+      assert.equal(await node.locator(".graph-status-icon").count(), 1);
       await page.getByRole("button", { name: "Switch view", exact: true }).click();
       await page.getByRole("button", { name: "Switch view", exact: true }).click();
       await node.waitFor();
@@ -485,6 +496,45 @@ try {
       assert.equal(await hub.getAttribute("data-degree"), "5");
       assert.ok(await discWidth("sizing-hub") / await discWidth("sizing-leaf-0") >= 1.7);
       console.log(`PASS ${width}px rendered Folio-style degree sizing, zoom, touch targets and legend rescaling`);
+    } finally { await context.close(); }
+  }
+
+  for (const width of [1280, 320]) {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width < 700, hasTouch: width < 700, reducedMotion: "no-preference", locale: "en-US" });
+    try {
+      const page = await context.newPage();
+      await page.goto(`http://127.0.0.1:${server.port}`);
+      const node = page.locator('[data-graph-node="session"]');
+      await node.waitFor();
+      const arc = node.locator(".graph-working-arc");
+      assert.equal(await arc.count(), 1);
+      const rotation = await arc.evaluate(async (element) => {
+        const animation = element.getAnimations()[0]!;
+        await animation.ready;
+        const timing = animation.effect!.getTiming();
+        animation.pause(); animation.currentTime = 0;
+        const before = getComputedStyle(element).transform;
+        animation.currentTime = Number(timing.duration) / 4;
+        return { before, after: getComputedStyle(element).transform, duration: timing.duration, easing: timing.easing, iterations: timing.iterations, pointerEvents: getComputedStyle(element).pointerEvents };
+      });
+      assert.notEqual(rotation.before, rotation.after, "the halo rotates around the node");
+      assert.ok(Number(rotation.duration) >= 4000, "working rotation stays slow");
+      assert.equal(rotation.easing, "linear");
+      assert.equal(rotation.iterations, Infinity);
+      assert.equal(rotation.pointerEvents, "none", "the halo does not capture graph gestures");
+      assert.equal(await node.locator(".graph-node-disc").evaluate((disc) => getComputedStyle(disc).fill), await arc.evaluate((element) => getComputedStyle(element).stroke), "halo keeps the node type colour");
+      if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `graph-working-halo-${width}.png`) });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 0, "a live reduced-motion change stops rotation");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.getByRole("button", { name: "Disconnect source", exact: true }).click();
+      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 0, "disconnected working reports stay static");
+      await page.getByRole("button", { name: "Load inventory", exact: true }).click();
+      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 1, "live working reports rotate again");
+      await page.getByRole("button", { name: "Live update", exact: true }).click();
+      assert.equal(await node.locator(".graph-working-halo").count(), 0);
+      assert.equal(await node.locator(".graph-status-icon").count(), 1);
+      console.log(`PASS ${width}px working edge halo, reduced motion, freshness and stopped work`);
     } finally { await context.close(); }
   }
 
