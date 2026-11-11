@@ -67,7 +67,7 @@ export function graphInventory(registry: GraphRegistry | null, rows: readonly Gr
     return represented?.size === 1 ? [...represented][0]! : null;
   };
   const activity = new Map<string, Map<string, GraphActivity>>();
-  const hierarchy = graphHierarchy(machines, terminals);
+  const hierarchy = graphHierarchy(machines, terminals, t);
   for (const hub of hierarchy.nodes) nodes.set(hub.id, hub);
   const edges = new Map<string, GraphEdge>(hierarchy.edges.map((edge) => [edge.id, edge]));
   for (const relation of graphRelationships(registry)) {

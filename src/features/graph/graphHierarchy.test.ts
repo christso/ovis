@@ -28,16 +28,19 @@ function inventory() {
 test("native workspace hubs connect their worktrees and tabs, including plain folders", () => {
   const state = inventory(), graph = state.graph();
   expect(graph.nodes.filter((node) => node.kind === "workspace")).toHaveLength(2);
-  expect(graph.nodes.filter((node) => node.kind === "worktree")).toHaveLength(1);
+  expect(graph.nodes.filter((node) => node.kind === "worktree")).toHaveLength(2);
   expect(graph.nodes.filter((node) => node.kind === "terminal")).toHaveLength(3);
   const root = graph.nodes.find((node) => node.kind === "workspace" && node.label === "Orchard")!;
-  const branch = graph.nodes.find((node) => node.kind === "worktree")!;
+  const branch = graph.nodes.find((node) => node.kind === "worktree" && node.label === "Review branch")!;
+  const main = graph.nodes.find((node) => node.kind === "worktree" && node.label === "Main checkout")!;
+  expect(main).toBeDefined();
+  expect(graph.edges).toContainEqual(expect.objectContaining({ source: main.id, target: root.id, kind: "worktree-in-workspace" }));
   const rootTab = graph.nodes.find((node) => node.label === "Shell main")!;
   const childTab = graph.nodes.find((node) => node.label.includes("Shell branch"))!;
   const notes = graph.nodes.find((node) => node.kind === "workspace" && node.label === "Plain notes")!;
   const notesTab = graph.nodes.find((node) => node.label === "Shell notes")!;
   expect(graph.edges).toContainEqual(expect.objectContaining({ source: branch.id, target: root.id, kind: "worktree-in-workspace" }));
-  expect(graph.edges).toContainEqual(expect.objectContaining({ source: rootTab.id, target: root.id, kind: "terminal-in-workspace" }));
+  expect(graph.edges).toContainEqual(expect.objectContaining({ source: rootTab.id, target: main.id, kind: "terminal-in-worktree" }));
   expect(graph.edges).toContainEqual(expect.objectContaining({ source: childTab.id, target: branch.id, kind: "terminal-in-worktree" }));
   expect(graph.edges).toContainEqual(expect.objectContaining({ source: notesTab.id, target: notes.id, kind: "terminal-in-workspace" }));
   expect(notes.detail).toContain("/notes");
@@ -62,7 +65,7 @@ test("empty workspaces and orphaned worktrees have honest independent hubs", () 
   state.snapshot.tabs = state.snapshot.tabs.filter((tab) => tab.workspace_id !== "main");
   state.snapshot.panes = state.snapshot.panes.filter((pane) => pane.workspace_id !== "main");
   state.snapshot.workspaces.push({ ...state.snapshot.workspaces[1]!, workspace_id: "empty", label: "Empty" });
-  const graph = state.graph(), branch = graph.nodes.find((node) => node.kind === "worktree")!, empty = graph.nodes.find((node) => node.label === "Empty")!;
+  const graph = state.graph(), branch = graph.nodes.find((node) => node.kind === "worktree" && node.label === "Review branch")!, empty = graph.nodes.find((node) => node.label === "Empty")!;
   expect(branch).toBeDefined(); expect(empty).toBeDefined();
   expect(graph.edges.some((edge) => edge.source === branch.id)).toBe(false);
   expect(graph.edges.some((edge) => edge.target === branch.id && edge.kind === "terminal-in-worktree")).toBe(true);
@@ -78,7 +81,7 @@ test("completed rollups keep workspace and worktree context for active tabs", ()
   state.snapshot.panes.push({ ...state.snapshot.panes[0]!, tab_id: doneTab.tab_id, pane_id: "finished-pane", terminal_id: "finished-terminal", agent_status: "done" });
   const graph = state.graph(), visible = projectGraph(graph, DEFAULT_GRAPH_STATE.filters);
   const root = graph.nodes.find((node) => node.kind === "workspace" && node.label === "Orchard")!;
-  const branch = graph.nodes.find((node) => node.kind === "worktree")!;
+  const branch = graph.nodes.find((node) => node.kind === "worktree" && node.label === "Review branch")!;
   const workingTabs = graph.nodes.filter((node) => node.kind === "terminal" && node.status === "working");
   expect(root.status).toBe("done");
   expect(root.hasWorkingTerminals).toBe(true);
@@ -98,9 +101,10 @@ test("workspace activity includes child worktrees and ignores selected tabs", ()
   state.snapshot.focused_tab_id = "tab-notes";
   const hubs = () => state.graph().nodes.filter((node) => node.kind !== "terminal");
   const root = () => hubs().find((node) => node.label === "Orchard")!;
-  const branch = () => hubs().find((node) => node.kind === "worktree")!;
+  const branch = () => hubs().find((node) => node.kind === "worktree" && node.label === "Review branch")!;
   expect(root().hasWorkingTerminals).toBe(true);
   expect(root().status).toBe("working");
+  expect(hubs().find((node) => node.label === "Main checkout")!.hasWorkingTerminals).toBe(false);
   expect(branch().hasWorkingTerminals).toBe(true);
   expect(hubs().find((node) => node.label === "Plain notes")!.hasWorkingTerminals).toBe(false);
   state.snapshot.panes[1]!.agent_status = "done";
@@ -116,10 +120,54 @@ test("hub opening skips unverified own tabs without substituting a child worktre
   const state = inventory();
   state.snapshot.panes[0]!.agent = "codex";
   const root = () => state.graph().nodes.find((node) => node.kind === "workspace" && node.label === "Orchard")!;
-  const branch = state.graph().nodes.find((node) => node.kind === "worktree")!;
+  const branch = state.graph().nodes.find((node) => node.kind === "worktree" && node.label === "Review branch")!;
   expect(graphTarget(state.registry, state.rows(), branch.id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: "pane-branch" });
   expect(graphTarget(state.registry, state.rows(), root().id, state.machines)).toBeNull();
   state.snapshot.tabs.push({ ...state.snapshot.tabs[0]!, tab_id: "own-shell", label: "Own shell" });
   state.snapshot.panes.push({ ...state.snapshot.panes[0]!, tab_id: "own-shell", pane_id: "own-shell-pane", terminal_id: "own-shell-terminal", agent: null });
   expect(graphTarget(state.registry, state.rows(), root().id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: "own-shell-pane" });
+});
+
+
+test("main checkout keeps its native branch and exact own-terminal action", () => {
+  const state = inventory();
+  state.snapshot.workspaces[0]!.tokens = { branch: "release" };
+  const main = state.graph().nodes.find((node) => node.label === "Main checkout")!;
+  expect(main).toBeDefined();
+  expect(main.detail).toContain("release");
+  expect(main.detail).toContain("Orchard");
+  expect(main.detail).toContain("/orchard");
+  expect(graphTarget(state.registry, state.rows(), main.id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: "pane-main" });
+  state.snapshot.panes[0]!.terminal_id = "replaced";
+  expect(graphTarget(state.registry, state.rows(), main.id, state.machines)).toBeNull();
+  state.snapshot.panes = state.snapshot.panes.filter((pane) => pane.workspace_id !== "main");
+  const empty = state.graph().nodes.find((node) => node.label === "Main checkout")!;
+  expect(empty).toBeDefined();
+  expect(graphTarget(state.registry, state.rows(), empty.id, state.machines)).toBeNull();
+});
+
+test("missing native checkout metadata never fabricates a main checkout", () => {
+  const state = inventory();
+  state.snapshot.workspaces[0]!.worktree = null;
+  state.snapshot.workspaces[0]!.tokens = { branch: "main" };
+  const graph = state.graph();
+  expect(graph.nodes.some((node) => node.label === "Main checkout")).toBe(false);
+  const root = graph.nodes.find((node) => node.label === "Orchard")!;
+  const terminal = graph.nodes.find((node) => node.label === "Shell main")!;
+  expect(graph.edges).toContainEqual(expect.objectContaining({ source: terminal.id, target: root.id, kind: "terminal-in-workspace" }));
+});
+
+
+test("a main-checkout selection cannot open a replacement agent in the same terminal", () => {
+  const state = inventory();
+  const pane = state.snapshot.panes[0]!;
+  const old = state.graph().nodes.find((node) => node.label === "Main checkout")!.id;
+  const native = "00000000-0000-4000-8000-000000000001";
+  pane.agent = "codex";
+  pane.agent_session = { agent: "codex", kind: "id", source: "fixture", value: native };
+  state.snapshot.flock_bindings = [{ pane_id: pane.pane_id, terminal_id: pane.terminal_id, agent: "codex", native_session_id: native }];
+  const current = state.graph().nodes.find((node) => node.label === "Main checkout")!.id;
+  expect(graphTarget(state.registry, state.rows(), current, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: pane.pane_id });
+  expect(graphTarget(state.registry, state.rows(), old, state.machines)).toBeNull();
+  expect(current).not.toBe(old);
 });

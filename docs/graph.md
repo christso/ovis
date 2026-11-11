@@ -1,8 +1,9 @@
 # Graph and its work registry
 
-Graph opens a force-directed graph of native workspaces, linked worktrees and terminals.
-Terminals connect directly to their workspace or use workspace → worktree → terminal for a linked
-worktree. Each pane appears exactly once as a green Terminal node; tabs remain navigation
+Graph opens a force-directed graph of native workspaces, checkouts and terminals.
+Git workspaces use workspace → worktree → terminal for both the main checkout and linked worktrees.
+The orange **Main checkout** node describes its location; actual branch names and paths remain native metadata.
+Plain folders and workspaces without verified checkout metadata keep workspace → terminal. Each pane appears exactly once as a green Terminal node; tabs remain navigation
 containers without adding graph nodes. A single-terminal tab uses its native tab name, while
 split terminals use their individual names and statuses. Plain folders need no Git repository to
 have a workspace hub. Empty workspaces remain visible; a worktree whose main workspace is not
@@ -27,15 +28,24 @@ and brightens while work runs. When work stops, both effects disappear.
 Reduced motion stops both animations; stale or disconnected working reports also stay static. Other
 statuses keep their distinct icons, and status remains available in each node's accessible name.
 Each legend entry also toggles its node type. Hidden entries stay faded and crossed out, ready
-to restore with another click, tap, Enter or Space. Hiding a type removes its nodes and incident
-links and lets the graph settle into a new layout. Worktree terminals are never reconnected to a
-workspace when their worktree is hidden; only terminals directly on the workspace keep that link.
+to restore with another click, tap, Enter or Space. Hiding a container connects visible descendants to
+their nearest visible evidenced ancestor: hiding Worktree while Workspace and Terminal remain visible
+shows workspace → terminal. Hidden terminals project recorded communication and delegation onto their
+visible checkout, or their workspace when checkouts are hidden too. Plain-folder endpoints use their
+workspace; orphan worktrees have no invented workspace ancestor. With only terminals visible, original
+terminal links remain. With every type hidden, no nodes or links remain.
+Projected links preserve receipt counts, latest activity, sources, relation kind and direction.
+Links collapsing to the same node disappear. Search, status and machine exclusions cannot revive a
+terminal's receipts through a matching container; hidden matching terminals still retain visible ancestor
+context. Focusing a collapsed container retains its directly connected projected neighbours.
+The projected graph drives layout and distinct-neighbour sizing while preserving the viewport.
 Type visibility survives reloads and is included in copied graph links.
 
 All three node types start visible. **Open in Workspace** selects the exact verified live
 terminal; a disconnected, restored or replaced occupant cannot inherit an old action. Adding or
 removing another split does not change an existing terminal's identity. Communication and
-delegation connect the actual terminals, including two terminals inside the same tab.
+delegation retain the actual terminal endpoints underneath every visibility projection, including two terminals inside the same tab.
+Collapsing links never grants a terminal action or turns unresolved historical activity into a drawable link.
 
 Short, strong hierarchy links keep each workspace's worktrees and terminals together, while weaker
 communication links connect clusters. Node radius counts distinct visible connections of every type: hierarchy, communication and
@@ -75,7 +85,8 @@ nested worktrees. A worktree’s sole numbered tab uses the sidebar workspace na
 explicitly named worktree tabs include workspace context. Hub opening chooses only a verified
 current terminal belonging to that hub; it never substitutes a terminal from a child worktree. Empty hubs
 have no terminal action. Hub identity includes its machine, daemon, workspace and pane/terminal set,
-so an old selection cannot open a replacement terminal.
+so an old selection cannot open a replacement terminal. Main-checkout identity also includes its evidenced checkout path and repository key.
+The added hierarchy preserves existing IDs and v3 storage meanings; older stores remain untouched.
 
 Graph preferences live in the browser's `ovis:graph:v3` localStorage key, owned by
 `graphState.ts` and `useGraphState.ts`: `{ version: 3, layout: "force", selected, filters,

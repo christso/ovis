@@ -78,3 +78,24 @@ test("every split terminal contributes a direct workspace connection", () => {
   expect(hidden.nodes.some((node) => node.kind === "terminal")).toBe(false);
   expect(hidden.edges.some((edge) => edge.kind === "terminal-in-workspace")).toBe(false);
 });
+
+
+test("all visibility modes size distinct neighbours in the projected graph", () => {
+  const expected: Record<string, number>[] = [
+    {},
+    { repo: 1, other: 1, empty: 0 },
+    { checkout: 0 },
+    { repo: 1, checkout: 2, other: 1, empty: 0 },
+    { agent: 0, "root-tab": 0 },
+    { repo: 3, agent: 2, other: 2, "root-tab": 1, empty: 0 },
+    { checkout: 1, agent: 1, "root-tab": 0 },
+    { repo: 2, checkout: 3, agent: 2, other: 2, "root-tab": 1, empty: 0 },
+  ];
+  for (let mask = 0; mask < 8; mask++) {
+    const hiddenKinds = (["workspace", "worktree", "terminal"] as const).filter((_, index) => !(mask & (1 << index)));
+    const view = projectGraph(data, { search: "", status: "", machine: "", focus: "", showCompleted: true, communication: "all", hiddenKinds });
+    const appearance = graphAppearance(view);
+    expect(Object.fromEntries([...appearance].map(([id, style]) => [id, style.degree]))).toEqual(expected[mask]!);
+    for (const [id, degree] of Object.entries(expected[mask]!)) expect(appearance.get(id)!.radius).toBe(nodeRadius(degree));
+  }
+});

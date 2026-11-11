@@ -26,27 +26,27 @@ const fixture: GraphData = {
 };
 
 describe("Graph projection", () => {
-  it("hides node types and their incident links without reconnecting children", () => {
+  it("projects containment past hidden node types", () => {
     const view = projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["worktree"] });
     expect(view.nodes.map((node) => node.id)).toEqual(["repo", "session", "execution", "sibling", "sibling-execution", "unrelated"]);
-    expect(view.edges.map((edge) => edge.id)).toEqual(["d"]);
+    expect(view.edges.map((edge) => [edge.source, edge.target])).toEqual([["execution", "repo"], ["session", "repo"], ["sibling", "repo"], ["sibling-execution", "repo"]]);
     expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["workspace"] }).edges.map((edge) => edge.id)).toEqual(["a", "c", "e"]);
     expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["terminal"] }).edges.map((edge) => edge.id)).toEqual(["b"]);
     expect(projectGraph(fixture, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["workspace", "worktree", "terminal"] }).nodes).toEqual([]);
     expect(projectGraph(fixture, DEFAULT_GRAPH_STATE.filters).edges.map((edge) => edge.id)).toEqual(["a", "b", "c", "d", "e"]);
   });
-  it("never reintroduces hidden ancestors for matching or focused tabs", () => {
+  it("retains visible ancestors through hidden levels for matching and focused terminals", () => {
     const filters = { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["worktree" as const] };
-    expect(projectGraph(fixture, { ...filters, search: "prune" }).nodes.map((node) => node.id)).toEqual(["session"]);
+    expect(projectGraph(fixture, { ...filters, search: "prune" }).nodes.map((node) => node.id)).toEqual(["repo", "session"]);
     const focused = projectGraph(fixture, { ...filters, focus: "repo" });
     expect(focused.nodes.some((node) => node.kind === "worktree")).toBe(false);
     expect(focused.nodes.some((node) => node.id === "session")).toBe(true);
-    expect(focused.edges.map((edge) => edge.id)).toEqual(["d"]);
+    expect(focused.edges).toHaveLength(4);
   });
   it("keeps an active Done workspace in the working filter when terminals are hidden", () => {
     const data: GraphData = { ...fixture, nodes: fixture.nodes.map((node) => node.id === "repo" ? { ...node, status: "done", hasWorkingTerminals: true } : node) };
     const view = projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, status: "working", hiddenKinds: ["terminal"] });
-    expect(view.nodes.map((node) => node.id)).toEqual(["repo"]);
+    expect(view.nodes.map((node) => node.id)).toEqual(["repo", "checkout"]);
     expect(view.nodes[0]!.status).toBe("done");
   });
   it("filters communication by recent activity without treating messages as containment", () => {
@@ -111,5 +111,100 @@ describe("Graph location and viewport", () => {
     const next = zoomAt(viewport, 2, 300, 200);
     expect((300 - next.x) / next.k).toBeCloseTo((300 - viewport.x) / viewport.k);
     expect((200 - next.y) / next.k).toBeCloseTo((200 - viewport.y) / viewport.k);
+  });
+});
+
+
+describe("visibility and recorded relationship projection", () => {
+  const data: GraphData = {
+    nodes: [
+      { id: "w1", kind: "workspace", label: "Project", machineId: "one" },
+      { id: "w2", kind: "workspace", label: "Project", machineId: "two" },
+      { id: "c1", kind: "worktree", label: "Main checkout", machineId: "one" },
+      { id: "c2", kind: "worktree", label: "Feature", machineId: "two" },
+      { id: "t1", kind: "terminal", label: "Build", status: "working", machineId: "one" },
+      { id: "t2", kind: "terminal", label: "Review", status: "working", machineId: "two" },
+      { id: "t3", kind: "terminal", label: "Test", status: "done", machineId: "one" },
+    ],
+    edges: [
+      { id: "c1w1", source: "c1", target: "w1", kind: "worktree-in-workspace", evidence: "Herdr" },
+      { id: "c2w2", source: "c2", target: "w2", kind: "worktree-in-workspace", evidence: "Herdr" },
+      { id: "t1c1", source: "t1", target: "c1", kind: "terminal-in-worktree", evidence: "Herdr" },
+      { id: "t2c2", source: "t2", target: "c2", kind: "terminal-in-worktree", evidence: "Herdr" },
+      { id: "t3c1", source: "t3", target: "c1", kind: "terminal-in-worktree", evidence: "Herdr" },
+      { id: "m1", source: "t1", target: "t2", kind: "communication", evidence: "codex.communication", eventCount: 2, lastObservedAt: "2026-11-11T01:00:00Z", sources: ["codex"] },
+      { id: "m2", source: "t3", target: "t2", kind: "communication", evidence: "herdr.communication", eventCount: 3, lastObservedAt: "2026-11-12T01:00:00Z", sources: ["herdr"] },
+      { id: "reply", source: "t2", target: "t1", kind: "communication", evidence: "herdr-cli.communication", eventCount: 1, lastObservedAt: "2026-11-12T02:00:00Z", sources: ["herdr-cli"] },
+      { id: "launch", source: "t1", target: "t2", kind: "delegation", evidence: "herdr.delegation", eventCount: 1, lastObservedAt: "2026-11-10T01:00:00Z", sources: ["herdr"] },
+      { id: "internal", source: "t1", target: "t3", kind: "communication", evidence: "codex.communication", eventCount: 4, lastObservedAt: "2026-11-12T01:00:00Z", sources: ["codex"] },
+    ],
+  };
+  const filters = { ...DEFAULT_GRAPH_STATE.filters, showCompleted: true, communication: "all" as const };
+  const pairs = (graph: GraphData) => graph.edges.filter((edge) => edge.kind === "communication").map((edge) => `${edge.source}>${edge.target}:${edge.eventCount}`).sort();
+  for (let mask = 0; mask < 8; mask++) {
+    it(`projects the exact visibility mask ${mask}`, () => {
+      const hiddenKinds = (["workspace", "worktree", "terminal"] as const).filter((_, index) => !(mask & (1 << index)));
+      const view = projectGraph(data, { ...filters, hiddenKinds });
+      const [w, c, t] = [1, 2, 4].map((bit) => !!(mask & bit));
+      expect(view.nodes).toHaveLength((w ? 2 : 0) + (c ? 2 : 0) + (t ? 3 : 0));
+      expect(view.edges.filter((edge) => edge.kind.endsWith("workspace") || edge.kind.endsWith("worktree"))).toHaveLength((w && c ? 2 : 0) + (t && (c || w) ? 3 : 0));
+      expect(pairs(view)).toEqual(t ? ["t1>t2:2", "t1>t3:4", "t2>t1:1", "t3>t2:3"] : c ? ["c1>c2:5", "c2>c1:1"] : w ? ["w1>w2:5", "w2>w1:1"] : []);
+      expect(view.edges.some((edge) => edge.source === edge.target)).toBe(false);
+      if (w && !c && t) expect(view.edges).toContainEqual(expect.objectContaining({ source: "t1", target: "w1", kind: "terminal-in-workspace" }));
+      if (!t && (c || w)) {
+        const message = view.edges.find((edge) => edge.kind === "communication" && edge.source === (c ? "c1" : "w1"))!;
+        expect(message.sources).toEqual(["codex", "herdr"]);
+        expect(message.lastObservedAt).toBe("2026-11-12T01:00:00Z");
+        expect(view.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
+      }
+    });
+  }
+  it("focuses collapsed containers using projected adjacency without adding unrelated siblings", () => {
+    for (const hiddenKinds of [["terminal"], ["terminal", "worktree"]] as const) {
+      const focus = hiddenKinds.length === 1 ? "c1" : "w1";
+      const extended: GraphData = { ...data, nodes: [...data.nodes, { id: "unrelated", kind: "workspace", label: "Elsewhere" }] };
+      const view = projectGraph(extended, { ...filters, hiddenKinds, focus });
+      expect(view.nodes.some((node) => node.id === (focus === "c1" ? "c2" : "w2"))).toBe(true);
+      expect(view.nodes.some((node) => node.id === "unrelated")).toBe(false);
+      expect(pairs(view)).toHaveLength(2);
+    }
+  });
+  it("preserves legacy workspace-group membership while using its projected root for collapsed focus", () => {
+    const grouped = { ...data, groups: [{ id: "legacy", label: "Project", machineId: "one", nodeIds: ["w1", "c1", "t1", "t3"] }] };
+    const all = projectGraph(grouped, { ...filters, focus: "legacy" });
+    expect(all.nodes.map((node) => node.id)).toEqual(["w1", "c1", "t1", "t3"]);
+    const expected = [[], ["w1", "w2"], ["c1", "c2"], ["w1", "w2", "c1", "c2"], ["t1", "t3"], ["w1", "t1", "t3"], ["c1", "t1", "t3"], ["w1", "c1", "t1", "t3"]];
+    for (let mask = 0; mask < 8; mask++) {
+      const hiddenKinds = (["workspace", "worktree", "terminal"] as const).filter((_, index) => !(mask & (1 << index)));
+      const collapsed = projectGraph(grouped, { ...filters, focus: "legacy", hiddenKinds });
+      expect(collapsed.nodes.map((node) => node.id)).toEqual(expected[mask]!);
+    }
+  });
+  it("does not borrow a hidden sibling's receipts when a focused terminal shares its container", () => {
+    const view = projectGraph(data, { ...filters, focus: "t1", hiddenKinds: ["terminal"] });
+    expect(pairs(view)).toEqual(["c1>c2:2", "c2>c1:1"]);
+    expect(view.edges.find((edge) => edge.source === "c1" && edge.kind === "communication")).toMatchObject({ sources: ["codex"], lastObservedAt: "2026-11-11T01:00:00Z" });
+  });
+  it("never revives non-type-excluded endpoints through a retained container", () => {
+    const hiddenKinds = ["terminal"] as const;
+    expect(pairs(projectGraph(data, { ...filters, hiddenKinds, showCompleted: false }))).toEqual(["c1>c2:2", "c2>c1:1"]);
+    for (const patch of [{ search: "Build" }, { machine: "one" }, { status: "done" }]) {
+      expect(pairs(projectGraph(data, { ...filters, hiddenKinds, ...patch }))).toEqual([]);
+    }
+    const view = projectGraph(data, { ...filters, hiddenKinds: ["terminal", "worktree"], search: "Build" });
+    expect(view.nodes.map((node) => node.id)).toEqual(["w1"]);
+  });
+  it("handles mixed plain folders and orphan checkouts without invented ancestry", () => {
+    const mixed: GraphData = { nodes: data.nodes.filter((node) => node.id !== "c2"), edges: data.edges.filter((edge) => edge.source !== "c2").map((edge) => edge.target === "c2" ? { ...edge, target: "w2", kind: "terminal-in-workspace" } : edge) };
+    expect(pairs(projectGraph(mixed, { ...filters, hiddenKinds: ["terminal"] }))).toEqual(["c1>w2:5", "w2>c1:1"]);
+    expect(pairs(projectGraph(mixed, { ...filters, hiddenKinds: ["terminal", "workspace"] }))).toEqual([]);
+    const orphan = { ...data, edges: data.edges.filter((edge) => edge.id !== "c2w2") };
+    expect(pairs(projectGraph(orphan, { ...filters, hiddenKinds: ["terminal", "worktree"] }))).toEqual([]);
+  });
+  it("applies the recent relationship window before visible aggregation", () => {
+    const view = projectGraph(data, { ...filters, hiddenKinds: ["terminal"], communication: "recent" }, Date.parse("2026-11-12T03:00:00Z"));
+    expect(pairs(view)).toEqual(["c1>c2:3", "c2>c1:1"]);
+    expect(view.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
+    expect(data.edges.find((edge) => edge.id === "m1")!.eventCount).toBe(2);
   });
 });

@@ -28,7 +28,7 @@ function source(names = ["obsidian", "phone", "social"]) {
 const tabNodes = (graph: GraphData) => graph.nodes.filter((node) => node.kind === "terminal");
 const relationships = (graph: GraphData) => graph.edges.filter((edge) => edge.kind === "communication" || edge.kind === "delegation");
 
-it("shows split terminals once, directly under their workspace and visible by default", () => {
+it("shows split terminals once under their main checkout and visible by default", () => {
   const state = source(["Code"]), first = state.snapshot.panes[0]!;
   first.label = "Build shell";
   state.snapshot.panes.push({ ...first, pane_id: "split-shell", terminal_id: "split-terminal", label: "Test shell", agent_status: "working" });
@@ -36,9 +36,9 @@ it("shows split terminals once, directly under their workspace and visible by de
   expect(panes.map((node) => node.label)).toEqual(["Build shell", "Test shell"]);
   expect(panes.map((node) => node.status)).toEqual(["idle", "working"]);
   expect(projectGraph(data, DEFAULT_GRAPH_STATE.filters).nodes.filter((node) => node.kind === "terminal")).toHaveLength(2);
-  expect(data.nodes).toHaveLength(3);
-  const parent = data.nodes.find((node) => node.kind === "workspace")!.id;
-  expect(data.edges.map((edge) => edge.target)).toEqual([parent, parent]);
+  expect(data.nodes).toHaveLength(4);
+  const parent = data.nodes.find((node) => node.kind === "worktree")!.id;
+  expect(data.edges.filter((edge) => edge.kind === "terminal-in-worktree").map((edge) => edge.target)).toEqual([parent, parent]);
   for (const [index, node] of panes.entries()) expect(graphTarget(state.registry, state.rows(), node.id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: state.snapshot.panes[index]!.pane_id });
 });
 
@@ -204,7 +204,7 @@ describe("workspace tabs in Graph", () => {
     expect(tabNodes(data).map((node) => node.label)).toEqual(["obsidian", "phone"]);
     expect(data.nodes[0]!.detail).toContain("Logical alias");
     expect(relationships(data)).toHaveLength(1);
-    expect(data.edges[0]!.source).toBe(data.nodes[0]!.id);
+    expect(relationships(data)[0]!.source).toBe(data.nodes[0]!.id);
     expect(graphTarget(state.registry, state.rows(), "session:logical", state.machines)).toBeNull();
   });
 });
@@ -295,4 +295,27 @@ it("counts recorded activity once per endpoint pair, retaining direction without
   expect(new Set(data.nodes[0]!.activity!.map((item) => item.endpointId)).size).toBe(1);
   expect(data.nodes[1]!.activity).toHaveLength(1);
   expect(data.nodes[1]!.activity![0]).toMatchObject({ direction: "outgoing", eventCount: 1, lastObservedAt: "2026-11-10T00:01:00Z" });
+});
+
+
+it("projects deduplicated real receipts without granting historical activity an action", () => {
+  const state = source(["Build", "Test", "Review"]);
+  const panes = [agent(state, 0), agent(state, 1), agent(state, 2)];
+  const other = { ...state.workspace, workspace_id: "other", label: "Other", worktree: { ...state.workspace.worktree!, repo_key: "other", repo_root: "/other", checkout_path: "/other" } };
+  state.snapshot.workspaces.push(other);
+  state.snapshot.tabs[2]!.workspace_id = other.workspace_id;
+  panes[2]!.workspace_id = other.workspace_id;
+  state.registry.observations = [0, 1].map((index) => ({ id: `send-${index}`, kind: "communication", source: "codex", machine_id: state.machine.id, source_native_session_id: panes[index]!.agent_session!.value, target_native_session_id: panes[2]!.agent_session!.value, occurred_at: `2026-11-10T00:0${index}:00Z` }));
+  state.registry.observations.push(structuredClone(state.registry.observations[0]!));
+  const raw = state.graph();
+  const view = projectGraph(raw, { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["terminal"], communication: "all" });
+  const message = relationships(view)[0]!;
+  expect(relationships(view)).toHaveLength(1);
+  expect(message).toMatchObject({ eventCount: 2, lastObservedAt: "2026-11-10T00:01:00Z", sources: ["codex"] });
+  expect(view.nodes.find((node) => node.id === message.source)!.kind).toBe("worktree");
+  expect(relationships(raw)).toHaveLength(2);
+  expect(graphTarget(state.registry, state.rows(), message.id, state.machines)).toBeNull();
+  state.registry.observations = state.registry.observations.slice(0, 2).map((event, index) => event.source === "codex" && index === 0 ? { ...event, target_native_session_id: "00000000-0000-4000-8000-000000000009" } : event);
+  const history = projectGraph(state.graph(), { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["terminal"], communication: "all" });
+  expect(relationships(history)[0]!.eventCount).toBe(1);
 });

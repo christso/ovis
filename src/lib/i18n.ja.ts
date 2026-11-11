@@ -205,6 +205,7 @@ const BASE: Record<string, string> = {
   "Machine": "マシン",
   "Worktree in workspace": "ワークスペース内のワークツリー",
   "Workspace": "ワークスペース",
+  "Main checkout": "メインのチェックアウト",
   "Legend": "凡例",
   "Worktree": "ワークツリー",
   "Status": "状態",
