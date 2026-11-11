@@ -16,8 +16,10 @@ Colours identify node types: blue for workspace, orange for worktree, green for 
 These hues stay consistent across palettes, with darker shades in light mode. The legend sits below the
 canvas and can be collapsed; that preference survives reloads.
 Working nodes have a soft rotating halo around their edge instead of a small spinner icon. It
-keeps the node's type colour and turns slowly and smoothly. When work stops, the halo disappears.
-Reduced motion keeps it static; stale or disconnected working reports also stay static. Other
+keeps the node's type hue, with a lighter halo in dark themes and a darker one in light themes.
+The glow overlaps the node, and its thickness stays visible when zoomed out. The disc slowly dims
+and brightens while work runs. When work stops, both effects disappear.
+Reduced motion stops both animations; stale or disconnected working reports also stay static. Other
 statuses keep their distinct icons, and status remains available in each node's accessible name.
 Each legend entry also toggles its node type. Hidden entries stay faded and crossed out, ready
 to restore with another click, tap, Enter or Space. Hiding a type removes its nodes and incident

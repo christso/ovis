@@ -202,9 +202,9 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
           <title>{nodeLabel(node)}</title>
           <circle className="graph-node-hit" r={Math.max(style.radius + 5, 23 / viewport.k)} />
           <circle className="graph-node-disc" r={style.radius} />
-          {node.status === "working" && <g className="graph-working-halo" aria-hidden="true">
-            <circle className="graph-working-glow" r={style.radius + 5} />
-            <circle className="graph-working-arc" r={style.radius + 5} pathLength={100} />
+          {node.status === "working" && <g className="graph-working-halo" aria-hidden="true" style={{ "--graph-glow-blur": `${2 / viewport.k}px` } as CSSProperties}>
+            <circle className="graph-working-glow" r={style.radius + 2 / viewport.k} vectorEffect="non-scaling-stroke" />
+            <circle className="graph-working-arc" r={style.radius + 2 / viewport.k} pathLength={100} vectorEffect="non-scaling-stroke" />
           </g>}
           {Icon && <Icon x={style.radius - 7} y={-style.radius - 7} width={14} height={14} aria-hidden="true" className="graph-status-icon" />}
           {label && <text textAnchor="middle" x={label.x} y={label.y} style={{ fontSize: 12 / viewport.k, strokeWidth: 4 / viewport.k }} className="graph-node-label">{label.text}</text>}

@@ -15,12 +15,13 @@ function smoothEndless(css: string): string[] {
 describe("motion", () => {
   // A smooth endless animation has the browser draw a frame at every display refresh while it
   // runs (an agent works for minutes), which stutters a video playing next to the app. An endless
-  // one jumps between steps instead. Bridge installation slides; Graph's working halo is the
-  // user-requested smooth exception, confined to live working nodes outside reduced motion.
-  it("allows smooth endless motion only for bridge progress and Graph's working halo", () => {
+  // one jumps between steps instead. Bridge installation slides; Graph's working halo and brightness pulse
+  // are the user-requested smooth exceptions, confined to live working nodes outside reduced motion.
+  it("allows smooth endless motion only for bridge progress and Graph's working indicators", () => {
     expect(stylesheets(import.meta.dir).flatMap((file) =>
       smoothEndless(readFileSync(file, "utf8")).map((declaration) => `${file.slice(import.meta.dir.length + 1)}: ${declaration}`))).toEqual([
         "features/graph/GraphView.css: animation: graph-working-turn 6s linear infinite",
+        "features/graph/GraphView.css: animation: graph-working-breathe 4s ease-in-out infinite",
       ]);
   });
 

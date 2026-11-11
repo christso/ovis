@@ -25,6 +25,79 @@ try {
     return new Response(Bun.file(join(output, url.pathname === "/" ? "index.html" : url.pathname.slice(1))));
   } });
   browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
+  for (const width of [1280, 320]) for (const theme of ["dark", "light"] as const) {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width < 700, hasTouch: width < 700, colorScheme: theme, reducedMotion: "no-preference", locale: "en-US" });
+    await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme })), theme);
+    try {
+      const page = await context.newPage();
+      await page.goto(`http://127.0.0.1:${server.port}`);
+      const node = page.locator('[data-graph-node="session"]');
+      await node.waitFor();
+      const arc = node.locator(".graph-working-arc");
+      assert.equal(await arc.count(), 1);
+      const rotation = await arc.evaluate(async (element) => {
+        const animation = element.getAnimations()[0]!;
+        await animation.ready;
+        const timing = animation.effect!.getTiming();
+        animation.pause(); animation.currentTime = 0;
+        const before = getComputedStyle(element).transform;
+        animation.currentTime = Number(timing.duration) / 4;
+        return { before, after: getComputedStyle(element).transform, duration: timing.duration, easing: timing.easing, iterations: timing.iterations, pointerEvents: getComputedStyle(element).pointerEvents };
+      });
+      assert.notEqual(rotation.before, rotation.after, "the halo rotates around the node");
+      assert.ok(Number(rotation.duration) >= 4000, "working rotation stays slow");
+      assert.equal(rotation.easing, "linear");
+      assert.equal(rotation.iterations, Infinity);
+      assert.equal(rotation.pointerEvents, "none", "the halo does not capture graph gestures");
+      const disc = node.locator(".graph-node-disc");
+      const breath = await disc.evaluate(async (element) => {
+        const animation = element.getAnimations()[0]!; await animation.ready;
+        const duration = Number(animation.effect!.getTiming().duration);
+        animation.pause(); animation.currentTime = 0;
+        const dim = getComputedStyle(element).filter;
+        animation.currentTime = duration / 2;
+        return { dim, bright: getComputedStyle(element).filter, duration };
+      });
+      assert.notEqual(breath.dim, breath.bright, "the node brightness oscillates");
+      assert.ok(breath.duration >= 3000, "the brightness change stays gradual");
+      const contrast = await node.evaluate((element) => {
+        const ctx = document.createElement("canvas").getContext("2d")!;
+        const mean = (colour: string) => { ctx.fillStyle = colour; ctx.fillRect(0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3).reduce((a, b) => a + b) / 3; };
+        return { disc: mean(getComputedStyle(element.querySelector(".graph-node-disc")!).fill), halo: mean(getComputedStyle(element.querySelector(".graph-working-arc")!).stroke) };
+      });
+      assert.ok(theme === "dark" ? contrast.halo > contrast.disc + 30 : contrast.halo < contrast.disc - 30, "the halo contrasts with its node in both themes");
+      const surface = page.locator(".graph-surface");
+      for (let zoom = 0; zoom < 3; zoom++) {
+        if (zoom) { await surface.focus(); for (let key = 0; key < 5; key++) await page.keyboard.press("-"); }
+        const geometry = await node.evaluate((element) => {
+          const disc = element.querySelector(".graph-node-disc") as SVGCircleElement, arc = element.querySelector(".graph-working-arc") as SVGCircleElement, glow = element.querySelector(".graph-working-glow") as SVGCircleElement;
+          const matrix = disc.getScreenCTM()!, scale = Math.hypot(matrix.a, matrix.b);
+          const width = (circle: SVGCircleElement) => parseFloat(getComputedStyle(circle).strokeWidth) * (getComputedStyle(circle).vectorEffect === "non-scaling-stroke" ? 1 : scale);
+          return { arcWidth: width(arc), glowWidth: width(glow), offset: (arc.r.baseVal.value - disc.r.baseVal.value) * scale };
+        });
+        assert.ok(geometry.arcWidth >= 2.9 && geometry.glowWidth >= 9.9, "halo and glow keep their screen thickness while zoomed out");
+        assert.ok(geometry.glowWidth / 2 > geometry.offset + 2, "the glow overlaps the node interior");
+        if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `graph-working-visibility-${width}-${theme}-zoom-${zoom}.png`) });
+      }
+      await page.getByRole("button", { name: "Fit graph", exact: true }).click();
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 0, "a live reduced-motion change stops rotation");
+      assert.equal(await disc.evaluate((element) => element.getAnimations().length), 0, "reduced motion stops the brightness pulse");
+      assert.equal(await disc.evaluate((element) => getComputedStyle(element).filter), "none");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.getByRole("button", { name: "Disconnect source", exact: true }).click();
+      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 0, "disconnected working reports stay static");
+      assert.equal(await disc.evaluate((element) => element.getAnimations().length), 0, "disconnected nodes stop breathing");
+      await page.getByRole("button", { name: "Load inventory", exact: true }).click();
+      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 1, "live working reports rotate again");
+      await page.getByRole("button", { name: "Live update", exact: true }).click();
+      assert.equal(await node.locator(".graph-working-halo").count(), 0);
+      assert.equal(await node.locator(".graph-status-icon").count(), 1);
+      assert.equal(await disc.evaluate((element) => element.getAnimations().length), 0);
+      console.log(`PASS ${width}px ${theme} working glow, brightness, zoom, reduced motion, freshness and stopped work`);
+    } finally { await context.close(); }
+  }
+
   for (const [width, height] of [[1280, 844], [390, 844], [320, 844], [390, 640], [320, 640]]) for (const theme of ["dark", "light"] as const) {
     const mobile = width! <= 700;
     const context = await browser.newContext({ viewport: { width: width!, height: height! }, hasTouch: mobile, isMobile: mobile, colorScheme: theme, locale: "en-US", reducedMotion: "reduce" });
@@ -496,45 +569,6 @@ try {
       assert.equal(await hub.getAttribute("data-degree"), "5");
       assert.ok(await discWidth("sizing-hub") / await discWidth("sizing-leaf-0") >= 1.7);
       console.log(`PASS ${width}px rendered Folio-style degree sizing, zoom, touch targets and legend rescaling`);
-    } finally { await context.close(); }
-  }
-
-  for (const width of [1280, 320]) {
-    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width < 700, hasTouch: width < 700, reducedMotion: "no-preference", locale: "en-US" });
-    try {
-      const page = await context.newPage();
-      await page.goto(`http://127.0.0.1:${server.port}`);
-      const node = page.locator('[data-graph-node="session"]');
-      await node.waitFor();
-      const arc = node.locator(".graph-working-arc");
-      assert.equal(await arc.count(), 1);
-      const rotation = await arc.evaluate(async (element) => {
-        const animation = element.getAnimations()[0]!;
-        await animation.ready;
-        const timing = animation.effect!.getTiming();
-        animation.pause(); animation.currentTime = 0;
-        const before = getComputedStyle(element).transform;
-        animation.currentTime = Number(timing.duration) / 4;
-        return { before, after: getComputedStyle(element).transform, duration: timing.duration, easing: timing.easing, iterations: timing.iterations, pointerEvents: getComputedStyle(element).pointerEvents };
-      });
-      assert.notEqual(rotation.before, rotation.after, "the halo rotates around the node");
-      assert.ok(Number(rotation.duration) >= 4000, "working rotation stays slow");
-      assert.equal(rotation.easing, "linear");
-      assert.equal(rotation.iterations, Infinity);
-      assert.equal(rotation.pointerEvents, "none", "the halo does not capture graph gestures");
-      assert.equal(await node.locator(".graph-node-disc").evaluate((disc) => getComputedStyle(disc).fill), await arc.evaluate((element) => getComputedStyle(element).stroke), "halo keeps the node type colour");
-      if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `graph-working-halo-${width}.png`) });
-      await page.emulateMedia({ reducedMotion: "reduce" });
-      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 0, "a live reduced-motion change stops rotation");
-      await page.emulateMedia({ reducedMotion: "no-preference" });
-      await page.getByRole("button", { name: "Disconnect source", exact: true }).click();
-      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 0, "disconnected working reports stay static");
-      await page.getByRole("button", { name: "Load inventory", exact: true }).click();
-      assert.equal(await arc.evaluate((element) => element.getAnimations().length), 1, "live working reports rotate again");
-      await page.getByRole("button", { name: "Live update", exact: true }).click();
-      assert.equal(await node.locator(".graph-working-halo").count(), 0);
-      assert.equal(await node.locator(".graph-status-icon").count(), 1);
-      console.log(`PASS ${width}px working edge halo, reduced motion, freshness and stopped work`);
     } finally { await context.close(); }
   }
 
