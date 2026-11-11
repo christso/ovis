@@ -13,6 +13,7 @@ import { readGraphSource, verifyGraphSnapshot } from "./graph-source.ts";
 import type { GraphObservation, HerdrCoordinationEndpoint, HerdrCoordinationPage } from "../shared/graph-registry.ts";
 import { codexCoordinationObservations } from "./codex-relationships.ts";
 import * as herdrCoordination from "./herdr-coordination.ts";
+import * as herdrCli from "./herdr/cli-observations.ts";
 
 const roots: string[] = [];
 let coordinationReader: ReturnType<typeof spyOn>;
@@ -216,4 +217,56 @@ it("refuses endpoint replacement while the remote read is pending without append
     expect(store.read().revision).toBe(0);
     expect(store.read().executions).toEqual([]);
   } finally { server.stop(true); }
+});
+
+
+it("imports offline stock history after switching to the fork and suppresses only current same-daemon capture", async () => {
+  const source = snapshot("hint"); source.panes = []; source.herdr_lifetime = "current-boot";
+  const terminal = { server_id: "cli", boot_id: "current-boot", terminal_id: "source", pane_id: "w1:p1", agent: "codex", name: null };
+  const receipt = { id: "current", kind: "delegation" as const, producer: "herdr-cli" as const, scope: "terminal" as const, occurred_at: observation.occurred_at,
+    source_terminal: terminal, target_terminal: { ...terminal, terminal_id: "target" } };
+  const old = { ...receipt, id: "offline-stock", source_terminal: { ...terminal, boot_id: "stock-boot" }, target_terminal: { ...receipt.target_terminal, boot_id: "stock-boot" } };
+  const cross = { ...receipt, id: "named-session", target_terminal: { ...receipt.target_terminal, server_id: "other", boot_id: "other-boot" } };
+  const cliReader = spyOn(herdrCli, "herdrCliObservations").mockResolvedValue({ version: 1, server_id: "cli", boot_id: "current-boot", receipts: [old, receipt, cross] });
+  coordinationReader.mockResolvedValue(coordinationPage());
+  try {
+    const verified = await verifyGraphSnapshot(async () => source);
+    expect(verified.graph_cli?.receipts.map((event) => event.id)).toEqual(["offline-stock", "named-session"]);
+    const root = mkdtempSync(join(tmpdir(), "ovis-cli-transition-")); roots.push(root);
+    const store = new GraphRegistryStore(root);
+    expect(store.observe([{ ...machine(), snapshot: verified }]).cli_observations?.map((event) => event.id)).toEqual(["offline-stock", "named-session"]);
+    expect(new GraphRegistryStore(root).read().cli_observations).toHaveLength(2);
+    expect(store.observe([{ ...machine(), snapshot: verified }]).revision).toBe(1);
+  } finally { cliReader.mockRestore(); }
+});
+
+it("keeps stock process proof in the optional CLI field so legacy managers cannot persist daemon associations", async () => {
+  const source = snapshot("hint"); source.panes[0]!.agent = "claude";
+  const page = { version: 1 as const, producer: "herdr-cli" as const, server_id: "cli", boot_id: source.herdr_lifetime!, agents: [{ ...occupancy, server_id: "cli", boot_id: source.herdr_lifetime! }], receipts: [], cursor: null };
+  const cliReader = spyOn(herdrCli, "herdrCliObservations").mockResolvedValue({ version: 1, server_id: "cli", boot_id: source.herdr_lifetime!, receipts: [] });
+  const processReader = spyOn(herdrCli, "herdrCliSnapshot").mockResolvedValue(page);
+  try {
+    const verified = await verifyGraphSnapshot(async () => source);
+    expect(verified.flock_coordination).toBeUndefined();
+    expect((verified.graph_cli as unknown as { current_agents: unknown[] }).current_agents).toEqual(page.agents);
+    // Old managers only understand legacy fields; unknown graph_cli cannot become a herdr association.
+    const { graph_cli: ignored, ...legacySnapshot } = verified;
+    const root = mkdtempSync(join(tmpdir(), "ovis-cli-legacy-")); roots.push(root);
+    expect(new GraphRegistryStore(root).observe([{ ...machine(), snapshot: legacySnapshot }]).herdr_associations).toBeUndefined();
+    expect(new GraphRegistryStore(root).observe([{ ...machine(), snapshot: verified }]).herdr_associations).toBeUndefined();
+  } finally { cliReader.mockRestore(); processReader.mockRestore(); }
+});
+
+for (const scenario of ["missing", "missing-before", "missing-after", "ambiguous", "same", "replaced"] as const) it(`${scenario === "replaced" ? "drops" : "preserves"} independent native proof when optional CLI process evidence is ${scenario}`, async () => {
+  const source = snapshot("hint"), endpoint = { ...occupancy, agent: "codex" };
+  const old = scenario === "missing" || scenario === "missing-before" ? [] : scenario === "ambiguous" ? [endpoint, { ...endpoint, agent_instance_id: "ambiguous" }] : [endpoint];
+  const current = scenario === "missing" || scenario === "missing-after" ? [] : scenario === "ambiguous" ? old : [{ ...endpoint, agent_instance_id: scenario === "replaced" ? "replacement" : endpoint.agent_instance_id }];
+  let reads = 0;
+  const processReader = spyOn(herdrCli, "herdrCliSnapshot").mockImplementation(async () => ({ version: 1, server_id: "server", boot_id: "boot", agents: ++reads === 1 ? old : current }));
+  const nativeReader = spyOn(codex, "codexPaneCoordination").mockResolvedValue({ id: own, observations: [observation], rolloutPath: "/fixture/rollout" });
+  try {
+    const result = await verifyGraphSnapshot(async () => source);
+    expect(result.flock_bindings).toHaveLength(scenario === "replaced" ? 0 : 1);
+    expect(result.flock_observations).toEqual(scenario === "replaced" ? [] : [observation]);
+  } finally { processReader.mockRestore(); nativeReader.mockRestore(); }
 });

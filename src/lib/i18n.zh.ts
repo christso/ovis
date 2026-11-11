@@ -33,6 +33,10 @@ import { RUNTIME_MOVE_ZH } from "./i18n/runtime-move.zh.ts";
  * Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Terminal activity": "终端活动",
+  "Recorded activity": "已记录的活动",
+  "Related items: {count}": "相关项目：{count}",
+  "These records have no verified tab to open.": "这些记录没有可打开的已验证标签页。",
   "Recorded agent activity": "已记录的智能体活动",
   "Related agent sessions: {count}": "{count} 个相关智能体会话",
   "These sessions have no verified tab to open.": "这些会话没有可打开的已验证标签页。",

@@ -1,4 +1,8 @@
 import { afterAll, beforeAll, expect, it, spyOn } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { herdrCliIdentity, recordHerdrCli } from "./herdr/cli-observations.ts";
+import * as cli from "./herdr/cli-observations.ts";
+import { herdrSocketPath } from "./herdr/client.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -90,4 +94,43 @@ it("enforces origin, custom-header, authentication, watch and manager-only bound
     expect((await fetch(`${privateBase}/api/flock`)).status).toBe(401);
     expect((await fetch(`${privateBase}/api/flock`, { headers: { authorization: "Bearer fixture-bridge" } })).status).toBe(401);
   } finally { privateApp.stop(); }
+});
+
+it("keeps populated CLI history and process evidence private through direct and machine session routes", async () => {
+  const journal = join(root, "cli-journal"), previous = process.env["OVIS_HERDR_CLI_DIR"];
+  process.env["OVIS_HERDR_CLI_DIR"] = journal;
+  const snapshot = await app.context.services.core.clientSnapshot();
+  const selected = snapshot.panes.find((item) => item.pane_id === pane)!;
+  const identity = herdrCliIdentity(herdrSocketPath(), journal)!;
+  const endpoint = { ...identity, terminal_id: selected.terminal_id, pane_id: pane, agent: "codex", name: "Private CLI label", agent_instance_id: "private-current-process" };
+  recordHerdrCli(herdrSocketPath(), { id: randomUUID(), kind: "communication", producer: "herdr-cli", scope: "terminal", occurred_at: "2026-11-11T00:00:00Z",
+    source_terminal: endpoint, target_terminal: { ...endpoint, terminal_id: "private-closed-terminal", pane_id: "private-closed-pane" } }, journal);
+  // Only process inspection is fictional; journal import, source verification and HTTP/proxy permissions are real.
+  const processReader = spyOn(cli, "herdrCliSnapshot").mockResolvedValue({ version: 1, ...identity, agents: [endpoint] });
+  const peer = createServer({ port: 0, hostname: "127.0.0.1", stateDir: mkdtempSync(join(root, "peer-")), token: "private-peer-token", machines: false, sidecar: false });
+  const manager = app.context.services.core.machines!;
+  const originalEndpoint = manager.endpoint.bind(manager);
+  const proxy = spyOn(manager, "endpoint").mockImplementation((id) => id === "fixture-remote" ? { url: `http://127.0.0.1:${peer.port}`, token: "private-peer-token" } : originalEndpoint(id));
+  try {
+    for (const prefix of ["/api", "/api/machines/local", "/api/machines/fixture-remote"]) {
+      const ordinary = await fetch(`${base}${prefix}/session`);
+      expect(ordinary.status).toBe(200);
+      const normal = (await ordinary.json()).snapshot;
+      expect(normal.graph_cli).toBeUndefined();
+      expect(JSON.stringify(normal)).not.toContain("private-current-process");
+      expect(JSON.stringify(normal)).not.toContain("Private CLI label");
+      const privateResponse = await fetch(`${base}${prefix}/session?flock=1`);
+      expect(privateResponse.status).toBe(200);
+      const privateSnapshot = (await privateResponse.json()).snapshot;
+      expect(privateSnapshot.graph_cli.receipts).toHaveLength(1);
+      expect(privateSnapshot.graph_cli.current_agents).toEqual([endpoint]);
+      expect(privateSnapshot.flock_coordination).toBeUndefined();
+      expect((await fetch(`${base}${prefix}/session?flock=1`, { headers: { cookie: watchCookie } })).status).toBe(403);
+      const watched = (await (await fetch(`${base}${prefix}/session`, { headers: { cookie: watchCookie } })).json()).snapshot;
+      expect(watched.graph_cli).toBeUndefined();
+    }
+  } finally {
+    proxy.mockRestore(); processReader.mockRestore(); peer.stop();
+    if (previous === undefined) delete process.env["OVIS_HERDR_CLI_DIR"]; else process.env["OVIS_HERDR_CLI_DIR"] = previous;
+  }
 });

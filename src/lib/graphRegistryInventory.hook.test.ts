@@ -40,3 +40,25 @@ for (const replacement of ["lifetime", "terminal", "agent", "disconnected"] as c
   await act(async () => { renderer = create(createElement(Probe)); });
   expect(rows[0]?.herdr_endpoint).toBeNull();
 });
+
+
+it("uses validated optional CLI process proof without creating a native binding or retaining it across boots", async () => {
+  machines = [machine()]; sources = [machine()];
+  const current = { ...endpoint, boot_id: sources[0]!.snapshot!.herdr_lifetime! };
+  sources[0]!.snapshot!.graph_cli = { version: 1, server_id: current.server_id, boot_id: current.boot_id, current_agents: [current], receipts: [] };
+  await act(async () => { renderer = create(createElement(Probe)); });
+  expect(rows[0]?.herdr_endpoint).toEqual(current);
+  expect(rows[0]?.binding).toBeNull();
+  sources[0]!.snapshot!.graph_cli.current_agents = [current, current];
+  sources = [...sources];
+  await act(async () => renderer!.update(createElement(Probe)));
+  expect(rows[0]?.herdr_endpoint).toBeNull();
+  sources[0]!.snapshot!.graph_cli.current_agents = [{ ...current, server_id: "other" }];
+  sources = [...sources];
+  await act(async () => renderer!.update(createElement(Probe)));
+  expect(rows[0]?.herdr_endpoint).toBeNull();
+  sources[0]!.snapshot!.graph_cli.current_agents = [current];
+  machines[0]!.snapshot!.herdr_lifetime = "replacement"; machines = [...machines];
+  await act(async () => renderer!.update(createElement(Probe)));
+  expect(rows[0]?.herdr_endpoint).toBeNull();
+});

@@ -61,3 +61,44 @@ it("keeps ephemeral source proofs out of the registry and clears them when a ref
   await act(async () => { await latest.refresh(); });
   expect(latest.sources).toEqual([]);
 });
+
+it("returns a user refresh when an automatic poll becomes due before its response", async () => {
+  jest.useFakeTimers();
+  const user = Promise.withResolvers<Response>(); let calls = 0;
+  setTransport({ ...nativeTransport, fetch: async () => ++calls === 2 ? user.promise : Response.json(registry) });
+  await act(async () => { renderer = create(createElement(Probe)); });
+  let opened: ReturnType<typeof latest.refresh>;
+  await act(async () => { opened = latest.refresh(); });
+  await act(async () => { jest.advanceTimersByTime(5000); });
+  await act(async () => { user.resolve(Response.json(registry)); });
+  expect(await opened!).toEqual({ ...registry, sources: [] });
+  expect(calls).toBe(2);
+  await act(async () => { jest.advanceTimersByTime(5000); });
+  expect(calls).toBe(3);
+});
+
+it("keeps newer explicit refresh and unmount cancellation guards", async () => {
+  const older = Promise.withResolvers<Response>(), newer = Promise.withResolvers<Response>(); let calls = 0;
+  setTransport({ ...nativeTransport, fetch: async () => ++calls === 2 ? older.promise : calls === 3 ? newer.promise : Response.json(registry) });
+  await act(async () => { renderer = create(createElement(Probe)); });
+  let oldRead: ReturnType<typeof latest.refresh>, newRead: ReturnType<typeof latest.refresh>;
+  await act(async () => { oldRead = latest.refresh(); newRead = latest.refresh(); older.resolve(Response.json(registry)); });
+  expect(await oldRead!).toBeNull();
+  await act(async () => { renderer!.unmount(); renderer = null; newer.resolve(Response.json(registry)); });
+  expect(await newRead!).toBeNull();
+});
+
+it("resumes automatic polling after a pending user refresh fails", async () => {
+  jest.useFakeTimers();
+  const user = Promise.withResolvers<Response>(); let calls = 0;
+  setTransport({ ...nativeTransport, fetch: async () => ++calls === 2 ? user.promise : Response.json(registry) });
+  await act(async () => { renderer = create(createElement(Probe)); });
+  let opened: ReturnType<typeof latest.refresh>;
+  await act(async () => { opened = latest.refresh(); jest.advanceTimersByTime(5000); });
+  await act(async () => { user.resolve(new Response("unavailable", { status: 503 })); });
+  expect(await opened!).toBeNull();
+  expect(latest.error).not.toBeNull();
+  await act(async () => { jest.advanceTimersByTime(5000); });
+  expect(calls).toBe(3);
+  expect(latest.error).toBeNull();
+});

@@ -25,7 +25,7 @@ export interface GraphViewProps {
 
 function RecordedEvents({ value }: { value: Pick<GraphEdge, "eventCount" | "lastObservedAt" | "sources"> & { evidence?: string } }) {
   const t = useT();
-  return <small>{value.eventCount ? <>{t("{count} recorded events", { count: value.eventCount })} · {t("Last activity")}: <time dateTime={value.lastObservedAt}>{new Date(value.lastObservedAt!).toLocaleString()}</time> · {value.sources?.map((source) => source === "herdr" ? "Herdr" : "Codex").join(" · ") ?? value.evidence}</> : value.evidence}</small>;
+  return <small>{value.eventCount ? <>{t("{count} recorded events", { count: value.eventCount })} · {t("Last activity")}: <time dateTime={value.lastObservedAt}>{new Date(value.lastObservedAt!).toLocaleString()}</time> · {value.sources?.map((source) => source === "herdr" ? "Herdr" : source === "herdr-cli" ? `Herdr CLI · ${t("Terminal activity")}` : "Codex").join(" · ") ?? value.evidence}</> : value.evidence}</small>;
 }
 
 export default function GraphView({ data, onOpenNode, canOpenNode, error, machineNames }: GraphViewProps) {
@@ -52,6 +52,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const selected = data.nodes.find((node) => node.id === state.selected);
   const selectedCanOpen = useMemo(() => !!selected && canOpenNode(selected.id), [selected?.id, canOpenNode]);
   const activity = selected?.activity ?? [];
+  const terminalActivity = activity.some((item) => item.sources.includes("herdr-cli"));
   const relatedSessions = new Set(activity.map((item) => item.endpointId)).size;
   const legacyFocus = data.groups?.find((group) => group.id === state.filters.focus);
   const focusNodes = data.nodes;
@@ -155,8 +156,8 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
             return <li key={edge.id}>{graphRelationLabel(t, edge.kind)} {edge.source === selected.id ? "→" : "←"}<button type="button" className="btn btn-ghost" onClick={() => setState((previous) => ({ ...previous, selected: neighbour.id }))}>{neighbour.label}</button><RecordedEvents value={edge} /></li>;
           })}</ul>
           {activity.length > 0 && <details className="graph-recorded-activity">
-            <summary>{t("Recorded agent activity")}<small>{t("Related agent sessions: {count}", { count: relatedSessions })}</small></summary>
-            <p>{t("These sessions have no verified tab to open.")}</p>
+            <summary>{terminalActivity ? t("Recorded activity") : t("Recorded agent activity")}<small>{terminalActivity ? t("Related items: {count}", { count: relatedSessions }) : t("Related agent sessions: {count}", { count: relatedSessions })}</small></summary>
+            <p>{terminalActivity ? t("These records have no verified tab to open.") : t("These sessions have no verified tab to open.")}</p>
             <ul className="graph-relations">{activity.map((item) => <li key={item.id}>
               {graphRelationLabel(t, item.kind)} {item.direction === "outgoing" ? "→" : "←"} {item.label}
               <RecordedEvents value={item} />

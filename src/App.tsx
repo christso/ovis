@@ -1016,7 +1016,7 @@ export function App() {
           onStarting={setupGuide.voidTickets}
           onPaired={() => void loadHealth()}
           onOpened={(paneId, agentStarted) => { if (agentStarted) actions.agentStarted("local", paneId); setupGuide.finish(() => selectTarget("local", paneId)); void load(); }} /></MachineContext.Provider>}
-        {graphPage === "graph" ? <GraphEntry auth={auth} registry={graphRegistry.registry} rows={graphRows} machines={machines} error={graphRegistry.error} refresh={graphRegistry.refresh} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />
+        {graphPage === "graph" ? <GraphEntry auth={auth} registry={graphRegistry.registry} rows={graphRows} machines={machines} sources={graphRegistry.sources} error={graphRegistry.error} refresh={graphRegistry.refresh} onOpenTarget={(target) => selectTarget(target.machine_id, target.pane_id)} />
 
         : guideShown ? null :
         <div ref={paneAreaRef} className={`pane-split${splitOn ? " is-split" : ""}`} onDragEnterCapture={paneDragOver} onDragOverCapture={paneDragOver} onDragLeave={paneDragLeave} onDropCapture={paneDrop}>

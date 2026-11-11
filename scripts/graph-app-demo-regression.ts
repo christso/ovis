@@ -42,7 +42,7 @@ remote.snapshot!.herdr_lifetime = "graph-owned-remote";
 remote.snapshot!.panes[0]!.terminal_id = "graph-terminal-remote";
 remote.snapshot!.flock_bindings = [{ pane_id: chosen.pane_id, terminal_id: "graph-terminal-remote", agent: chosen.agent!, native_session_id: "graph-native-remote" }]; remote.snapshot!.panes[0]!.agent_session!.value = "graph-native-remote";
 const offline = structuredClone(remote); offline.id = "graph-offline"; offline.name = "Graph offline"; offline.state = "disconnected";
-const unknown = structuredClone(chosen); unknown.pane_id = "graph-unproven"; unknown.label = "Unproven garden"; unknown.agent_session = null;
+const unknown = structuredClone(chosen); unknown.pane_id = "graph-unproven"; unknown.terminal_id = "graph-unproven-terminal"; unknown.label = "Unproven garden"; unknown.agent_session = null;
 original.snapshot!.panes.push(unknown);
 const researchTab = { ...original.snapshot!.tabs.find((tab) => tab.tab_id === chosen.tab_id)!, tab_id: "graph-research-tab", label: "research" };
 unknown.tab_id = researchTab.tab_id;
@@ -58,8 +58,9 @@ original.snapshot!.panes.push({ ...idlePane, tab_id: chosen.tab_id, pane_id: "gr
 const pristine: Machine[] = [original, remote, offline, { ...offline, id: "graph-empty", name: "Graph awaiting inventory", state: "connecting", snapshot: null }];
 let machines = structuredClone(pristine), store = new GraphRegistryStore(join(root, "initial")), future = false, graphReads = 0;
 let browser: Browser | undefined, server: ReturnType<typeof Bun.serve> | undefined;
+let heldGraphRead: { started(): void; released: Promise<void> } | null = null;
 const harness = (machines: Machine[]) => `<script>(() => {
-  const raw = (values) => values.map(machine => ({...machine, snapshot:machine.snapshot ? {...machine.snapshot, flock_bindings:undefined, flock_observations:undefined} : null}));
+  const raw = (values) => values.map(machine => ({...machine, snapshot:machine.snapshot ? {...machine.snapshot, flock_bindings:undefined, flock_observations:undefined, graph_cli:undefined} : null}));
   let fixture = raw(${JSON.stringify(machines)});
   const demo = window.fetch, network = window.graphNetwork, sources = new Set();
   const controls = [];
@@ -90,7 +91,11 @@ try {
   const html = readFileSync(join(app, "index.html"), "utf8");
   server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const path = new URL(request.url).pathname;
-    if (path === "/api/flock") { graphReads++; return future ? Response.json({ version: 99 }) : handleGraphRequest(request, store, machines); }
+    if (path === "/api/flock") {
+      graphReads++;
+      const held = heldGraphRead; heldGraphRead = null;
+      if (held) { held.started(); await held.released; }
+      return future ? Response.json({ version: 99 }) : handleGraphRequest(request, store, machines); }
     const prefix = "/herdr-web-ui/demo/app/";
     if (!path.startsWith(prefix)) return new Response("not found", { status: 404 });
     const file = decodeURIComponent(path.slice(prefix.length)) || "index.html";
@@ -111,6 +116,7 @@ try {
     const context = await browser.newContext({ viewport: { width, height }, ...(videoDir ? { recordVideo: { dir: videoDir, size: { width, height } } } : {}), locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
     await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme, fileOpen: "panel" })), theme);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
+    await page.clock.install();
     const errors: string[] = [], assets: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message)); page.on("request", (request) => { if (request.url().includes("GraphPanel-")) assets.push(request.url()); });
     const base = `http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/`;
@@ -353,6 +359,58 @@ try {
       await page.goBack(); await node().waitFor();
       assert.equal(new URL(page.url()).searchParams.get("page"), "graph");
       assert.equal(await page.getByLabel("Search graph", { exact: true }).inputValue(), "Prune orchard");
+      stage = "terminal-scoped CLI history";
+      await page.getByLabel("Search graph", { exact: true }).fill("");
+      const cliMachine = machines[0]!, cliSnapshot = cliMachine.snapshot!;
+      const terminal = (paneId: string, terminalId: string) => ({ server_id: "fixture-cli-local", boot_id: cliSnapshot.herdr_lifetime!, terminal_id: terminalId, pane_id: paneId, agent: "codex", name: "Recorded CLI worker" });
+      cliSnapshot.graph_cli = { version: 1, server_id: "fixture-cli-local", boot_id: cliSnapshot.herdr_lifetime!, receipts: [{ id: "fixture-terminal-start", kind: "delegation", producer: "herdr-cli", scope: "terminal", occurred_at: new Date().toISOString(), source_terminal: terminal(chosen.pane_id, chosen.terminal_id), target_terminal: terminal(idlePane.pane_id, idlePane.terminal_id) }] };
+      await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.locator(".graph-edge-delegation").waitFor();
+      assert.equal(store.read().cli_observations?.length, 1, "the app imports CLI terminal evidence separately from native sessions");
+      await inspect(sourceId);
+      const details = page.getByRole("button", { name: "Details and help", exact: true });
+      if (mobile && await details.getAttribute("aria-expanded") !== "true") await details.click();
+      await page.getByText(/Herdr CLI · Terminal activity/).first().waitFor();
+      cliSnapshot.panes.find((pane) => pane.pane_id === idlePane.pane_id)!.terminal_id = "fixture-recreated-cli-terminal";
+      await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await page.waitForFunction(() => document.querySelectorAll(".graph-edge-delegation").length === 0);
+      const terminalHistory = await showActivity();
+      await terminalHistory.getByText("These records have no verified tab to open.", { exact: true }).waitFor();
+      assert.match(await terminalHistory.locator("summary").innerText(), /Recorded activity/);
+      assert.equal(await terminalHistory.locator("button, a").count(), 0, "historical terminal evidence creates no navigation action");
+      assert.equal(store.read().cli_observations?.length, 1, "refresh/recreated terminals do not duplicate or reinterpret a receipt");
+      stage = "stale CLI process Open";
+      const cliPane = cliSnapshot.panes.find((pane) => pane.pane_id === chosen.pane_id)!;
+      cliPane.agent_session = null; cliSnapshot.flock_bindings = []; cliSnapshot.flock_coordination = undefined;
+      cliSnapshot.graph_cli.current_agents = [{ ...terminal(cliPane.pane_id, cliPane.terminal_id), agent: "codex", agent_instance_id: "old-cli-process" }];
+      await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      const oldCliId = graphTabs([cliMachine], {}, undefined, graphRegistryInventory(store.read(), [cliMachine])).find((tab) => tab.panes.some((pane) => pane.pane_id === cliPane.pane_id))!.node.id;
+      await inspect(oldCliId);
+      const staleOpen = page.getByRole("button", { name: "Open in Workspace", exact: true });
+      assert.equal(await staleOpen.isEnabled(), true);
+      // Only the source changes: no roster event or Graph poll has told the browser yet.
+      cliSnapshot.graph_cli.current_agents[0]!.agent_instance_id = "replacement-cli-process";
+      await staleOpen.click();
+      await page.locator(".graph-selection-hint").filter({ hasText: "unavailable" }).waitFor({ timeout: 3000 });
+      assert.equal(new URL(page.url()).searchParams.get("page"), "graph", "Open checks the selected process before navigating");
+      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0);
+      const currentCliId = graphTabs([cliMachine], {}, undefined, graphRegistryInventory(store.read(), [cliMachine])).find((tab) => tab.panes.some((pane) => pane.pane_id === cliPane.pane_id))!.node.id;
+      await inspect(currentCliId);
+      // Hold the user's source read across a due automatic poll, without waiting on wall time.
+      await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+      const started = Promise.withResolvers<void>(), released = Promise.withResolvers<void>();
+      heldGraphRead = { started: () => started.resolve(), released: released.promise };
+      const heldDeadline = setTimeout(() => started.reject(new Error("Owned Open source read did not start")), 15000);
+      try {
+        await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
+        await started.promise;
+        await page.clock.runFor(6000);
+      } finally { clearTimeout(heldDeadline); released.resolve(); await page.clock.resume(); }
+      await page.waitForURL((url) => !url.searchParams.has("page"));
+      await openGraph();
       assert.deepEqual(await page.evaluate(() => (window as unknown as { graphFixture: { controls: string[] } }).graphFixture.controls), [], "Graph/navigation never focuses or inputs to Herdr");
       assert.deepEqual(errors, []);
       if (process.env.UI_EVIDENCE_DIR) { const path = join(process.env.UI_EVIDENCE_DIR, "graph-app-mobile"); mkdirSync(path, { recursive: true }); await page.screenshot({ path: join(path, `${width}-${height}-${theme}.png`) }); }
