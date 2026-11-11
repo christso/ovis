@@ -9,3 +9,6 @@ export interface CommunicationTrackingStatus {
   detail: string | null;
   can_manage: boolean;
 }
+
+/** Confirmation precondition, never paths supplied as write targets. */
+export type CommunicationTrackingSetupRequest = Pick<CommunicationTrackingStatus, "shell" | "profiles">;
