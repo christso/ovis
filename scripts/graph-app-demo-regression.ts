@@ -58,6 +58,7 @@ original.snapshot!.panes.push({ ...idlePane, tab_id: chosen.tab_id, pane_id: "gr
 const pristine: Machine[] = [original, remote, offline, { ...offline, id: "graph-empty", name: "Graph awaiting inventory", state: "connecting", snapshot: null }];
 let machines = structuredClone(pristine), store = new GraphRegistryStore(join(root, "initial")), future = false, graphReads = 0;
 let browser: Browser | undefined, server: ReturnType<typeof Bun.serve> | undefined;
+let heldGraphRead: { started(): void; released: Promise<void> } | null = null;
 const harness = (machines: Machine[]) => `<script>(() => {
   const raw = (values) => values.map(machine => ({...machine, snapshot:machine.snapshot ? {...machine.snapshot, flock_bindings:undefined, flock_observations:undefined, graph_cli:undefined} : null}));
   let fixture = raw(${JSON.stringify(machines)});
@@ -90,7 +91,11 @@ try {
   const html = readFileSync(join(app, "index.html"), "utf8");
   server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const path = new URL(request.url).pathname;
-    if (path === "/api/flock") { graphReads++; return future ? Response.json({ version: 99 }) : handleGraphRequest(request, store, machines); }
+    if (path === "/api/flock") {
+      graphReads++;
+      const held = heldGraphRead; heldGraphRead = null;
+      if (held) { held.started(); await held.released; }
+      return future ? Response.json({ version: 99 }) : handleGraphRequest(request, store, machines); }
     const prefix = "/herdr-web-ui/demo/app/";
     if (!path.startsWith(prefix)) return new Response("not found", { status: 404 });
     const file = decodeURIComponent(path.slice(prefix.length)) || "index.html";
@@ -111,6 +116,7 @@ try {
     const context = await browser.newContext({ viewport: { width, height }, ...(videoDir ? { recordVideo: { dir: videoDir, size: { width, height } } } : {}), locale: "en-US", colorScheme: theme, reducedMotion: "reduce", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
     await context.addInitScript((theme) => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme, fileOpen: "panel" })), theme);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
+    await page.clock.install();
     const errors: string[] = [], assets: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message)); page.on("request", (request) => { if (request.url().includes("GraphPanel-")) assets.push(request.url()); });
     const base = `http://127.0.0.1:${server.port}/herdr-web-ui/demo/app/`;
@@ -393,7 +399,16 @@ try {
       assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0);
       const currentCliId = graphTabs([cliMachine], {}, undefined, graphRegistryInventory(store.read(), [cliMachine])).find((tab) => tab.panes.some((pane) => pane.pane_id === cliPane.pane_id))!.node.id;
       await inspect(currentCliId);
-      await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
+      // Hold the user's source read across a due automatic poll, without waiting on wall time.
+      await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+      const started = Promise.withResolvers<void>(), released = Promise.withResolvers<void>();
+      heldGraphRead = { started: () => started.resolve(), released: released.promise };
+      const heldDeadline = setTimeout(() => started.reject(new Error("Owned Open source read did not start")), 15000);
+      try {
+        await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
+        await started.promise;
+        await page.clock.runFor(6000);
+      } finally { clearTimeout(heldDeadline); released.resolve(); await page.clock.resume(); }
       await page.waitForURL((url) => !url.searchParams.has("page"));
       await openGraph();
       assert.deepEqual(await page.evaluate(() => (window as unknown as { graphFixture: { controls: string[] } }).graphFixture.controls), [], "Graph/navigation never focuses or inputs to Herdr");

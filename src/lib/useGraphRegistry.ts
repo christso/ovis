@@ -12,6 +12,7 @@ export function useGraphRegistry(enabled: boolean) {
   const [error, setError] = useState<string | null>(null);
   const held = useRef(registry); held.current = registry;
   const request = useRef(0);
+  const pending = useRef(0);
   const unreadable = useRef(false);
   const fail = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.code === "flock_unreadable") {
@@ -26,10 +27,12 @@ export function useGraphRegistry(enabled: boolean) {
   }, []);
   const refresh = useCallback(async () => {
     const ticket = ++request.current;
+    pending.current++;
     try {
       const { sources = [], ...next } = await fetchGraph();
       if (request.current === ticket) { unreadable.current = false; take(next); setSources(Array.isArray(sources) ? sources : []); setError(null); return { ...next, sources }; }
     } catch (error) { if (request.current === ticket) { setSources([]); fail(error); } }
+    finally { pending.current--; }
     return null;
   }, [take, fail]);
   useEffect(() => {
@@ -37,7 +40,8 @@ export function useGraphRegistry(enabled: boolean) {
     let stopped = false;
     let timer: number | undefined;
     const poll = async () => {
-      await refresh();
+      // A background read must not invalidate a source check the user is opening.
+      if (pending.current === 0) await refresh();
       if (!stopped) timer = window.setTimeout(() => void poll(), 5000);
     };
     void poll();
