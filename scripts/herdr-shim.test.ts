@@ -174,6 +174,10 @@ while True: signal.pause()
     const runner = Bun.spawn(["python3", "-c", `
 import json, os, resource, select, signal, subprocess, sys
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+# Piped crash handlers can ignore RLIMIT_CORE. Exclude this fixture's memory segments;
+# the process-owned mask survives fork/exec without changing SIGQUIT's default action.
+if sys.platform.startswith("linux"):
+    with open("/proc/self/coredump_filter", "w") as core_filter: core_filter.write("0")
 results = []
 for label, executable in [("direct", sys.argv[1]), ("shim", sys.argv[2])]:
     pidfile = os.path.join(sys.argv[3], label + ".pid")
@@ -183,6 +187,9 @@ for label, executable in [("direct", sys.argv[1]), ("shim", sys.argv[2])]:
         if not select.select([command.stdout], [], [], 5)[0]: raise RuntimeError("Command did not become ready")
         assert command.stdout.readline() == b"READY\\n"
         with open(pidfile) as source: child = int(source.read())
+        if sys.platform.startswith("linux"):
+            for pid in {command.pid, child}:
+                with open("/proc/" + str(pid) + "/coredump_filter") as inherited: assert int(inherited.read(), 16) == 0
         os.killpg(command.pid, signal.SIGQUIT)
         try: code = command.wait(timeout=3)
         except subprocess.TimeoutExpired as error:
