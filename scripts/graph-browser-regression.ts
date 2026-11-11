@@ -232,8 +232,15 @@ try {
       const box = await surface.boundingBox(); assert.ok(box);
       if (width === 1280) {
         const transformBeforeDrag = await surface.locator(":scope > g").getAttribute("transform");
-        await page.mouse.move(box.x + 20, box.y + 20); await page.mouse.down();
-        await page.mouse.move(box.x + 70, box.y + 60, { steps: 5 }); await page.mouse.up();
+        const background = await surface.evaluate((svg) => {
+          const bounds = svg.getBoundingClientRect();
+          for (let y = bounds.top + 20; y < bounds.bottom - 60; y += 30) for (let x = bounds.left + 20; x < bounds.right - 70; x += 30) {
+            if (document.elementFromPoint(x, y) === svg) return { x, y };
+          }
+          throw new Error("No graph background available for pan gesture");
+        });
+        await page.mouse.move(background.x, background.y); await page.mouse.down();
+        await page.mouse.move(background.x + 50, background.y + 40, { steps: 5 }); await page.mouse.up();
         assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), transformBeforeDrag, "pointer background drag pans");
         assert.equal(await page.locator('[data-graph-node="offline"]').getAttribute("aria-pressed"), "true", "background pan does not clear selection");
         const transformBeforeWheel = await surface.locator(":scope > g").getAttribute("transform");
@@ -419,6 +426,42 @@ try {
     } finally { await context.close(); }
   }
   // Exercise the animated D3 path separately from the reduced-motion accessibility matrix.
+  for (const width of [1280, 320]) {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion: "reduce", locale: "en-US" });
+    try {
+      const page = await context.newPage();
+      await page.goto(`http://127.0.0.1:${server.port}?sizing=1`);
+      const hub = page.locator('[data-graph-node="sizing-hub"]');
+      await hub.waitFor();
+      const discWidth = async (id: string) => {
+        const disc = page.locator(`[data-graph-node="${id}"] .graph-node-disc`);
+        const box = (await disc.boundingBox())!;
+        // SVG bounds include the outline; compare the coloured interior of each circle.
+        const stroke = await disc.evaluate((node) => {
+          const matrix = (node as SVGCircleElement).getScreenCTM()!;
+          return parseFloat(getComputedStyle(node).strokeWidth) * Math.hypot(matrix.a, matrix.b);
+        });
+        return box.width - 2 * stroke;
+      };
+      assert.equal(await hub.getAttribute("data-degree"), "5");
+      const ratio = await discWidth("sizing-hub") / await discWidth("sizing-leaf-0");
+      assert.ok(ratio >= 1.7 && ratio ** 2 >= 3, "the rendered five-link hub has at least three times a one-link tab's area");
+      if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `graph-sizing-${width}.png`) });
+      for (let step = 0; step < 3; step++) await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+      assert.ok(await discWidth("sizing-hub") / await discWidth("sizing-leaf-0") >= 1.7, "zoom preserves the visible size contrast");
+      const hit = (await page.locator('[data-graph-node="sizing-isolated"] .graph-node-hit').boundingBox())!;
+      assert.ok(hit.width >= 44 && hit.height >= 44, "small isolated nodes retain a touch target after zooming out");
+      const tabs = page.locator(".graph-kind-legend").getByRole("button", { name: "Tab", exact: true });
+      await tabs.click();
+      assert.equal(await hub.getAttribute("data-degree"), "0");
+      assert.ok(Math.abs(await discWidth("sizing-hub") - await discWidth("sizing-isolated")) < 0.1, "hiding connections shrinks the visible disc");
+      await tabs.click();
+      assert.equal(await hub.getAttribute("data-degree"), "5");
+      assert.ok(await discWidth("sizing-hub") / await discWidth("sizing-leaf-0") >= 1.7);
+      console.log(`PASS ${width}px rendered Folio-style degree sizing, zoom, touch targets and legend rescaling`);
+    } finally { await context.close(); }
+  }
+
   const motion = await browser.newContext({ viewport: { width: 1280, height: 844 }, reducedMotion: "no-preference", locale: "en-US" });
   try {
     const page = await motion.newPage(); page.setDefaultTimeout(15000);

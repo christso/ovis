@@ -1,6 +1,7 @@
 import type { GraphData, GraphKind } from "./graphModel.ts";
 
-export const nodeRadius = (degree: number) => 9 + Math.sqrt(Math.max(0, degree)) * 4;
+// Folio's capped square-root curve, tuned for stronger contrast between small hubs.
+export const nodeRadius = (degree: number) => 6 + 6 * Math.min(16, 1.5 * Math.sqrt(Math.max(0, degree)));
 export function machineColour(key: string): string {
   let hash = 2166136261;
   for (const character of key) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);

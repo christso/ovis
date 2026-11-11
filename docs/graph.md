@@ -23,7 +23,10 @@ Type visibility survives reloads and is included in copied graph links.
 
 Short, strong hierarchy links keep each workspace's worktrees and tabs together, while weaker
 communication links connect clusters. Node radius counts distinct visible connections of every type: hierarchy, communication and
-delegation. More direct tabs and worktrees make their parent hub larger. Names use native
+delegation. More direct tabs and worktrees make their parent hub larger. Folio-style capped
+square-root growth makes a five-connection hub roughly three times the area of a one-connection
+node at the same zoom. Hidden connections shrink their nodes; large hubs have a size cap.
+Names use native
 workspace/tab labels and launcher metadata without reading transcripts or inferring session
 identity. Dragging moves linked neighbours; the simulation stops when settled. Fit/Reset are
 intentional framing actions, and polling does not move an idle graph.
