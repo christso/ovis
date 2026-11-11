@@ -12,6 +12,21 @@ function store(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
   return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
 }
+test("panes default to hidden and their own visibility preference survives older kind writers", () => {
+  expect(DEFAULT_GRAPH_STATE.filters.hiddenKinds).toEqual(["pane"]);
+  const storage = store({ "ovis:graph:kinds:v1": JSON.stringify({ version: 1, hiddenKinds: ["worktree"] }) });
+  expect(loadGraphState(storage).state.filters.hiddenKinds).toEqual(["worktree", "pane"]);
+  saveGraphState(storage, { ...DEFAULT_GRAPH_STATE, filters: { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: [] } });
+  expect(JSON.parse(storage.getItem("ovis:graph:panes:v1")!)).toEqual({ version: 1, visible: true });
+  expect(JSON.parse(storage.getItem("ovis:graph:kinds:v1")!)).toEqual({ version: 1, hiddenKinds: [] });
+  storage.setItem("ovis:graph:kinds:v1", JSON.stringify({ version: 1, hiddenKinds: ["tab"] }));
+  expect(loadGraphState(storage).state.filters.hiddenKinds).toEqual(["tab"]);
+  for (const bytes of ['{"version":99,"visible":true}', '{"version":', '{"version":1,"visible":"yes"}']) {
+    const future = store({ "ovis:graph:panes:v1": bytes });
+    saveGraphState(future, DEFAULT_GRAPH_STATE);
+    expect(future.getItem("ovis:graph:panes:v1")).toBe(bytes);
+  }
+});
 test("migrates v1 selections and filters once, reclusters, and leaves rollback bytes intact", () => {
   const legacy = { ...LEGACY_STATE, selected: "tab-one", groupMachine: true, filters: { ...LEGACY_STATE.filters, search: "notes" }, positions: { "tab-one": { x: 9999, y: 9999 } }, viewport: { x: 80, y: 70, k: 0.4 } };
   const bytes = JSON.stringify(legacy), storage = store({ [LEGACY_KEY]: bytes });
@@ -55,15 +70,15 @@ test("kind visibility survives an old tab saving the graph record", () => {
   expect(storage.getItem("ovis:graph:kinds:v1")).toBe(kinds);
   expect(loadGraphState(storage).state.filters.hiddenKinds).toEqual(["worktree"]);
   saveGraphState(storage, { ...loadGraphState(storage).state, filters: DEFAULT_GRAPH_STATE.filters });
-  expect(loadGraphState(storage).state.filters.hiddenKinds ?? []).toEqual([]);
+  expect(loadGraphState(storage).state.filters.hiddenKinds).toEqual(["pane"]);
 });
 
 test("kind preferences ignore unknown entries and preserve unreadable future records", () => {
   const storage = store({ "ovis:graph:kinds:v1": JSON.stringify({ version: 1, hiddenKinds: ["future", "tab", "tab", "workspace"] }) });
-  expect(loadGraphState(storage).state.filters.hiddenKinds).toEqual(["workspace", "tab"]);
+  expect(loadGraphState(storage).state.filters.hiddenKinds).toEqual(["workspace", "tab", "pane"]);
   for (const bytes of ['{"version":99,"future":"keep"}', '{"version":', '{"version":1,"hiddenKinds":"tab"}']) {
     const damaged = store({ "ovis:graph:kinds:v1": bytes });
-    expect(loadGraphState(damaged).state.filters.hiddenKinds ?? []).toEqual([]);
+    expect(loadGraphState(damaged).state.filters.hiddenKinds).toEqual(["pane"]);
     saveGraphState(damaged, { ...DEFAULT_GRAPH_STATE, filters: { ...DEFAULT_GRAPH_STATE.filters, hiddenKinds: ["tab"] } });
     expect(damaged.getItem("ovis:graph:kinds:v1")).toBe(bytes);
   }

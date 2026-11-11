@@ -96,7 +96,7 @@ try {
       assert.equal(await page.locator(".graph-edge").count(), 5);
       for (const toggle of [workspaceToggle, worktreeToggle, tabToggle]) await toggle.click();
       assert.equal(await page.locator("[data-graph-node], .graph-edge").count(), 0);
-      assert.equal(await legend.getByRole("button").count(), 3, "all hidden types remain available to restore");
+      assert.equal(await legend.getByRole("button").count(), 4, "all hidden types remain available to restore");
       await workspaceToggle.focus(); await page.keyboard.press("Space");
       await page.locator('[data-graph-node="repo"]').waitFor();
       assert.equal(await page.locator("[data-graph-node]").count(), 2);
@@ -105,6 +105,32 @@ try {
       await node.waitFor();
       assert.equal(await page.locator(".graph-edge").count(), 5);
       if (mobile) assert.ok((await worktreeToggle.boundingBox())!.height >= 44, "legend type toggles meet phone touch size");
+      stage = "optional split panes";
+      const paneToggle = legend.getByRole("button", { name: "Pane", exact: true });
+      assert.equal(await paneToggle.getAttribute("aria-pressed"), "false", "panes start hidden");
+      assert.equal(await page.locator(".graph-node-kind-pane").count(), 0);
+      assert.equal(await node.getAttribute("data-degree"), "1");
+      if (mobile) await paneToggle.tap(); else await paneToggle.click();
+      await page.waitForURL((url) => url.searchParams.get("gp") === "1");
+      await page.locator('[data-graph-node="pane-build"]').waitFor();
+      assert.equal(await page.locator(".graph-node-kind-pane").count(), 2);
+      assert.equal(await node.getAttribute("data-degree"), "3", "visible split panes enlarge their tab");
+      await page.reload(); await node.waitFor();
+      assert.equal(await paneToggle.getAttribute("aria-pressed"), "true", "pane visibility survives reload");
+      await screenshot("panes-visible");
+      await tabToggle.click();
+      assert.equal(await page.locator(".graph-edge-pane-in-tab").count(), 0, "hidden tabs do not reparent panes");
+      assert.equal(await page.locator('[data-graph-node="pane-build"]').getAttribute("data-degree"), "0");
+      await tabToggle.click(); await node.waitFor();
+      const pane = page.locator('[data-graph-node="pane-build"]');
+      await pane.focus(); await page.keyboard.press("Enter");
+      await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
+      assert.equal(await page.getByLabel("Opened target", { exact: true }).innerText(), "pane-build");
+      await page.locator(".graph-surface").focus(); await page.keyboard.press("Escape");
+      await paneToggle.click();
+      assert.equal(await node.getAttribute("data-degree"), "1", "hiding panes restores the overview size");
+      await page.waitForURL((url) => !url.searchParams.has("gp"));
+      await screenshot("panes-hidden");
       if (mobile) {
         await filters.waitFor();
         assert.equal(await filters.getAttribute("aria-expanded"), "false", "phone filters start collapsed");
@@ -472,15 +498,19 @@ try {
     assert.equal(await colour("repo"), await colour("harbour"), "workspace colour is independent of repository");
     assert.equal(await colour("session"), await colour("execution"), "tabs share their type colour");
     assert.equal(new Set([await colour("repo"), await colour("checkout"), await colour("session")]).size, 3, "workspace, worktree and tab colours are distinct");
+    const paneToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Pane", exact: true });
+    await paneToggle.click(); await page.locator('[data-graph-node="pane-build"]').waitFor();
+    assert.equal(new Set([await colour("repo"), await colour("checkout"), await colour("session"), await colour("pane-build")]).size, 4);
     const originalTheme = await page.evaluate(() => ({ theme: document.documentElement.getAttribute("data-theme"), palette: document.documentElement.getAttribute("data-palette") }));
     for (const entry of SUPPORTED_ENTRIES) {
       await page.evaluate(({ id, mode }) => { document.documentElement.setAttribute("data-theme", mode); document.documentElement.setAttribute("data-palette", id); }, entry);
-      const fills = [await colour("repo"), await colour("checkout"), await colour("session")];
+      const fills = [await colour("repo"), await colour("checkout"), await colour("session"), await colour("pane-build")];
       const channels = fills.map((fill) => fill.match(/[\d.]+/g)!.map(Number));
-      const [blue, orange, green] = channels as [number[], number[], number[]];
+      const [blue, orange, green, purple] = channels as [number[], number[], number[], number[]];
       assert.ok(blue[2]! > blue[1]! * 1.2 && blue[2]! > blue[0]! * 1.5, `workspace stays blue in ${entry.id}/${entry.mode}`);
       assert.ok(orange[0]! > orange[1]! && orange[1]! > orange[2]! * 2, `worktree stays orange in ${entry.id}/${entry.mode}`);
       assert.ok(green[1]! > green[0]! * 1.5 && green[1]! > green[2]! * 1.2, `tab stays green in ${entry.id}/${entry.mode}`);
+      assert.ok(purple[2]! > purple[1]! && purple[0]! > purple[1]!, `pane stays purple in ${entry.id}/${entry.mode}`);
       assert.deepEqual(await page.locator(".graph-kind-legend i").evaluateAll((dots) => dots.map((dot) => getComputedStyle(dot).backgroundColor)), fills, "legend swatches match node fills");
     }
     await page.evaluate(({ theme, palette }) => {
@@ -488,6 +518,7 @@ try {
         if (value === null) document.documentElement.removeAttribute(name!); else document.documentElement.setAttribute(name!, value!);
       }
     }, originalTheme);
+    await paneToggle.click();
     const beforeTypeToggle = await node.getAttribute("transform");
     const worktreeToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Worktree", exact: true });
     await worktreeToggle.click();
@@ -594,7 +625,20 @@ try {
     const labels = await page.locator(".graph-node-label").evaluateAll((labels) => labels.map((label) => { const box = label.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }; }));
     assert.ok(labels.length >= 5, "dense overview retains meaningful readable labels");
     for (const [index, a] of labels.entries()) for (const b of labels.slice(index + 1)) assert.ok(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top, "shown dense overview labels do not overlap");
-    assert.equal(await page.locator(".graph-kind-legend").getByRole("button").count(), 3);
+    assert.equal(await page.locator(".graph-kind-legend").getByRole("button").count(), 4);
+    const paneToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Pane", exact: true });
+    await paneToggle.tap();
+    await page.waitForFunction(() => document.querySelectorAll("[data-graph-node]").length === 275);
+    assert.equal(await page.locator("[data-graph-node]").count(), 275, "the dense graph can reveal its 125 individual panes");
+    assert.equal(await page.locator(".graph-edge-pane-in-tab").count(), 125);
+    const tabs = page.locator(".graph-kind-legend").getByRole("button", { name: "Tab", exact: true });
+    await tabs.tap();
+    assert.equal(await page.locator(".graph-edge-pane-in-tab").count(), 0);
+    assert.equal(await page.locator(".graph-node-kind-pane").count(), 125);
+    await tabs.tap(); await paneToggle.tap();
+    await page.waitForFunction(() => document.querySelectorAll("[data-graph-node]").length === 150);
+    assert.equal(await page.locator("[data-graph-node]").count(), 150);
+    await page.getByRole("button", { name: "Fit graph", exact: true }).click();
     if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "graph-dense-390-overview.png") });
     const surface = page.locator(".graph-surface");
     const beforePan = await surface.locator(":scope > g").getAttribute("transform");

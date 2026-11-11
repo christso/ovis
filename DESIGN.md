@@ -112,6 +112,7 @@ Only tokens overridden by `[data-theme="light"]` have a light value. Both column
 | Graph/workspace | `--graph-workspace` | `#3b82f6` | `#2563eb` |
 | Graph/worktree | `--graph-worktree` | `#f97316` | `#c2410c` |
 | Graph/tab | `--graph-tab` | `#22c55e` | `#15803d` |
+| Graph/pane | `--graph-pane` | `#a78bfa` | `#7c3aed` |
 | Alert/background | `--droplet-bg` | `#000` | `#000` |
 | Alert/text | `--droplet-text` | `#f5f5f7` | `#f5f5f7` |
 | Alert/dim text | `--droplet-text-dim` | `rgba(245, 245, 247, 0.62)` | `rgba(245, 245, 247, 0.62)` |
@@ -4701,10 +4702,10 @@ tuned to `6 + 6 × min(16, 1.5 × √degree)`: five connections give about 1.74 
 diameter and three times the area of one connection. A fixed curve keeps unrelated inventory
 changes from rescaling existing nodes, and the cap bounds crowded hubs. This connection-based sizing differs from Zed's
 project-grouped thread list because Graph also shows relationships between nodes. Node fills
-identify workspace (blue), worktree (orange) and tab (green). Dedicated theme tokens keep these
+identify workspace (blue), worktree (orange), tab (green) and optional pane (purple). Dedicated theme tokens keep these
 hues across palettes, with darker light-mode shades and no text-colour blending, following the
 requested Folio-style category contrast. Status uses its own small icon, and stale sources have a
-dashed outline. The three-type legend sits below the canvas, with a keyboard-accessible disclosure
+dashed outline. The type legend sits below the canvas, with a keyboard-accessible disclosure
 whose state survives reloads. Hierarchy springs are shorter and stronger than communication
 springs; root hubs repel enough to separate work contexts without inventing repository affinity.
 
@@ -4729,8 +4730,15 @@ The existing grouping force remains; dragging members between clusters can overl
 without changing machine identity.
 
 Actual native workspace hubs connect regular tabs directly, and linked worktrees form
-workspace → worktree → tab, following the user's chosen hierarchy. Split panes and agents in
-the same tab share one tab node. Plain folders have workspace hubs without Git metadata; empty
+workspace → worktree → tab, following the user's chosen hierarchy. Every native tab has one tab node.
+The Pane legend toggle reveals its individual terminals as tab → pane, hidden by default.
+Pane labels and statuses describe that terminal, and opening one resolves its own verified current
+target. Sibling additions and renames retain its identity; a replacement terminal or occupant does
+not inherit its action. This extends Ovis's native split terminals within the Zed-style project/thread
+hierarchy, using Folio-style category colour and visibility controls. Recorded communication and
+delegation stay on tabs; pane detail adds no duplicate activity links. Visible pane links contribute
+to tab size, and hiding tabs leaves panes independent without invented parent links.
+Plain folders have workspace hubs without Git metadata; empty
 workspaces stay visible and orphaned worktrees remain independent hubs. Repository, branch,
 physical checkout, agent and logical-session facts appear in the inspector. Workspace focus
 uses the sidebar's `worktreeGroups` membership, including the parent's tabs and nested worktrees.
@@ -4780,6 +4788,12 @@ record cannot erase it. Its shape is `{ version: 1, hiddenKinds: [...] }`, and u
 records remain untouched. Only the new Graph client reads and writes it; older clients ignore it,
 and rollback still reads the unchanged v2 layout record. No HTTP or WebSocket contract carries
 this browser-local preference. Copied links include hidden types in the graph-owned `gk` field.
+The original three-kind record stays unchanged. Pane visibility has its own
+`ovis:graph:panes:v1` record, `{ version: 1, visible: boolean }`, also owned by
+`graphState.ts`/`useGraphState.ts`. Absence defaults to hidden; old tabs and rollback clients
+ignore this key, and malformed or future-version bytes are never overwritten. The URL's `gp=1`
+reveals panes while older links keep them hidden. The default hidden panes do not count as an
+active filter; choosing to reveal them does.
 Unknown future versions and unparseable JSON are never overwritten. Simulation frames remain
 local to the renderer; only settled layouts and completed gestures are persisted. Shareable query
 fields leave Ovis's pane/view location intact. A saved viewport wins over automatic framing;

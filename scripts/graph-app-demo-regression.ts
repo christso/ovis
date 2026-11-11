@@ -54,6 +54,7 @@ const socialWorkspace = { ...chosenWorkspace, workspace_id: "social-worktree", l
 original.snapshot!.workspaces.push(socialWorkspace);
 original.snapshot!.tabs.push({ ...chosenTab, workspace_id: socialWorkspace.workspace_id, tab_id: "social-tab", label: "1", number: 1 });
 original.snapshot!.panes.push({ ...idlePane, workspace_id: socialWorkspace.workspace_id, tab_id: "social-tab", pane_id: "social-pane", terminal_id: "social-terminal" });
+original.snapshot!.panes.push({ ...idlePane, tab_id: chosen.tab_id, pane_id: "graph-split-shell", terminal_id: "graph-split-terminal", label: "Split test shell" });
 const pristine: Machine[] = [original, remote, offline, { ...offline, id: "graph-empty", name: "Graph awaiting inventory", state: "connecting", snapshot: null }];
 let machines = structuredClone(pristine), store = new GraphRegistryStore(join(root, "initial")), future = false, graphReads = 0;
 let browser: Browser | undefined, server: ReturnType<typeof Bun.serve> | undefined;
@@ -139,6 +140,22 @@ try {
       const beforePane = new URL(page.url()).searchParams.get("pane");
       await openGraphFromSidebar(page);
       await node().waitFor();
+      const paneToggle = page.locator(".graph-kind-legend").getByRole("button", { name: "Pane", exact: true });
+      assert.equal(await paneToggle.getAttribute("aria-pressed"), "false");
+      assert.equal(await page.locator(".graph-node-kind-pane").count(), 0, "the real app keeps individual panes hidden initially");
+      if (theme === "dark" && (width === 1280 || (width === 320 && height === 844))) {
+        stage = "exact split pane target";
+        await paneToggle.click();
+        const split = page.locator('.graph-node-kind-pane[aria-label^="Split test shell ·"]');
+        await split.waitFor(); await inspect((await split.getAttribute("data-graph-node"))!);
+        await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
+        await page.waitForURL((url) => url.searchParams.get("pane") === "graph-split-shell" && !url.searchParams.has("page"));
+        await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
+        await openNativeAgent(page, "local", chosen.pane_id);
+        await page.waitForURL((url) => url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
+        await openGraphFromSidebar(page); await node().waitFor();
+        await paneToggle.click(); await inspect(selectedTabId);
+      }
       await options(true);
       const focus = page.getByRole("combobox", { name: "Focus graph", exact: true });
       const infraFocus = await focus.locator("option").evaluateAll((options) => options.find((option) => option.textContent?.startsWith("infra ·"))!.getAttribute("value")!);

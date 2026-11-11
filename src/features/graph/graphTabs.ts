@@ -33,6 +33,6 @@ export function graphTabs(machines: readonly Machine[], labels: Readonly<Record<
       status: available ? rollupStatus(panes.map((pane) => pane.agent_status)) : "unknown",
       freshness: available ? "live" : machine.state !== "connected" ? "disconnected" : "unavailable",
       detail: [...new Set([workspace.label, ...checkouts.flatMap((checkout) => [checkout.repository, checkout.branch, checkout.path]), ...panes.flatMap((pane) => [pane.display_agent || pane.agent, pane.agent_session?.kind === "id" ? pane.agent_session.value : null])].filter(Boolean))].join("\n") };
-    return [{ node, panes, machine, workspace }];
+    return [{ node, panes, machine, workspace, occupants }];
   }));
 }

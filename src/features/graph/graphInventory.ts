@@ -5,6 +5,7 @@ import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
 import { graphRelationships, graphRowRelationshipIds, type GraphRelationship } from "../../../shared/graph-relationships.ts";
 import { graphHierarchy } from "./graphHierarchy.ts";
 import { graphTabs } from "./graphTabs.ts";
+import { graphPanes } from "./graphPanes.ts";
 import type { GraphActivity, GraphData, GraphEdge, GraphNode } from "./graphModel.ts";
 
 function appendReceipts(record: Pick<GraphEdge, "eventCount" | "lastObservedAt" | "sources">, relation: GraphRelationship): void {
@@ -26,8 +27,9 @@ function rowTab(row: GraphRegistryRow, tabs: readonly Tab[]): Tab | undefined {
 export function graphInventory(registry: GraphRegistry | null, rows: readonly GraphRegistryRow[], machines: readonly Machine[] = [], labels: Readonly<Record<string, string>> = {}, t: Translate = defaultTranslate): GraphData {
   if (!registry) return { nodes: [], edges: [], groups: [] };
   const tabs = graphTabs(machines, labels, t, rows);
-  const nodes = new Map<string, GraphNode>(tabs.map((tab) => [tab.node.id, tab.node]));
-  for (const tab of tabs) {
+  const panes = graphPanes(tabs), entries = [...tabs, ...panes];
+  const nodes = new Map<string, GraphNode>(entries.map((tab) => [tab.node.id, tab.node]));
+  for (const tab of entries) {
     const agent = tab.panes.find((pane) => pane.agent);
     if (tab.node.freshness === "live" && agent && !rows.some((row) => row.machine_id === tab.machine.id && row.pane?.pane_id === agent.pane_id && row.pane.terminal_id === agent.terminal_id && rowTab(row, [tab]) === tab && graphRowTarget(row))) {
       tab.node.freshness = "unsupported"; tab.node.status = "unknown";
@@ -52,6 +54,7 @@ export function graphInventory(registry: GraphRegistry | null, rows: readonly Gr
   const hierarchy = graphHierarchy(machines, tabs);
   for (const hub of hierarchy.nodes) nodes.set(hub.id, hub);
   const edges = new Map<string, GraphEdge>(hierarchy.edges.map((edge) => [edge.id, edge]));
+  for (const pane of panes) edges.set(`parent:${pane.node.id}`, { id: `parent:${pane.node.id}`, source: pane.node.id, target: pane.parentId, kind: "pane-in-tab", evidence: "Herdr" });
   for (const relation of graphRelationships(registry)) {
     const source = resolve(relation.source.id), target = resolve(relation.target.id);
     if (!source || !target) {
@@ -85,7 +88,7 @@ export function graphInventory(registry: GraphRegistry | null, rows: readonly Gr
 export function graphTarget(registry: GraphRegistry | null, rows: readonly GraphRegistryRow[], id: string, machines: readonly Machine[] = []): PaneTarget | null {
   if (!registry) return null;
   const tabs = graphTabs(machines, {}, defaultTranslate, rows);
-  const tab = tabs.find((tab) => tab.node.id === id);
+  const tab = tabs.find((tab) => tab.node.id === id) ?? graphPanes(tabs).find((pane) => pane.node.id === id);
   if (tab) return tabTarget(tab, rows);
   const hub = graphHierarchy(machines, tabs).hubs.find((hub) => hub.node.id === id);
   if (!hub || hub.node.freshness !== "live") return null;

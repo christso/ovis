@@ -2,7 +2,7 @@ import type { Translate } from "../../lib/i18n.ts";
 import { STATUS_WORD } from "../../lib/status.ts";
 import type { GraphKind, GraphNode, GraphRelation, GraphStatus } from "./graphModel.ts";
 
-export const GRAPH_KINDS: GraphKind[] = ["workspace", "worktree", "tab"];
+export const GRAPH_KINDS: GraphKind[] = ["workspace", "worktree", "tab", "pane"];
 export const GRAPH_STATUSES: GraphStatus[] = ["working", "blocked", "waiting", "done", "idle", "unknown"];
 export const graphStatusLabel = (t: Translate, status: GraphStatus) => t(STATUS_WORD[status]);
 export function graphKindLabel(t: Translate, kind: GraphKind): string {
@@ -10,6 +10,7 @@ export function graphKindLabel(t: Translate, kind: GraphKind): string {
     case "workspace": return t("Workspace");
     case "worktree": return t("Worktree");
     case "tab": return t("Tab");
+    case "pane": return t("Pane");
   }
 }
 export function graphFreshnessLabel(t: Translate, freshness: GraphNode["freshness"]): string {
@@ -27,6 +28,7 @@ export function graphRelationLabel(t: Translate, kind: GraphRelation): string {
     case "worktree-in-workspace": return t("Worktree in workspace");
     case "tab-in-workspace": return t("Tab in workspace");
     case "tab-in-worktree": return t("Tab in worktree");
+    case "pane-in-tab": return t("Pane in tab");
     case "delegation": return t("Recorded delegation");
     case "communication": return t("Communication");
   }

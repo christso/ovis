@@ -58,9 +58,24 @@ test("node colours identify workspace, worktree and tab kinds regardless of repo
     { id: "worktree", kind: "worktree", label: "Feature", repositoryKey: "apple" },
     { id: "tab-a", kind: "tab", label: "Code", repositoryKey: "apple" },
     { id: "tab-b", kind: "tab", label: "Notes" },
+    { id: "pane", kind: "pane", label: "Shell" },
   ];
   const style = graphAppearance({ nodes, edges: [] });
   expect(style.get("workspace-a")!.colour).toBe(style.get("workspace-b")!.colour);
   expect(style.get("tab-a")!.colour).toBe(style.get("tab-b")!.colour);
   expect(new Set([style.get("workspace-a")!.colour, style.get("worktree")!.colour, style.get("tab-a")!.colour]).size).toBe(3);
+  expect(new Set([...style.values()].map((node) => node.colour)).size).toBe(4);
+});
+test("visible panes grow their tab, with no change to the default overview size", () => {
+  const detail: GraphData = { nodes: [...data.nodes, { id: "pane", kind: "pane", label: "Shell" }],
+    edges: [...data.edges, { id: "pane-parent", source: "pane", target: "root-tab", kind: "pane-in-tab", evidence: "Herdr" }] };
+  const filters = { search: "", status: "", machine: "", focus: "", showCompleted: true, communication: "all" as const };
+  expect(graphAppearance(projectGraph(detail, filters)).get("root-tab")!.degree).toBe(1);
+  const visible = graphAppearance(projectGraph(detail, { ...filters, hiddenKinds: [] }));
+  expect(visible.get("root-tab")!.degree).toBe(2);
+  expect(visible.get("pane")!.degree).toBe(1);
+  expect(visible.get("root-tab")!.radius).toBeGreaterThan(visible.get("pane")!.radius);
+  const detached = projectGraph(detail, { ...filters, hiddenKinds: ["tab"] });
+  expect(detached.nodes.some((node) => node.kind === "pane")).toBe(true);
+  expect(detached.edges.some((edge) => edge.kind === "pane-in-tab")).toBe(false);
 });
