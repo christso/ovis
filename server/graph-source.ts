@@ -38,7 +38,10 @@ export async function verifyGraphSnapshot(readSnapshot: () => Promise<SessionSna
     const after = current.panes.find((pane) => pane.pane_id === proof.pane_id);
     const previousOccupant = coordinationBefore?.agents.filter((endpoint) => endpoint.pane_id === proof.pane_id && endpoint.terminal_id === proof.terminal_id && endpoint.agent === proof.agent);
     const currentOccupant = coordination?.agents.filter((endpoint) => endpoint.pane_id === proof.pane_id && endpoint.terminal_id === proof.terminal_id && endpoint.agent === proof.agent);
-    const sameOccupant = !coordinationBefore || !coordination || (previousOccupant?.length === 1 && currentOccupant?.length === 1
+    const comparable = previousOccupant?.length === 1 && currentOccupant?.length === 1;
+    // Optional CLI inspection cannot disprove independent native ownership by finding nothing.
+    // A positive process replacement still invalidates it; the fork keeps its occupancy guard.
+    const sameOccupant = !coordinationBefore || !coordination || (!forkBefore && !comparable) || (comparable
       && graphHerdrEndpointKey(previousOccupant[0]!) === graphHerdrEndpointKey(currentOccupant[0]!));
     return sameOccupant && after && after.terminal_id === proof.terminal_id && after.agent === proof.agent && !after.restore_error && after.cwd === before?.cwd;
   });

@@ -256,3 +256,17 @@ it("keeps stock process proof in the optional CLI field so legacy managers canno
     expect(new GraphRegistryStore(root).observe([{ ...machine(), snapshot: verified }]).herdr_associations).toBeUndefined();
   } finally { cliReader.mockRestore(); processReader.mockRestore(); }
 });
+
+for (const scenario of ["missing", "missing-before", "missing-after", "ambiguous", "same", "replaced"] as const) it(`${scenario === "replaced" ? "drops" : "preserves"} independent native proof when optional CLI process evidence is ${scenario}`, async () => {
+  const source = snapshot("hint"), endpoint = { ...occupancy, agent: "codex" };
+  const old = scenario === "missing" || scenario === "missing-before" ? [] : scenario === "ambiguous" ? [endpoint, { ...endpoint, agent_instance_id: "ambiguous" }] : [endpoint];
+  const current = scenario === "missing" || scenario === "missing-after" ? [] : scenario === "ambiguous" ? old : [{ ...endpoint, agent_instance_id: scenario === "replaced" ? "replacement" : endpoint.agent_instance_id }];
+  let reads = 0;
+  const processReader = spyOn(herdrCli, "herdrCliSnapshot").mockImplementation(async () => ({ version: 1, server_id: "server", boot_id: "boot", agents: ++reads === 1 ? old : current }));
+  const nativeReader = spyOn(codex, "codexPaneCoordination").mockResolvedValue({ id: own, observations: [observation], rolloutPath: "/fixture/rollout" });
+  try {
+    const result = await verifyGraphSnapshot(async () => source);
+    expect(result.flock_bindings).toHaveLength(scenario === "replaced" ? 0 : 1);
+    expect(result.flock_observations).toEqual(scenario === "replaced" ? [] : [observation]);
+  } finally { processReader.mockRestore(); nativeReader.mockRestore(); }
+});
