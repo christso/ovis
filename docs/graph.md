@@ -189,8 +189,9 @@ per-machine proxy routes.
 ## Stock Herdr CLI capture
 
 Linux and macOS can capture ordinary `herdr agent start` and `herdr agent prompt` calls through
-an optional PATH shim. Keep the fork where agent-instance and saved-machine attribution are needed;
-installing this tool does not switch Herdr runtimes. It executes the installed Herdr binary directly; Ovis is not in the command
+an optional PATH wrapper. Graph's communication links describe terminals and tabs, so stock Herdr
+provides the IDs these links need. Saved-machine capture still uses the fork; enabling this tool
+does not switch Herdr runtimes. It executes the installed Herdr binary directly; Ovis is not in the command
 path and need not be running. Each confirmed operation writes one private, atomic, fsynced metadata
 record locally. Ovis reads those records when Graph next reads its source, retaining history and
 counting each receipt once. Native Codex capture continues independently. A fork journal takes precedence for receipts from the current boot whose source and target both
@@ -198,7 +199,19 @@ belong to that same daemon. Earlier-boot and cross-session receipts retain their
 source fork capability alone cannot prove that another daemon captured the operation. Cross-session
 history from both producers can overlap because their event IDs do not establish a shared receipt.
 
-Install into a new directory from a stable Ovis checkout:
+In **Settings → Agents → Communication tracking**, choose **Enable communication tracking**.
+The confirmation lists the shell startup files Ovis will change on the selected PC. After approval,
+Ovis installs its wrapper, adds a managed block for new Herdr terminals, and verifies command lookup
+in a fresh shell. No commands or code need copying. Existing agents keep their inherited environment:
+relaunch them to use the wrapper. Ordinary terminals outside Herdr keep their existing command lookup.
+
+Use **Disable communication tracking** to stop new CLI records and remove Ovis's shell setup.
+The installed wrapper remains as a passthrough for existing agents, so their commands continue to work.
+Recorded history is retained. **Check again** reads the current setup without changing it. Unsupported
+platforms and shells are identified in the settings row; an older remote Ovis needs updating before
+it can offer setup. This is a setting on each PC, not a browser preference.
+
+For a separate, manually managed installation, install into a new directory from a stable Ovis checkout:
 
 ```sh
 bun scripts/herdr-shim.ts install \
@@ -208,7 +221,8 @@ bun scripts/herdr-shim.ts install \
 
 The installer bundles its code into that directory and writes a launcher named `herdr`. It refuses
 an existing destination or another Ovis shim as the real executable, and never overwrites Herdr,
-changes shell files, edits Herdr configuration or restarts a service. The installed Bun executable
+changes shell files, edits Herdr configuration or restarts a service. The Settings flow additionally
+manages its own shell startup blocks; the standalone command does not. The installed Bun executable
 must remain available. Install a later shim version into a new directory, then change PATH; the
 installer never upgrades or deletes an unknown directory in place.
 

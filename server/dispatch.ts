@@ -33,6 +33,7 @@ import { paneTranscript } from "./conversation.ts";
 import { ConversationUnavailable } from "./conversation-shared.ts";
 import type { ShellAgentLocator } from "./shell-agent.ts";
 import { handleAgentsRequest } from "./agents-routes.ts";
+import { COMMUNICATION_TRACKING_PATH, handleCommunicationTrackingRequest, type CommunicationTrackingService } from "./communication-tracking.ts";
 import type { AgentDetector } from "./agent-catalog-detect.ts";
 import { handleAgentCatalogRequest } from "./agent-catalog-routes.ts";
 import { type AgentInstaller, INSTALL_PATH, SIGN_IN_PATH } from "./agent-catalog-install.ts";
@@ -115,6 +116,7 @@ export interface RequestServices {
   readonly agentDetector: AgentDetector;
   readonly agentOffered: (kind: string) => Promise<boolean>;
   readonly agentInstaller: AgentInstaller;
+  readonly communicationTracking: CommunicationTrackingService;
   readonly openCodeState: OpenCodePromptState;
   readonly cliProxyRoutes: CLIProxyRoutes;
   readonly usageLogin: UsageLoginService;
@@ -157,7 +159,7 @@ export interface ServerContext {
 const OTHER_MACHINE_FILES = /^\/api\/(?:fs\/|pane\/(?:files|docs|image)$|workspace\/(?:diff\/|git\/|directories$|pr(?:$|\/)))/;
 
 export async function handleRequest(request: Request, ctx: ServerContext): Promise<Response | undefined> {
-  const { options, graphRegistry, moveNode, sessionMoves, launcherSearch, savedLaunchers, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
+  const { options, graphRegistry, moveNode, sessionMoves, launcherSearch, savedLaunchers, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, communicationTracking, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
   const { sidecar, serialize, push, alertWebhook, logPushError, omo, claudeAgents, opencodeAgents, plans, clientSnapshot, machines, broadcastAll, collector, queueFirstMessage } = core;
   return requestLog.handle(request, async (headers) => {
   const startup = portalStartupResult ?? await portalStartup;
@@ -180,7 +182,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   // the same server runs the move to herdr-core here for the person on its side (docs/runtime-move.md,
   // "On another PC"); each move route still asks for the app's own header and no query (updateRequestAllowed)
   const bridgeMovePath = RUNTIME_MOVE_ROUTE.test(pathname);
-  const bridgePath = pathname === MOVE_NODE_PATH || pathname === "/api/agents/launchers" || /^\/api\/agents\/launchers\/search\/?$/.test(pathname) || pathname === "/api/bridge" || pathname === "/api/session" || pathname === SESSION_HISTORY_PATH || pathname === SESSION_RESUME_PATH || pathname === "/api/agents" || pathname === "/api/agent-catalog" || pathname === INSTALL_PATH || pathname === SIGN_IN_PATH || pathname === "/api/agent/rename" || pathname === "/api/agent/commands" || pathname === "/api/integrations" || (pathname === "/api/system" && request.method === "GET") || pathname === "/api/usage/statusline" || pathname === "/api/plugins/actions" || pathname === "/api/plugin/action" || pathname.startsWith("/api/pane/") || pathname.startsWith("/api/workspace/") || pathname.startsWith("/api/worktree/") || pathname.startsWith("/api/tab/") || pathname === "/api/layout/ratio" || pathname.startsWith("/api/fs/") || pathname === "/ws" || bridgeUpdatePath || bridgeMovePath;
+  const bridgePath = pathname === MOVE_NODE_PATH || pathname === "/api/agents/launchers" || /^\/api\/agents\/launchers\/search\/?$/.test(pathname) || pathname === "/api/bridge" || pathname === "/api/session" || pathname === SESSION_HISTORY_PATH || pathname === SESSION_RESUME_PATH || pathname === "/api/agents" || pathname === "/api/agent-catalog" || pathname === INSTALL_PATH || pathname === SIGN_IN_PATH || pathname === "/api/agent/rename" || pathname === "/api/agent/commands" || pathname === "/api/integrations" || pathname === COMMUNICATION_TRACKING_PATH || (pathname === "/api/system" && request.method === "GET") || pathname === "/api/usage/statusline" || pathname === "/api/plugins/actions" || pathname === "/api/plugin/action" || pathname.startsWith("/api/pane/") || pathname.startsWith("/api/workspace/") || pathname.startsWith("/api/worktree/") || pathname.startsWith("/api/tab/") || pathname === "/api/layout/ratio" || pathname.startsWith("/api/fs/") || pathname === "/ws" || bridgeUpdatePath || bridgeMovePath;
   const ip = relayPeer === undefined ? ctx.requestIP(request) : null;
   const loopback = ip !== null && isLoopbackAddress(ip.address);
   const forwarded = relayPeer === undefined && cameThroughProxy(request.headers);
@@ -291,10 +293,15 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   const worktreeList = /^\/api\/(?:machines\/[^/]+\/)?worktree\/(?:list|inventory)$/.test(pathname);
   // the digits of a waiting comparison are what approving it takes (docs/account.md, "Who may admit a device")
   const pairingDigits = pathname === "/api/relay/pairings";
+  const communicationSetup = /^\/api\/(?:machines\/[^/]+\/)?agents\/communication-tracking$/.test(pathname);
   const coordinationInventory = /^\/api\/(?:machines\/[^/]+\/)?session$/.test(pathname) && url.searchParams.get("flock") === "1";
-  if (readOnly && (fileRead || directoryListing || repositoryDiff || launcherDefinitions || coordinationInventory || pathname === "/api/flock" || pathname === MOVE_PATH || pathname === MOVE_NODE_PATH || pullRequest || sessionHistory || commandRows || paneFiles || pluginRun || worktreeList || pairingDigits || mutating && !ownPreferences)) {
+  if (readOnly && (communicationSetup || fileRead || directoryListing || repositoryDiff || launcherDefinitions || coordinationInventory || pathname === "/api/flock" || pathname === MOVE_PATH || pathname === MOVE_NODE_PATH || pullRequest || sessionHistory || commandRows || paneFiles || pluginRun || worktreeList || pairingDigits || mutating && !ownPreferences)) {
     setRequestRoute("watch-refusal");
     return jsonResponse({ error: { code: "read_only", message: "this device can only watch" } }, 403);
+  }
+  // Startup configuration changes are machine-owner actions, before aliases or proxies can lend credentials.
+  if (communicationSetup && mutating && (!(ownerAccess(access) || bridgeAuthorized && pathname === COMMUNICATION_TRACKING_PATH) || request.headers.get("x-herdr-machine") !== "1")) {
+    return jsonResponse({ error: { code: "owner_only", message: "Only the owner can change communication tracking from this app." } }, 403);
   }
   // a text file is edited (read for it and saved) only by a device that drives this PC, here or through it on another PC (file-edit.ts)
   const textEdit = /^\/api\/(?:machines\/[^/]+\/)?fs\/text$/.test(pathname);
@@ -778,6 +785,10 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
     } catch (error) {
       return errorResponse(error);
     }
+  }
+
+  if (pathname === COMMUNICATION_TRACKING_PATH) {
+    return handleCommunicationTrackingRequest(request, communicationTracking, ownerAccess(access) || bridgeAuthorized, options.localFiles !== false);
   }
 
   const agentsResponse = await handleAgentsRequest(request, pathname, shellAgents, savedLaunchers, agentOffered);

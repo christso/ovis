@@ -4839,3 +4839,18 @@ remain readable through those APIs. The retained migration dialog is exercised i
 owned fictional fixtures, including phone geometry and recovery; it is not another product list.
 Native Codex move qualification remains the separately verified 0.166.0 contract. This redesign
 adds no support claims for another native CLI version.
+
+## Communication tracking setup
+
+Settings → Agents offers communication tracking on the selected PC. It follows
+[Zed's in-app CLI installation](https://github.com/zed-industries/zed/blob/main/docs/src/macos.md#installing-the-cli):
+an explicit app action installs the command-line integration. Ovis confirms the affected shell files
+first because activation adds a managed startup block, then verifies a new shell's command lookup.
+It leaves the real Herdr executable and ordinary terminals alone. Existing agents need relaunching;
+the enabled state says so. Disable stops capture and removes the managed shell setup while retaining
+a passthrough for agents with an old PATH. No Zed code or pixels are copied.
+
+Setup status is machine-owned state, never a synced browser setting. A watching device gets no setup
+control. An older bridge or unsupported shell is identified in the row. Cancellation writes nothing;
+installation failures stay in the confirmation for retry. The usual modal focus and keyboard handling
+apply, and the confirmation uses the normal action color because enabling is reversible.

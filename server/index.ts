@@ -32,6 +32,7 @@ import { InstalledLookup } from "./installed-lookup.ts";
 import { agentCatalogFor } from "./agent-catalog-routes.ts";
 import { AGENT_CATALOG, catalogPlatform } from "../shared/agent-catalog.ts";
 import { AgentInstaller } from "./agent-catalog-install.ts";
+import { CommunicationTracking, type CommunicationTrackingService } from "./communication-tracking.ts";
 import { type BackgroundAgentDeps } from "./background-agent.ts";
 import { herdrSocketPath, ping } from "./herdr/client.ts";
 import { coreConnection, coreSeenMarker, hcBin, hcMachine, NoHerdrCoreError, runtime, servingCore, setRuntime, startRuntime } from "./herdr-core/runtime.ts";
@@ -275,6 +276,8 @@ export function createServer(
     shellAgents?: ShellAgentLocator;
     /** what GET /api/agent-catalog finds installed; unset, the agents' binaries on this server's PATH alone. The real entrypoints (this file's and remote-entry.ts) add their user's login shell's PATH, where installers put agents. */
     agentDetector?: AgentDetector;
+    /** The machine user's optional Herdr CLI installation; tests supply an isolated service. */
+    communicationTracking?: CommunicationTrackingService;
   } = {},
 ): ServerInstance {
   /**
@@ -386,6 +389,7 @@ export function createServer(
     return herdrKinds.has(entry?.detect.binaries[0] ?? kind);
   };
   const agentInstaller = new AgentInstaller(agentDetector);
+  const communicationTracking = options.communicationTracking ?? new CommunicationTracking({ configPath: options.herdrConfigPath });
   const openCodeState = new OpenCodePromptState();
   const draftTimer = setInterval(() => openCodeState.prune(), 60_000);
   draftTimer.unref();
@@ -495,7 +499,7 @@ export function createServer(
       switchRuntime: () => { const answer = options.runtimeService!.request("herdr-core"); return answer.ok ? null : answer.message; },
       ...(options.herdrCoreInstaller ? { installer: options.herdrCoreInstaller } : {}),
     }) : null,
-    options, graphRegistry, moveNode, sessionMoves, launcherSearch, savedLaunchers, relay: ovisRelay, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, accountMailbox, accountIntroductions: new AccountIntroductions(Date.now, join(stateDir, "account-introductions.json")), accountHolds, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, usageAccounts, systemSampler, fontsDir: join(stateDir, "fonts"), voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartup,
+    options, graphRegistry, moveNode, sessionMoves, launcherSearch, savedLaunchers, relay: ovisRelay, relayReceiptIds, hostname, token, bridgeToken, bootId, devices, accountMailbox, accountIntroductions: new AccountIntroductions(Date.now, join(stateDir, "account-introductions.json")), accountHolds, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, communicationTracking, openCodeState, cliProxyRoutes, usageLogin, usage, usageAccounts, systemSampler, fontsDir: join(stateDir, "fonts"), voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartup,
     get portalStartupResult() { return portalStartupResult; },
   };
   ovisRelay.resume(services, server.port ?? DEFAULT_PORT);

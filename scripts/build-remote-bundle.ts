@@ -90,7 +90,7 @@ function verifyMachO(path: string): void {
 try {
   for (const dir of ["server", "shared", "integrations", "dist", "node_modules"]) cpSync(join(root, dir), join(stage, dir), { recursive: true, dereference: false, filter: (path) => !path.endsWith(".test.ts") });
   mkdirSync(join(stage, "scripts"));
-  for (const script of ["install-gjc-integration.ts", "install-pi-integration.ts"]) cpSync(join(root, "scripts", script), join(stage, "scripts", script));
+  for (const script of ["install-gjc-integration.ts", "install-pi-integration.ts", "herdr-shim.ts"]) cpSync(join(root, "scripts", script), join(stage, "scripts", script));
   let bunVersion = Bun.version;
   if (windows) {
     const bunArchive = join(downloads, "bun.zip");
