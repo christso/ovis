@@ -78,4 +78,32 @@ describe("communication tracking HTTP contract", () => {
     expect((await (await remote("DELETE", true)).json() as CommunicationTrackingStatus).state).toBe("disabled");
     expect(mutations).toEqual(["enable", "disable"]);
   });
+
+  it("identifies older SSH bridges without disguising a relay PC's authorization refusal", async () => {
+    let status = 401, code = "unauthorized";
+    const old = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => Response.json({ error: { code, message: "Fixture refusal" } }, { status }) });
+    try {
+      let kind = "ssh";
+      const manager = {
+        endpoint: () => ({ url: `http://127.0.0.1:${old.port}`, token: bridge }),
+        list: () => [{ id: "old", kind }], trackTerminal: () => () => {},
+      } as unknown as MachineManager;
+      const read = () => handleMachineRequest(new Request("http://127.0.0.1/api/machines/old/agents/communication-tracking"), manager);
+      for (status of [401, 403, 404]) {
+        code = status === 404 ? "not_found" : "unauthorized";
+        const response = await read();
+        expect([response.status, (await response.json() as { error: { code: string } }).error.code]).toEqual([409, "pc_update_required"]);
+      }
+      kind = "relay";
+      for (status of [401, 403]) {
+        code = "unauthorized";
+        const response = await read();
+        expect([response.status, (await response.json() as { error: { code: string } }).error.code]).toEqual([status, "unauthorized"]);
+      }
+      status = 404; code = "not_found";
+      expect((await read()).status).toBe(409);
+      code = "pane_not_found";
+      expect((await read()).status).toBe(404);
+    } finally { old.stop(); }
+  });
 });

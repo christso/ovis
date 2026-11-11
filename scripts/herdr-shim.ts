@@ -7,9 +7,9 @@ import { withoutHerdrDiagnostics } from "../server/herdr/client.ts";
 import { herdrCliCaller, herdrCliDirectory, herdrCliEndpoint, herdrCliIdentity, herdrCliOperation, herdrCliSocket, herdrCliSubmitted, recordHerdrCli, sameHerdrCliEndpoint } from "../server/herdr/cli-observations.ts";
 
 import { graphCliTerminalMetadata } from "../shared/graph-cli.ts";
+import { herdrCliLauncher } from "../server/herdr/cli-launcher.ts";
 
 interface Config { version: 1; real: string; journal: string; enabled?: boolean }
-const quote = (word: string) => "'" + word.replaceAll("'", "'\\''") + "'";
 
 function captureEnabled(path: string): boolean {
   try { return (JSON.parse(readFileSync(path, "utf8")) as Config).enabled !== false; }
@@ -51,7 +51,7 @@ async function install(args: string[]): Promise<void> {
     await Bun.write(bundle, built.outputs[0]!);
     const config = join(path, "config.json");
     writeFileSync(config, JSON.stringify({ version: 1, real, journal: values.get("--journal") ?? herdrCliDirectory(), enabled: values.get("--enabled") !== "false" } satisfies Config) + "\n", { mode: 0o600 });
-    writeFileSync(join(path, "herdr"), `#!/bin/sh\n# Ovis Herdr CLI shim\nexec ${quote(realpathSync(process.execPath))} ${quote(bundle)} --shim ${quote(config)} -- "$@"\n`, { mode: 0o700 });
+    writeFileSync(join(path, "herdr"), herdrCliLauncher(realpathSync(process.execPath), path), { mode: 0o700 });
     console.log(JSON.stringify({ directory: path, real, journal: values.get("--journal") ?? herdrCliDirectory() }));
   } catch (error) { rmSync(path, { recursive: true, force: true }); throw error; }
 }

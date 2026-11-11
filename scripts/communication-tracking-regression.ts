@@ -14,12 +14,19 @@ import { openSettingsPage } from "./settings-page.ts";
 const root = mkdtempSync(join(tmpdir(), "ovis-tracking-browser-"));
 const token = "tracking-browser-fixture";
 let current: CommunicationTrackingStatus = { state: "disabled", shell: "bash", profiles: ["/fictional/home/.bashrc", "/fictional/home/.profile"], detail: null, can_manage: true };
-let enables = 0, disables = 0, failEnable = false;
+let enables = 0, disables = 0, failEnable = false, incompleteEnable = false;
+let heldRead: { started(): void; released: Promise<void> } | null = null;
 const service = {
-  async status() { return { ...current }; },
+  async status() {
+    const snapshot = { ...current }, held = heldRead;
+    heldRead = null;
+    if (held) { held.started(); await held.released; }
+    return snapshot;
+  },
   async enable() {
     enables++;
     if (failEnable) throw new Error("Fictional installation failure");
+    if (incompleteEnable) return current = { ...current, state: "needs_attention", detail: "Fictional setup did not finish" };
     current = { ...current, state: "enabled" };
     return { ...current };
   },
@@ -43,6 +50,18 @@ try {
     await open();
     const row = page.locator('[data-section="communication-tracking"]');
     await row.getByText("Communication tracking", { exact: true }).waitFor({ timeout: 5000 });
+    const holdStatus = async () => {
+      let started!: () => void, release!: () => void;
+      const began = new Promise<void>((resolve) => { started = resolve; });
+      heldRead = { started, released: new Promise<void>((resolve) => { release = resolve; }) };
+      const response = page.waitForResponse((answer) => answer.request().method() === "GET" && new URL(answer.url()).pathname === "/api/agents/communication-tracking");
+      await row.getByRole("button", { name: "Check communication tracking", exact: true }).click();
+      await began;
+      return async () => {
+        release(); await (await response).finished();
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      };
+    };
     const before = enables;
     await row.getByRole("button", { name: "Enable communication tracking", exact: true }).click();
     const confirmation = page.getByRole("alertdialog", { name: "Enable communication tracking?" });
@@ -51,16 +70,23 @@ try {
     assert.equal(enables, before, "opening confirmation does not install");
     await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(enables, before, "Cancel never installs");
+    const finishDisabledRead = await holdStatus();
     await row.getByRole("button", { name: "Enable communication tracking", exact: true }).click();
     await confirmation.getByRole("button", { name: "Enable", exact: true }).click();
     await row.getByText("Enabled for new Herdr terminals. Relaunch existing agents to use it.", { exact: true }).waitFor();
+    await finishDisabledRead();
+    assert.equal(await row.getByRole("button", { name: "Disable communication tracking", exact: true }).count(), 1, "a status read started before enable cannot overwrite its result");
     assert.equal(enables, before + 1);
     await page.reload();
     await page.locator(".conn-live").waitFor();
     await open();
+    await row.getByRole("button", { name: "Disable communication tracking", exact: true }).waitFor();
+    const finishEnabledRead = await holdStatus();
     await row.getByRole("button", { name: "Disable communication tracking", exact: true }).click();
     await page.getByRole("alertdialog", { name: "Disable communication tracking?" }).getByRole("button", { name: "Disable", exact: true }).click();
     await row.getByRole("button", { name: "Enable communication tracking", exact: true }).waitFor();
+    await finishEnabledRead();
+    assert.equal(await row.getByRole("button", { name: "Enable communication tracking", exact: true }).count(), 1, "a status read started before disable cannot overwrite its result");
     assert.ok(disables > 0);
     failEnable = true;
     await row.getByRole("button", { name: "Enable communication tracking", exact: true }).click();
@@ -68,6 +94,11 @@ try {
     await confirmation.getByRole("alert").waitFor();
     assert.equal(await confirmation.isVisible(), true, "installation error remains in confirmation for retry");
     failEnable = false;
+    incompleteEnable = true;
+    await confirmation.getByRole("button", { name: "Enable", exact: true }).click();
+    await confirmation.getByRole("alert").filter({ hasText: "Fictional setup did not finish" }).waitFor({ timeout: 5000 });
+    assert.equal(await confirmation.isVisible(), true, "an HTTP 200 needs_attention result keeps the setup confirmation open");
+    incompleteEnable = false;
     await confirmation.getByRole("button", { name: "Enable", exact: true }).click();
     await row.getByRole("button", { name: "Disable communication tracking", exact: true }).waitFor();
     await page.locator(".modal-scrim:has(> .confirm-dialog)").waitFor({ state: "hidden" });
@@ -87,6 +118,9 @@ try {
     await row.getByRole("button", { name: "Check communication tracking", exact: true }).click();
     await row.getByText("Communication tracking setup is unavailable on this PC.", { exact: true }).waitFor();
     assert.equal(await row.getByRole("button", { name: /(?:Enable|Disable) communication tracking/ }).count(), 0);
+    await page.route("**/api/agents/communication-tracking", (route) => route.fulfill({ status: 409, json: { error: { code: "pc_update_required", message: "Fixture old bridge" } } }), { times: 1 });
+    await row.getByRole("button", { name: "Check communication tracking", exact: true }).click();
+    await row.getByText("Update Ovis on this PC to set up communication tracking.", { exact: true }).waitFor();
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS communication tracking confirmation, cancel, enable, reload, disable, retry and unsupported state at ${width}px`);

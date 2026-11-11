@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CommunicationTracking } from "./communication-tracking.ts";
+import { shellQuote } from "./machine-security.ts";
 
 function fixture(shell = "/bin/bash", config = "") {
   const root = mkdtempSync(join(tmpdir(), "ovis-tracking-"));
@@ -17,6 +18,70 @@ function fixture(shell = "/bin/bash", config = "") {
 }
 
 describe.skipIf(process.platform === "win32")("communication tracking setup", () => {
+  it("uses newly confirmed startup paths after disabling the previous setup", async () => {
+    const f = fixture();
+    try {
+      expect((await f.service.enable()).state).toBe("enabled");
+      expect((await f.service.disable()).state).toBe("disabled");
+      writeFileSync(join(f.home, ".profile"), "export ADDED_AFTER_DISABLE=kept\n");
+      const next = await f.service.status();
+      expect(next.profiles).toEqual([join(f.home, ".bashrc"), join(f.home, ".profile")]);
+      expect((await f.service.enable({ shell: next.shell, profiles: next.profiles })).state).toBe("enabled");
+      expect((await f.service.disable()).state).toBe("disabled");
+      expect(readFileSync(join(f.home, ".profile"), "utf8")).toBe("export ADDED_AFTER_DISABLE=kept\n");
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  });
+
+  it("retains the inherited command and stops collection when replacement cannot be built", async () => {
+    const f = fixture();
+    try {
+      writeFileSync(join(f.home, ".bashrc"), "export PRESERVED_ON_FAILED_REPAIR=kept\n");
+      expect((await f.service.enable()).state).toBe("enabled");
+      const wrapper = join(f.journal, "installation", "herdr");
+      renameSync(f.real, f.real + ".away");
+      await f.service.disable();
+      expect(existsSync(wrapper)).toBe(true);
+      expect(JSON.parse(readFileSync(join(f.journal, "installation", "config.json"), "utf8")).enabled).toBe(false);
+      expect(readFileSync(join(f.home, ".bashrc"), "utf8")).toBe("export PRESERVED_ON_FAILED_REPAIR=kept\n");
+      renameSync(f.real + ".away", f.real);
+      const inherited = Bun.spawnSync([wrapper, "--version"], { env: f.env });
+      expect(inherited.exitCode).toBe(0);
+      expect(inherited.stdout.toString()).toBe("real:--version\n");
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  });
+
+  it("finds the original command in the initialized shell PATH", async () => {
+    const f = fixture(), previous = process.env["OVIS_HERDR_BIN"];
+    try {
+      delete process.env["OVIS_HERDR_BIN"];
+      writeFileSync(join(f.home, ".bashrc"), `export PATH=${shellQuote(f.bin)}:"$PATH"\n`);
+      const env = { HOME: f.home, PATH: "/usr/bin:/bin", SHELL: "/bin/bash" };
+      const service = new CommunicationTracking({ home: f.home, env, configPath: f.configPath, directory: f.journal });
+      expect((await service.enable()).state).toBe("enabled");
+      expect(JSON.parse(readFileSync(join(f.journal, "installation", "config.json"), "utf8")).real).toBe(f.real);
+      expect((await service.disable()).state).toBe("disabled");
+    } finally {
+      if (previous === undefined) delete process.env["OVIS_HERDR_BIN"]; else process.env["OVIS_HERDR_BIN"] = previous;
+      rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(!Bun.which("setsid"))("bounds a startup probe whose detached child retains its pipes", async () => {
+    const f = fixture(), pidFile = join(f.root, "detached.pid");
+    let pending: Promise<unknown> | undefined, deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      writeFileSync(join(f.home, ".bashrc"), `setsid -f /bin/sh -c ${shellQuote(`printf '%s\\n' "$$" > ${shellQuote(pidFile)}; exec /bin/sleep 20`)}\n`);
+      pending = f.service.enable();
+      const answer = await Promise.race([pending, new Promise<never>((_resolve, reject) => { deadline = setTimeout(() => reject(new Error("setup exceeded its probe deadline")), 8000); })]);
+      expect(answer).toMatchObject({ state: "needs_attention" });
+    } finally {
+      clearTimeout(deadline);
+      try { process.kill(Number(readFileSync(pidFile, "utf8").trim()), "SIGKILL"); } catch {}
+      await pending?.catch(() => {});
+      rmSync(f.root, { recursive: true, force: true });
+    }
+  }, 15000);
+
   it("refuses an unreadable Herdr configuration instead of guessing another shell", async () => {
     const f = fixture();
     try {
@@ -114,6 +179,11 @@ describe.skipIf(process.platform === "win32")("communication tracking setup", ()
       expect((await f.service.status()).state).toBe("needs_attention");
       expect((await f.service.disable()).state).toBe("disabled");
       expect(existsSync(join(custom, ".zshrc"))).toBe(false);
+      writeFileSync(f.configPath, '[terminal]\ndefault_shell = "/bin/bash"\n');
+      const changed = await f.service.status();
+      expect(changed.shell).toBe("/bin/bash");
+      expect((await f.service.enable({ shell: changed.shell, profiles: changed.profiles })).state).toBe("enabled");
+      expect((await f.service.disable()).state).toBe("disabled");
     } finally { rmSync(f.root, { recursive: true, force: true }); }
   });
 
@@ -149,9 +219,11 @@ describe.skipIf(process.platform === "win32")("communication tracking setup", ()
       record.enabled = false; writeFileSync(join(f.journal, "setup.json"), JSON.stringify(record));
       for (const name of ["observe.js", "config.json", "herdr", "enabled"]) rmSync(join(installation, name), { force: true });
       expect((await f.service.enable()).state).toBe("enabled");
+      writeFileSync(join(installation, "unrelated-note"), "keep during repair\n");
       writeFileSync(join(installation, "observe.js"), "throw new Error('damaged bundle');\n");
       expect((await f.service.status()).state).toBe("needs_attention");
       expect((await f.service.enable()).state).toBe("enabled");
+      expect(readFileSync(join(installation, "unrelated-note"), "utf8")).toBe("keep during repair\n");
       writeFileSync(join(installation, "config.json"), "{interrupted");
       expect((await f.service.disable()).state).toBe("disabled");
       const wrapper = Bun.spawnSync([join(installation, "herdr"), "agent", "prompt", "worker", "message"], { env: { ...f.env, HERDR_ENV: "1", HERDR_PANE_ID: "not-live" } });

@@ -1,12 +1,13 @@
 /** User-owned, opt-in shell setup for the standalone CLI observer. Never changes the daemon. */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { CommunicationTrackingSetupRequest, CommunicationTrackingStatus } from "../shared/communication-tracking.ts";
 import { sysctlCall } from "./darwin-process.ts";
 import { herdrCliDirectory } from "./herdr/cli-observations.ts";
+import { herdrCliLauncher } from "./herdr/cli-launcher.ts";
 import { paneProcessInfo, sessionSnapshot } from "./herdr/client.ts";
 import { servingCore } from "./herdr-core/runtime.ts";
 import { herdrConfigPath, readHerdrConfig } from "./herdr-sidebar.ts";
@@ -117,14 +118,15 @@ async function paneEnvironment(platform: NodeJS.Platform): Promise<Record<string
 function command(argv: string[], env: Record<string, string | undefined>, timeout = 5000): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolve) => {
     const child = spawn(argv[0]!, argv.slice(1), { env, cwd: env["HOME"], detached: true, stdio: ["ignore", "pipe", "pipe"] });
-    let output = "", bytes = 0, stopped = false;
+    let output = "", bytes = 0, stopped = false, settled = false;
     const stop = () => { if (child.pid) try { process.kill(-child.pid, "SIGKILL"); } catch {} };
-    const abort = () => { stopped = true; stop(); };
+    const finish = (ok: boolean) => { if (settled) return; settled = true; clearTimeout(timer); resolve({ ok, output }); };
+    const abort = () => { stopped = true; stop(); child.stdout.destroy(); child.stderr.destroy(); finish(false); };
     const timer = setTimeout(abort, timeout);
     child.stdout.on("data", (part: Buffer) => { bytes += part.length; if (bytes <= 65536) output += part.toString(); else abort(); });
     child.stderr.on("data", (part: Buffer) => { bytes += part.length; if (bytes > 65536) abort(); });
-    child.on("error", () => { clearTimeout(timer); resolve({ ok: false, output: "" }); });
-    child.on("close", (code) => { clearTimeout(timer); stop(); resolve({ ok: code === 0 && !stopped, output }); });
+    child.on("error", () => finish(false));
+    child.on("close", (code) => { stop(); finish(code === 0 && !stopped); });
   });
 }
 
@@ -213,12 +215,25 @@ export class CommunicationTracking implements CommunicationTrackingService {
       : `if [ "\${HERDR_ENV:-}" = 1 ] && [ -f ${flag} ]; then\n    export PATH=${path}:"$PATH"\nfi`}\n${END}\n`;
   }
 
-  private async verified(context: ShellContext): Promise<boolean> {
+  private async shellCommand(context: ShellContext): Promise<string | null> {
     const marker = randomUUID();
-    const result = await command([context.shell, ...(context.login ? ["-l"] : []), "-i", "-c", `printf '\\n${marker}\\n'; ${context.kind === "fish" ? "type -t herdr; " : ""}command -v herdr`], context.env);
-    const expected = `${context.kind === "fish" ? "file\n" : ""}${join(this.installation, "herdr")}`;
-    if (!result.ok || result.output.split(`\n${marker}\n`)[1]?.trim() !== expected) return false;
+    const classify = context.kind === "zsh" ? "whence -w herdr" : "type -t herdr";
+    const result = await command([context.shell, ...(context.login ? ["-l"] : []), "-i", "-c", `printf '\\n${marker}\\n'; ${classify}; command -v herdr`], context.env);
+    const lines = result.output.split(`\n${marker}\n`)[1]?.trim().split("\n");
+    if (!result.ok || lines?.length !== 2 || lines[0] !== (context.kind === "zsh" ? "herdr: command" : "file")) return null;
+    const path = lines[1]!;
+    try { accessSync(path, constants.X_OK); return isAbsolute(path) && statSync(path).isFile() ? path : null; } catch { return null; }
+  }
+
+  private async verified(context: ShellContext): Promise<boolean> {
+    if (await this.shellCommand(context) !== join(this.installation, "herdr")) return false;
     return (await command([join(this.installation, "herdr"), "--version"], context.env)).ok;
+  }
+
+  private profilesRemoved(setup: Setup): boolean {
+    return setup.profiles.every((profile) => {
+      try { const current = file(profile.path); return current.target === profile.target && !current.text.includes(START); } catch { return false; }
+    });
   }
 
   async status(): Promise<CommunicationTrackingStatus> {
@@ -231,6 +246,7 @@ export class CommunicationTracking implements CommunicationTrackingService {
       if (!setup) return existsSync(this.installation)
         ? { ...base, state: "needs_attention", detail: "The tracking installation directory already contains files Ovis does not own." }
         : { ...base, state: "disabled" };
+      if (!setup.enabled && this.profilesRemoved(setup)) return { ...base, state: "disabled" };
       base.profiles = setup.profiles.map((profile) => profile.path);
       const intact = setup.profiles.every((profile) => { const current = file(profile.path); return current.target === profile.target && current.text.split(profile.block).length === 2; });
       if (!setup.enabled) return { ...base, state: intact ? "needs_attention" : setup.profiles.some((profile) => file(profile.path).text.includes(START)) ? "needs_attention" : "disabled", detail: intact ? "Tracking is off, but its startup block still needs cleanup. Disable it again to retry." : null };
@@ -266,10 +282,11 @@ export class CommunicationTracking implements CommunicationTrackingService {
       try {
         let setup = this.saved();
         if (!setup && existsSync(this.installation)) throw new Error("unowned_installation");
-        if (setup && (setup.shell !== context.shell || JSON.stringify(setup.profiles.map((profile) => profile.path)) !== JSON.stringify(context.profiles))) throw new Error("shell_changed");
-        const real = this.options.env?.["OVIS_HERDR_BIN"] ?? process.env["OVIS_HERDR_BIN"] ?? Bun.which("herdr", { PATH: context.env["PATH"] ?? "" });
+        const changed = setup !== null && (setup.shell !== context.shell || JSON.stringify(setup.profiles.map((profile) => profile.path)) !== JSON.stringify(context.profiles));
+        if (setup && changed && (setup.enabled || !this.profilesRemoved(setup))) throw new Error("shell_changed");
+        const real = setup?.real ?? this.options.env?.["OVIS_HERDR_BIN"] ?? process.env["OVIS_HERDR_BIN"] ?? await this.shellCommand(context);
         if (!real || !isAbsolute(real) || resolve(real) === join(this.installation, "herdr")) throw new Error("missing_binary");
-        if (!setup) {
+        if (!setup || changed) {
           const block = this.block(context);
           const profiles = context.profiles.map((path) => {
             const current = file(path);
@@ -330,11 +347,23 @@ export class CommunicationTracking implements CommunicationTrackingService {
             && statSync(join(this.installation, "observe.js")).isFile() && statSync(join(this.installation, "herdr")).isFile();
         } catch {}
         if (complete && (await command([join(this.installation, "herdr"), "--version"], env)).ok) return;
-        rmSync(this.installation, { recursive: true });
       }
     }
-    const installed = await command([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", setup.real, "--directory", this.installation, "--journal", this.directory, "--enabled", "false"], { ...env, HOME: this.home }, 30_000);
-    if (!installed.ok) throw new Error("install_failed");
+    const stage = join(this.directory, `.installation-${randomUUID()}`);
+    try {
+      const installed = await command([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", setup.real, "--directory", stage, "--journal", this.directory, "--enabled", "false"], { ...env, HOME: this.home }, 30_000);
+      if (!installed.ok || !(await command([process.execPath, join(stage, "observe.js"), "--shim", join(stage, "config.json"), "--", "--version"], env)).ok) throw new Error("install_failed");
+      writeFileSync(join(stage, "herdr"), herdrCliLauncher(realpathSync(process.execPath), this.installation), { mode: 0o700 });
+      if (!existsSync(this.installation)) renameSync(stage, this.installation);
+      else {
+        if (!this.ownsInstallation()) throw new Error("unowned_installation");
+        // Keep the inherited command path present throughout publication and retain unrelated files.
+        for (const name of ["observe.js", "config.json", "herdr"]) {
+          const path = join(this.installation, name);
+          replaceFile(path, file(path).text, readFileSync(join(stage, name), "utf8"), name === "herdr" ? 0o700 : 0o600);
+        }
+      }
+    } finally { rmSync(stage, { recursive: true, force: true }); }
   }
 
   private setEnabled(setup: Setup, enabled: boolean): void {
@@ -349,9 +378,12 @@ export class CommunicationTracking implements CommunicationTrackingService {
     return this.run(async () => {
       const setup = this.saved();
       if (!setup) return this.status();
-      await this.ensureInstallation(setup, this.options.env ?? process.env);
-      this.setEnabled(setup, false);
+      if (existsSync(this.installation) && !this.ownsInstallation() && readdirSync(this.installation).length !== 0) throw new Error("unowned_installation");
+      if (this.ownsInstallation()) this.setEnabled(setup, false);
       this.save({ ...setup, enabled: false });
+      let repairFailed = false;
+      try { await this.ensureInstallation({ ...setup, enabled: false }, this.options.env ?? process.env); this.setEnabled(setup, false); }
+      catch { repairFailed = true; }
       let conflict = false;
       for (const profile of setup.profiles) {
         try {
@@ -369,7 +401,8 @@ export class CommunicationTracking implements CommunicationTrackingService {
         } catch { conflict = true; }
       }
       const status = await this.status();
-      return conflict ? { ...status, state: "needs_attention", detail: "Tracking is off. An edited startup block was left in place to preserve your changes." } : status;
+      return conflict ? { ...status, state: "needs_attention", detail: "Tracking is off. An edited startup block was left in place to preserve your changes." }
+        : repairFailed ? { ...status, state: "needs_attention", detail: "Tracking is off. The existing command was retained, but its repair could not finish. Check the installed Herdr executable, then retry setup." } : status;
     });
   }
 }

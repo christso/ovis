@@ -17,11 +17,18 @@ export function CommunicationTrackingSettings() {
   const [reads, setReads] = useState(0);
   const [confirm, setConfirm] = useState<"enable" | "disable" | null>(null);
   const action = useRef<HTMLButtonElement>(null);
+  const readVersion = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; readVersion.current++; };
+  }, []);
   useEffect(() => {
     const abort = new AbortController();
+    const version = ++readVersion.current;
     setError(null);
-    void fetchCommunicationTracking(machineId, abort.signal).then((answer) => { if (!abort.signal.aborted) setStatus(answer); }, (cause: unknown) => {
-      if (!abort.signal.aborted) setError(cause instanceof ApiError && cause.status === 404
+    void fetchCommunicationTracking(machineId, abort.signal).then((answer) => { if (!abort.signal.aborted && version === readVersion.current) setStatus(answer); }, (cause: unknown) => {
+      if (!abort.signal.aborted && version === readVersion.current) setError(cause instanceof ApiError && (cause.status === 404 || cause.code === "pc_update_required")
         ? t("Update Ovis on this PC to set up communication tracking.") : userErrorMessage(cause).message);
     });
     return () => abort.abort();
@@ -54,13 +61,22 @@ export function CommunicationTrackingSettings() {
         : t("Ovis stops recording new CLI links and removes its shell setup. Existing agents can keep using Herdr, and previously recorded links remain.")}
       confirmLabel={confirm === "enable" ? t("Enable") : t("Disable")} destructive={false}
       onClose={() => setConfirm(null)} onConfirm={async () => {
+        readVersion.current++;
         let updated: CommunicationTrackingStatus;
         try { updated = await setCommunicationTracking(machineId, confirm === "enable", status); }
         catch (cause) {
-          try { setStatus(await fetchCommunicationTracking(machineId)); } catch {}
+          const version = ++readVersion.current;
+          if (mounted.current) try {
+            const answer = await fetchCommunicationTracking(machineId);
+            if (mounted.current && version === readVersion.current) setStatus(answer);
+          } catch {}
           throw cause;
         }
-        setStatus(updated); setError(null); setConfirm(null);
+        readVersion.current++;
+        if (!mounted.current) return;
+        setStatus(updated); setError(null);
+        if (confirm === "enable" && updated.state !== "enabled") throw new Error(updated.detail ?? t("Setup needs attention. Check the details below, then retry or disable tracking."));
+        setConfirm(null);
         requestAnimationFrame(() => action.current?.focus());
       }} />}
   </SettingsGroup>;

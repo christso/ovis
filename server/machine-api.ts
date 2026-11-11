@@ -502,6 +502,7 @@ export async function handleMachineRequest(request: Request, manager: MachineMan
         // held whole before it is passed on (and parsed, for a watcher's prompt), so only up to a size
         let body: Uint8Array<ArrayBuffer> | null = response.status === 304 ? null : await readCapped(response, watchedPrompt ? REMOTE_LIMITS.watchedPrompt : REMOTE_LIMITS.proxy);
         if (movePath && tooOldToMove(manager.list().find((machine) => machine.id === id)?.kind, response.status, answerCode(body))) return fail("pc_update_required", PC_UPDATE_REQUIRED, 409);
+        if (trackingPath && !response.ok && tooOldToMove(manager.list().find((machine) => machine.id === id)?.kind, response.status, answerCode(body))) return fail("pc_update_required", "Update Ovis on this PC to set up communication tracking.", 409);
         if (trackingPath && response.ok && body) {
           // This PC's bridge credential must not make the browser's non-owner into an owner.
           const answer = parseJson<CommunicationTrackingStatus>(body);
