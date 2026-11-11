@@ -133,6 +133,84 @@ try {
     } finally { await context.close(); }
   }
 
+  for (const width of [1280, 390]) {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width < 700, hasTouch: width < 700, reducedMotion: "reduce", locale: "en-US" });
+    await context.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme: "dark" })));
+    try {
+      const page = await context.newPage();
+      await page.goto(`http://127.0.0.1:${server.port}/?projection&graph=1&gcomm=all`);
+      await page.locator('[data-graph-node="main-terminal"]').waitFor();
+      await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+      const viewport = await page.locator(".graph-surface > g").getAttribute("transform");
+      const legend = page.locator(".graph-kind-legend");
+      const nodeCounts = [0, 3, 4, 7, 5, 8, 9, 12], edgeCounts = [0, 4, 6, 10, 7, 11, 11, 15];
+      for (let mask = 0; mask < 8; mask++) {
+        for (const [index, name] of ["Workspace", "Worktree", "Terminal"].entries()) {
+          const toggle = legend.getByRole("button", { name, exact: true });
+          const shown = !!(mask & (1 << index));
+          if (await toggle.getAttribute("aria-pressed") !== String(shown)) {
+            if (width < 700) await toggle.tap(); else { await toggle.focus(); await page.keyboard.press("Space"); }
+          }
+          assert.equal(await toggle.getAttribute("aria-pressed"), String(shown));
+        }
+        await page.waitForFunction(({ nodes, edges }) => document.querySelectorAll("[data-graph-node]").length === nodes && document.querySelectorAll(".graph-edge").length === edges, { nodes: nodeCounts[mask]!, edges: edgeCounts[mask]! });
+        assert.equal(await page.locator(".graph-surface > g").getAttribute("transform"), viewport, `mask ${mask} preserves viewport`);
+        if (process.env.UI_EVIDENCE_DIR && [1, 5, 7].includes(mask)) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `graph-projection-${width}-mask-${mask}.png`), animations: "disabled" });
+        if (mask) {
+          const id = mask & 4 ? "main-terminal" : mask & 2 ? "main-checkout" : "project";
+          const degree = mask & 4 ? mask === 4 ? 2 : 3 : mask & 2 ? mask & 1 ? 3 : 2 : 1;
+          assert.equal(await page.locator(`[data-graph-node="${id}"]`).getAttribute("data-degree"), String(degree), `mask ${mask} sizes projected distinct neighbours`);
+        }
+        if (mask === 5) {
+          const titles = await page.locator(".graph-edge-terminal-in-workspace title").allTextContents();
+          assert.ok(titles.some((title) => title.startsWith("main-terminal → Project:")), "hidden worktrees connect terminals directly to Workspace");
+          assert.ok(titles.some((title) => title.startsWith("notes-terminal → Plain notes:")), "plain folders keep direct terminal containment");
+          assert.equal(await page.locator(".graph-edge-terminal-in-worktree").count(), 0);
+        }
+      }
+      await legend.getByRole("button", { name: "Terminal", exact: true }).click();
+      await legend.getByRole("button", { name: "Worktree", exact: true }).click();
+      const filtersToggle = page.getByRole("button", { name: /^Graph filters/ });
+      if (width < 700) await filtersToggle.click();
+      await page.getByRole("combobox", { name: "Inspect node", exact: true }).selectOption("project");
+      if (width < 700) await page.getByRole("button", { name: "Details and help", exact: true }).click();
+      const outgoing = page.locator(".graph-relations > li").filter({ hasText: "5 recorded events" });
+      assert.match(await outgoing.innerText(), /Other project/);
+      assert.match(await outgoing.innerText(), /Codex/); assert.match(await outgoing.innerText(), /Herdr/);
+      assert.ok(await outgoing.locator("time").getAttribute("datetime"));
+      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).isDisabled(), true, "projected evidence cannot authorize a fixture target");
+      const focus = page.getByRole("combobox", { name: "Focus graph", exact: true });
+      await focus.selectOption("project");
+      assert.equal(await page.locator('[data-graph-node="other-project"]').count(), 1, "collapsed workspace focus retains the projected neighbour");
+      assert.equal(await page.locator('[data-graph-node="notes"]').count(), 0, "focus excludes unrelated second-degree neighbours");
+      await focus.selectOption("main-terminal");
+      assert.equal(await page.locator(".graph-relations > li").filter({ hasText: "2 recorded events" }).count(), 1, "focused hidden terminals keep their own receipts when checkout endpoints collapse together");
+      assert.equal(await page.locator(".graph-relations > li").filter({ hasText: "5 recorded events" }).count(), 0, "focus cannot borrow a hidden sibling's receipts");
+      await focus.selectOption("");
+      await legend.getByRole("button", { name: "Worktree", exact: true }).click();
+      await focus.selectOption("main-checkout");
+      assert.equal(await page.locator('[data-graph-node="other-checkout"]').count(), 1, "collapsed checkout focus retains the projected neighbour");
+      assert.equal(await page.locator('[data-graph-node="orphan"]').count(), 0);
+      await focus.selectOption("");
+      await legend.getByRole("button", { name: "Workspace", exact: true }).click();
+      await page.evaluate(() => { const url = new URL(location.href); url.searchParams.set("gf", "legacy-project"); history.pushState(null, "", url); dispatchEvent(new PopStateEvent("popstate")); });
+      assert.equal(await page.locator('[data-graph-node="other-checkout"]').count(), 1, "a legacy workspace focus retains projected checkout neighbours while its root is hidden");
+      assert.equal(await page.locator('[data-graph-node="orphan"]').count(), 0);
+      await focus.selectOption("");
+      await legend.getByRole("button", { name: "Workspace", exact: true }).click();
+      await page.getByLabel("Search graph", { exact: true }).fill("main-terminal");
+      assert.equal(await page.locator('[data-graph-node="main-checkout"]').count(), 1, "hidden terminal matches retain checkout context");
+      assert.equal(await page.locator(".graph-edge-communication, .graph-edge-delegation").count(), 0, "search-excluded endpoints do not regain projected links");
+      await page.getByLabel("Search graph", { exact: true }).fill("");
+      await legend.getByRole("button", { name: "Terminal", exact: true }).click();
+      await page.reload();
+      await page.locator('[data-graph-node="main-terminal"]').waitFor();
+      assert.equal(await page.locator(".graph-edge-communication").count(), 6, "restoring terminals restores the original recorded links");
+      assert.equal(await page.locator(".graph-surface > g").getAttribute("transform"), viewport);
+      console.log(`PASS ${width}px all eight visibility projections, direct containment, receipt evidence, focus and viewport`);
+    } finally { await context.close(); }
+  }
+
   for (const [width, height] of [[1280, 844], [390, 844], [320, 844], [390, 640], [320, 640]]) for (const theme of ["dark", "light"] as const) {
     const mobile = width! <= 700;
     const context = await browser.newContext({ viewport: { width: width!, height: height! }, hasTouch: mobile, isMobile: mobile, colorScheme: theme, locale: "en-US", reducedMotion: "reduce" });
@@ -193,9 +271,9 @@ try {
       assert.equal(await worktreeToggle.getAttribute("aria-pressed"), "false");
       assert.ok(await worktreeToggle.evaluate((button) => Number(getComputedStyle(button).opacity) <= 0.4 && getComputedStyle(button).textDecorationLine.includes("line-through")), "hidden types are faded and crossed out");
       assert.equal(await page.locator('[data-graph-node="checkout"], [data-graph-node="quay"]').count(), 0);
-      assert.equal(await page.locator(".graph-edge").count(), 1, "only the directly attached Compost tab keeps its workspace link");
-      assert.equal(await page.locator('[data-graph-node="repo"]').getAttribute("data-degree"), "0");
-      assert.equal(await node.getAttribute("data-degree"), "0", "worktree tabs are not reparented to the workspace");
+      assert.equal(await page.locator(".graph-edge").count(), 3, "visible terminals connect directly past their hidden worktree");
+      assert.equal(await page.locator('[data-graph-node="repo"]').getAttribute("data-degree"), "2");
+      assert.equal(await node.getAttribute("data-degree"), "1", "worktree terminals connect to their visible workspace");
       await page.waitForFunction((before) => [...document.querySelectorAll("[data-graph-node]")].some((node) => node.getAttribute("transform") !== before[node.getAttribute("data-graph-node")!]), beforeKinds);
       await screenshot("worktrees-hidden");
       await page.reload(); await node.waitFor();

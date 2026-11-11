@@ -4730,9 +4730,13 @@ springs; root hubs repel enough to separate work contexts without inventing repo
 
 The legend entries are native toggle buttons: visible types are pressed, hidden types are faded
 and crossed out. Entries come from the inventory, so hiding every type never removes the controls
-needed to restore them. Hiding a type removes its nodes and incident links before layout and
-connection sizing; terminals under a hidden worktree stay independent, with no invented workspace
-links. The existing force simulation reheats for the changed topology and settles again, retaining
+needed to restore them. Visibility projects the evidenced graph before layout and connection sizing.
+Visible descendants connect to their nearest visible ancestor, including direct workspace → terminal
+containment when worktrees are hidden. Hidden terminal receipts project to visible checkouts or
+workspaces, retaining ordered endpoints, kind, counts, latest activity and source provenance.
+Collapsed self-links and endpoints without an eligible ancestor disappear. Non-type filters keep
+original endpoint eligibility; collapsed-container Focus uses projected adjacency to retain neighbours.
+Unresolved historical activity and Open ownership remain outside this display projection. The existing force simulation reheats for the changed topology and settles again, retaining
 the user's viewport. Reduced motion settles without animation. This follows Folio's graph type
 filters rather than Zed's project/thread list; the graph needs independent type visibility while
 preserving the native workspace hierarchy. The legend controls are independently written.
@@ -4748,8 +4752,12 @@ machine membership in Ovis's cross-machine graph, with soft envelopes in place o
 The existing grouping force remains; dragging members between clusters can overlap their clouds
 without changing machine identity.
 
-Native workspace hubs connect terminals directly, and linked worktrees form
-workspace → worktree → terminal. The graph has three types: blue Workspace, orange Worktree and
+Git workspaces use workspace → worktree → terminal for both main and linked checkouts.
+An orange Main checkout node identifies the physical location without inventing a branch name;
+plain folders and missing native checkout metadata keep direct workspace → terminal containment.
+This follows [Zed's project grouping for parallel agents](https://zed.dev/docs/ai/parallel-agents),
+where linked-worktree threads remain under their project; Ovis also projects recorded graph relationships.
+The implementation is independent, with no adapted code or copied visual assets. The graph has three types: blue Workspace, orange Worktree and
 green Terminal, all visible by default. Every pane contributes exactly one terminal node; a tab
 adds no container node. A single-terminal tab keeps its native tab/worktree name, while splits
 use their individual names and statuses. This follows [Warp's pane view in vertical tabs](https://docs.warp.dev/terminal/windows/vertical-tabs/),
@@ -4780,6 +4788,9 @@ instead of animating it. Pan, pointer-centred wheel zoom, touch pan/pinch and ke
 retain the viewport until explicit Fit or Reset. Reset rebuilds and settles a natural layout,
 then refits while retaining selection, filters and optional machine grouping.
 
+Adding the main-checkout hub preserves existing node IDs and v3 preference meanings; new nodes receive
+positions without resetting the user's viewport. Main-checkout identity includes its repository key,
+checkout path and the same exact machine/lifetime/workspace/occupant guards as other hubs.
 Graph state uses `ovis:graph:v3`: selection, filters (including hidden types), grouping, legend
 visibility, settled positions and viewport. The first read derives supported v2/v1 filters and
 legend disclosure passively, resets the layout once and clears retired tab/pane selections or

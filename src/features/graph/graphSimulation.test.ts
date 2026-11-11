@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { graphSimulation, simulationPositions } from "./graphSimulation.ts";
-import type { GraphData } from "./graphModel.ts";
+import { projectGraph, type GraphData } from "./graphModel.ts";
 const data: GraphData = { nodes: [
   { id: "repo", kind: "workspace", label: "Orchard" },
   { id: "checkout", kind: "worktree", label: "Branches" },
@@ -53,4 +53,13 @@ test("workspace and worktree links cluster their tabs without repository-colour 
     expect(spread).toBeLessThan(gap * 0.6);
   }
   force.stop();
+});
+
+
+test("hidden worktrees give workspace-terminal containment the same physical spring", () => {
+  const projected = projectGraph(data, { search: "", status: "", machine: "", focus: "", showCompleted: true, hiddenKinds: ["worktree"] });
+  const expected: GraphData = { nodes: [data.nodes[0]!, data.nodes[2]!], edges: [{ id: "direct", source: "agent", target: "repo", kind: "terminal-in-workspace", evidence: "Herdr" }] };
+  const actual = graphSimulation(projected, {}).tick(300), direct = graphSimulation(expected, {}).tick(300);
+  expect(simulationPositions(actual.nodes())).toEqual(simulationPositions(direct.nodes()));
+  actual.stop(); direct.stop();
 });

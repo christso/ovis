@@ -207,6 +207,7 @@ const BASE: Record<string, string> = {
   "Machine": "机器",
   "Worktree in workspace": "工作区中的工作树",
   "Workspace": "工作区",
+  "Main checkout": "主检出目录",
   "Legend": "图例",
   "Worktree": "工作树",
   "Status": "状态",

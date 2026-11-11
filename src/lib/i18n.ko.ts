@@ -203,6 +203,7 @@ const BASE: Record<string, string> = {
   "Machine": "머신",
   "Worktree in workspace": "작업 공간의 워크트리",
   "Workspace": "워크스페이스",
+  "Main checkout": "기본 체크아웃",
   "Legend": "범례",
   "Worktree": "워크트리",
   "Status": "상태",

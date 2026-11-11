@@ -158,13 +158,21 @@ try {
         await openNativeAgent(page, "local", chosen.pane_id);
         await page.waitForURL((url) => url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
         await openGraphFromSidebar(page); await node().waitFor();
+        stage = "exact main checkout target";
+        await options(true);
+        const mainCheckout = await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").evaluateAll((options, machine) => options.find((option) => option.textContent?.startsWith("Main checkout ·") && option.textContent?.endsWith(` · ${machine}`))!.getAttribute("value")!, original.name);
+        await inspect(mainCheckout);
+        await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
+        await page.waitForURL((url) => url.searchParams.get("pane") === "graph-split-shell" && !url.searchParams.has("page"));
+        await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
+        await openGraphFromSidebar(page); await node().waitFor();
         await inspect(selectedTerminalId);
       }
       await options(true);
       const focus = page.getByRole("combobox", { name: "Focus graph", exact: true });
       const infraFocus = await focus.locator("option").evaluateAll((options) => options.find((option) => option.textContent?.startsWith("infra ·"))!.getAttribute("value")!);
       await focus.selectOption(infraFocus);
-      assert.equal(await page.locator("[data-graph-node]").count(), 7, "workspace focus includes its hub, nested worktree and five individual terminals");
+      assert.equal(await page.locator("[data-graph-node]").count(), 8, "workspace focus includes its main checkout, linked worktree and five individual terminals");
       assert.equal(await page.locator('.graph-node-kind-terminal[aria-label^="social ·"]').count(), 1, "a worktree numbered tab uses the sidebar workspace name");
       await focus.selectOption(""); await options(false);
       const researchNode = page.locator('[data-graph-node][aria-label^="research ·"]');
@@ -216,7 +224,7 @@ try {
       await page.getByText(/Inventory is incomplete for:.*Graph awaiting inventory/).waitFor();
       await inspect(selectedTerminalId);
       assert.equal(await page.locator(".graph-edge-delegation, .graph-edge-communication").count(), 0, "unmapped agent activity never adds graph links or nodes");
-      assert.equal(await page.locator(".graph-surface [data-graph-node]").count(), 11, "native workspace and worktree hubs connect seven individual terminals");
+      assert.equal(await page.locator(".graph-surface [data-graph-node]").count(), 14, "native workspace and main/linked checkout hubs connect seven individual terminals");
       await options(true);
       assert.equal(await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").filter({ hasText: "Codex 01a1a426" }).count(), 0, "unmapped sessions cannot be selected as nodes");
       await options(false);
