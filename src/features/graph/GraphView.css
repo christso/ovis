@@ -36,14 +36,16 @@
 .graph-stale .graph-node-disc { stroke-dasharray: 4 3; }
 .graph-working-halo { pointer-events: none; fill: none; stroke: color-mix(in srgb, var(--node-colour) 40%, var(--text-strong)); }
 .graph-working-glow { stroke-width: 10; opacity: 0.4; filter: blur(var(--graph-glow-blur)); }
-.graph-working-arc { stroke-width: 3; stroke-linecap: round; stroke-dasharray: 65 35; opacity: 0.95; transform-box: fill-box; transform-origin: center; }
+.graph-working-arc { stroke-width: 3; stroke-linecap: round; opacity: 0.95; transform-box: view-box; transform-origin: 0 0; }
 .graph-status-working:not(.graph-stale) .graph-working-arc { animation: graph-working-turn 6s linear infinite; }
-.graph-status-working:not(.graph-stale) .graph-node-disc { animation: graph-working-breathe 4s ease-in-out infinite; }
+.graph-status-working:not(.graph-stale) .graph-node-disc,
+.graph-status-working:not(.graph-stale) .graph-working-halo { animation: graph-working-breathe 4s ease-in-out infinite; }
 @keyframes graph-working-turn { to { transform: rotate(360deg); } }
 @keyframes graph-working-breathe { 0%, 100% { filter: brightness(0.75); } 50% { filter: brightness(1.45); } }
 @media (prefers-reduced-motion: reduce) {
   .graph-status-working:not(.graph-stale) .graph-working-arc,
-  .graph-status-working:not(.graph-stale) .graph-node-disc { animation: none; }
+  .graph-status-working:not(.graph-stale) .graph-node-disc,
+  .graph-status-working:not(.graph-stale) .graph-working-halo { animation: none; }
 }
 .graph-tools { position: absolute; display: flex; gap: 4px; left: 12px; bottom: 12px; max-width: calc(100% - 24px); flex-wrap: wrap; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); }
 .graph-tools button { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--text); border: 0; border-radius: 5px; background: var(--bg-panel); }
