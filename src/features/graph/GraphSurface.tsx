@@ -193,6 +193,7 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
         if (!point) return null;
         const Icon = node.status ? STATUS_ICON[node.status] : Circle;
         const style = appearance.get(node.id)!;
+        const haloRadius = style.radius + 2 / viewport.k;
         const label = labels.get(node.id);
         return <g key={node.id} data-graph-node={node.id} className={`graph-node graph-node-kind-${node.kind} graph-status-${node.status ?? "unknown"}${selected === node.id ? " graph-selected" : ""}${node.freshness && node.freshness !== "live" ? " graph-stale" : ""}${highlighted ? neighbours.has(node.id) ? " graph-related" : " graph-muted" : ""}`}
           style={{ "--node-colour": style.colour } as CSSProperties} data-degree={style.degree} data-radius={style.radius} transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0} aria-label={nodeLabel(node)} aria-pressed={selected === node.id}
@@ -203,8 +204,8 @@ export function GraphSurface({ nodes, edges, positions, viewport, selected, grou
           <circle className="graph-node-hit" r={Math.max(style.radius + 5, 23 / viewport.k)} />
           <circle className="graph-node-disc" r={style.radius} />
           {node.status === "working" && <g className="graph-working-halo" aria-hidden="true" style={{ "--graph-glow-blur": `${2 / viewport.k}px` } as CSSProperties}>
-            <circle className="graph-working-glow" r={style.radius + 2 / viewport.k} vectorEffect="non-scaling-stroke" />
-            <circle className="graph-working-arc" r={style.radius + 2 / viewport.k} pathLength={100} vectorEffect="non-scaling-stroke" />
+            <circle className="graph-working-glow" r={haloRadius} vectorEffect="non-scaling-stroke" />
+            <path className="graph-working-arc" d={`M 0 ${-haloRadius} A ${haloRadius} ${haloRadius} 0 0 1 0 ${haloRadius}`} vectorEffect="non-scaling-stroke" />
           </g>}
           {Icon && <Icon x={style.radius - 7} y={-style.radius - 7} width={14} height={14} aria-hidden="true" className="graph-status-icon" />}
           {label && <text textAnchor="middle" x={label.x} y={label.y} style={{ fontSize: 12 / viewport.k, strokeWidth: 4 / viewport.k }} className="graph-node-label">{label.text}</text>}

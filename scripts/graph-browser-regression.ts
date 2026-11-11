@@ -35,6 +35,13 @@ try {
       await node.waitFor();
       const arc = node.locator(".graph-working-arc");
       assert.equal(await arc.count(), 1);
+      await page.waitForFunction(() => {
+        const node = document.querySelector('[data-graph-node="session"]')!;
+        return [".graph-working-arc", ".graph-node-disc", ".graph-working-halo"].every((selector) => {
+          const animation = node.querySelector(selector)!.getAnimations()[0];
+          return animation?.playState === "running" && Number(animation.currentTime) > 200;
+        });
+      });
       const rotation = await arc.evaluate(async (element) => {
         const animation = element.getAnimations()[0]!;
         await animation.ready;
@@ -70,17 +77,36 @@ try {
       for (let zoom = 0; zoom < 3; zoom++) {
         if (zoom) { await surface.focus(); for (let key = 0; key < 5; key++) await page.keyboard.press("-"); }
         const geometry = await node.evaluate((element) => {
-          const disc = element.querySelector(".graph-node-disc") as SVGCircleElement, arc = element.querySelector(".graph-working-arc") as SVGCircleElement, glow = element.querySelector(".graph-working-glow") as SVGCircleElement;
+          const disc = element.querySelector(".graph-node-disc") as SVGCircleElement, arc = element.querySelector(".graph-working-arc") as SVGPathElement, glow = element.querySelector(".graph-working-glow") as SVGCircleElement;
           const matrix = disc.getScreenCTM()!, scale = Math.hypot(matrix.a, matrix.b);
-          const width = (circle: SVGCircleElement) => parseFloat(getComputedStyle(circle).strokeWidth) * (getComputedStyle(circle).vectorEffect === "non-scaling-stroke" ? 1 : scale);
-          return { arcWidth: width(arc), glowWidth: width(glow), offset: (arc.r.baseVal.value - disc.r.baseVal.value) * scale };
+          const width = (circle: SVGGraphicsElement) => parseFloat(getComputedStyle(circle).strokeWidth) * (getComputedStyle(circle).vectorEffect === "non-scaling-stroke" ? 1 : scale);
+          return { arcWidth: width(arc), glowWidth: width(glow), offset: (glow.r.baseVal.value - disc.r.baseVal.value) * scale, arcFraction: arc.getTotalLength() / (2 * Math.PI * glow.r.baseVal.value) };
         });
+        assert.ok(Math.abs(geometry.arcFraction - 0.5) < 0.005, "the rotating arc stays half a circle at every zoom");
         assert.ok(geometry.arcWidth >= 2.9 && geometry.glowWidth >= 9.9, "halo and glow keep their screen thickness while zoomed out");
         assert.ok(geometry.glowWidth / 2 > geometry.offset + 2, "the glow overlaps the node interior");
+        // Compare the actual rendered halo, rather than only its changing CSS transform.
+        // A dashed non-scaling circle can become a complete, apparently still ring at low zoom.
+        const pixels = async (time: number) => {
+          await arc.evaluate((element, time) => { element.getAnimations()[0]!.currentTime = time; }, time);
+          const png = (await node.screenshot()).toString("base64");
+          return page.evaluate(async (png) => {
+            const image = new Image(); image.src = `data:image/png;base64,${png}`; await image.decode();
+            const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
+            const context = canvas.getContext("2d")!; context.drawImage(image, 0, 0);
+            return [...context.getImageData(0, 0, image.width, image.height).data];
+          }, png);
+        };
+        await node.locator(".graph-working-halo").evaluate((element) => { const animation = element.getAnimations()[0]!; animation.pause(); animation.currentTime = 0; });
+        const initial = await pixels(0), rotated = await pixels(Number(rotation.duration) / 4);
+        assert.equal(initial.length, rotated.length, "rotation preserves the node bounds");
+        const changed = initial.filter((value, index) => Math.abs(value - rotated[index]!) > 35).length;
+        assert.ok(changed > 10, `the rendered arc visibly moves at zoom ${zoom}; changed channels: ${changed}`);
         if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `graph-working-visibility-${width}-${theme}-zoom-${zoom}.png`) });
       }
       await page.getByRole("button", { name: "Fit graph", exact: true }).click();
       await page.emulateMedia({ reducedMotion: "reduce" });
+      assert.equal(await node.locator(".graph-working-halo").evaluate((element) => element.getAnimations().length), 0, "reduced motion stops halo breathing");
       assert.equal(await arc.evaluate((element) => element.getAnimations().length), 0, "a live reduced-motion change stops rotation");
       assert.equal(await disc.evaluate((element) => element.getAnimations().length), 0, "reduced motion stops the brightness pulse");
       assert.equal(await disc.evaluate((element) => getComputedStyle(element).filter), "none");

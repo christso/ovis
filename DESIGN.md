@@ -4708,7 +4708,11 @@ identify workspace (blue), worktree (orange), tab (green) and optional pane (pur
 hues across palettes, with darker light-mode shades and no text-colour blending, following the
 requested Folio-style category contrast. Working status replaces the small spinner icon with a soft edge halo in the node's type colour.
 A partial ring rotates smoothly once every six seconds, and the disc brightens and dims over
-four seconds. The halo mixes its type colour toward the theme's strong foreground: lighter in
+four seconds, including the halo so its steady glow cannot hide a small node’s pulse. The rotating
+arc covers 180 degrees, following the partial-ring and breathing treatment in
+[Rakazo’s BotAvatar](https://github.com/elie222/rakazo/blob/main/packages/ui-web/src/bot-avatar.tsx).
+Its half-circle gap is geometric: SVG non-scaling dashed circles can render as complete rings
+when zoomed out, hiding their rotation. The halo mixes its type colour toward the theme's strong foreground: lighter in
 dark themes and darker in light themes. A soft ten-pixel glow overlaps the disc. Its three-pixel
 arc, two-pixel gap and blur retain their screen size at every zoom; node radius still follows
 connections. Other statuses retain their distinct icons, and stale sources have a dashed outline.
