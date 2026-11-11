@@ -1,4 +1,5 @@
 import { apiFetch } from "./api-request-id.ts";
+import type { CommunicationTrackingSetupRequest, CommunicationTrackingStatus } from "../../shared/communication-tracking.ts";
 import type { PreferencesChange, SharedPreferences } from "../../shared/preferences.ts";
 import type { AlertWebhookSave, AlertWebhookView } from "../../shared/alert-webhook.ts";
 import type { SeenFinish, SeenPresentation } from "../../shared/seen.ts";
@@ -1206,6 +1207,15 @@ export async function startAgentSignIn(agent: string, machineId = "local"): Prom
 /** GET /api/integrations: herdr's agent integrations on that PC and whether each is installed. */
 export async function fetchIntegrations(machineId = "local"): Promise<IntegrationsResponse["integrations"]> {
   return (await getJson<IntegrationsResponse>(machinePath(machineId, "integrations"))).integrations;
+}
+
+/** Installation belongs to the selected PC; reading never changes its shell files. */
+export function fetchCommunicationTracking(machineId: string, signal?: AbortSignal): Promise<CommunicationTrackingStatus> {
+  return getJson(machinePath(machineId, "agents/communication-tracking"), { cache: "no-store", signal });
+}
+
+export async function setCommunicationTracking(machineId: string, enabled: boolean, expected: CommunicationTrackingSetupRequest): Promise<CommunicationTrackingStatus> {
+  return (await (await sendJson(machinePath(machineId, "agents/communication-tracking"), enabled ? "POST" : "DELETE", enabled ? { shell: expected.shell, profiles: expected.profiles } : {})).json()) as CommunicationTrackingStatus;
 }
 
 /** GET /api/workspace/directories: the folders in `path` (empty: home), for the folder browser. */

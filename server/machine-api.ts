@@ -4,6 +4,7 @@ import type { AgentRowTokens } from "../shared/pane-tokens.ts";
 import type { SharedPreferences } from "../shared/preferences.ts";
 import type { PanePromptResponse, SessionSnapshot } from "../shared/protocol.ts";
 import type { SeenFinish } from "../shared/seen.ts";
+import type { CommunicationTrackingStatus } from "../shared/communication-tracking.ts";
 import { MachineActionRequired, MachineManager, PcUpdateRefused } from "./machines.ts";
 import { TypedCodeError, type TypedCodeFailure } from "../shared/relay-code-offer.ts";
 import { TailnetPcError } from "./tailnet-pcs.ts";
@@ -110,7 +111,7 @@ export const slowMachinePath = (path: string): boolean => path === "worktree/cre
  * forwards, so such a path must be no route at all rather than "some other route".
  */
 export const nonCanonicalPath = (pathname: string): boolean => pathname.includes("//") || (pathname.length > 1 && pathname.endsWith("/")) || /%2f|%5c/i.test(pathname);
-export const MACHINE_PROXY_PATH = /^(?:session|sessions\/(?:history|resume)|agents(?:\/launchers(?:\/search)?)?|agent-catalog(?:\/(?:install|sign-in))?|integrations|system|usage\/statusline|pane\/(?:read|scroll|find|selection|conversation(?:\/image|\/tool-output)?|commands|files|docs|omo-tasks|background-agent|plan|artifacts|btw|prompt|prompt\/answer|input|keys|close|rename|image|split|zoom|swap|move|resize|clear|focus)|workspace\/(?:create|rename|move|close|directories|diff\/files|diff\/file|diff\/refs|git\/log|git\/branches|git\/show|pr|pr\/log|pr\/merge)|worktree\/(?:create|list|inventory|open|remove)|tab\/(?:create|rename|close|move|move-to-workspace)|layout\/ratio|agent\/(?:rename|commands)|plugins\/actions|plugin\/action|fs\/(?:stat|file|favicon|text))$/;
+export const MACHINE_PROXY_PATH = /^(?:session|sessions\/(?:history|resume)|agents(?:\/(?:launchers(?:\/search)?|communication-tracking))?|agent-catalog(?:\/(?:install|sign-in))?|integrations|system|usage\/statusline|pane\/(?:read|scroll|find|selection|conversation(?:\/image|\/tool-output)?|commands|files|docs|omo-tasks|background-agent|plan|artifacts|btw|prompt|prompt\/answer|input|keys|close|rename|image|split|zoom|swap|move|resize|clear|focus)|workspace\/(?:create|rename|move|close|directories|diff\/files|diff\/file|diff\/refs|git\/log|git\/branches|git\/show|pr|pr\/log|pr\/merge)|worktree\/(?:create|list|inventory|open|remove)|tab\/(?:create|rename|close|move|move-to-workspace)|layout\/ratio|agent\/(?:rename|commands)|plugins\/actions|plugin\/action|fs\/(?:stat|file|favicon|text))$/;
 
 
 /**
@@ -431,7 +432,9 @@ export async function handleMachineRequest(request: Request, manager: MachineMan
     // earlier sessions carry their first prompts, and a folder's command files name what is in it (the new-tab
     // dialog's agent commands, a pane's command rows), as do the paths under a pane's folder and a plugin run's
     // output, and a repository's checkouts: never asked for a watching device with the PC's credential
-    if (readOnly && (path === "session" && url.searchParams.get("flock") === "1" || path === "sessions/history" || path === "agent/commands" || path === "pane/commands" || path === "pane/files" || path === "pane/docs" || path === "plugin/action" || path === "worktree/list" || path === "worktree/inventory")) return fail("read_only", "this device can only watch", 403);
+    if (readOnly && (path === "session" && url.searchParams.get("flock") === "1" || path === "sessions/history" || path === "agent/commands" || path === "pane/commands" || path === "pane/files" || path === "pane/docs" || path === "plugin/action" || path === "worktree/list" || path === "worktree/inventory" || path === "agents/communication-tracking")) return fail("read_only", "this device can only watch", 403);
+    const trackingPath = path === "agents/communication-tracking";
+    if (trackingPath && !["GET", "HEAD", "OPTIONS"].includes(request.method) && !owner) return fail("owner_only", "Only the owner can change communication tracking from this app.", 403);
     const movePath = PC_MOVE_PATH.test(path);
     // a move's plan names every pane's folder and conversation, and the rest move or end them: a driving device's only
     if (readOnly && movePath) return fail("read_only", "this device can only watch", 403);
@@ -461,6 +464,7 @@ export async function handleMachineRequest(request: Request, manager: MachineMan
       if (ifNoneMatch) headers.set("if-none-match", ifNoneMatch);
       // what that PC asks of a move from its own page; this server's own guards already passed it here
       if (movePath) headers.set("x-herdr-update", "1");
+      if (trackingPath) headers.set("x-herdr-machine", "1");
       const abort = new AbortController();
       if (path === "fs/file") {
         // a file (a video, say) streams through, with its ranges, never held here; it can
@@ -498,6 +502,12 @@ export async function handleMachineRequest(request: Request, manager: MachineMan
         // held whole before it is passed on (and parsed, for a watcher's prompt), so only up to a size
         let body: Uint8Array<ArrayBuffer> | null = response.status === 304 ? null : await readCapped(response, watchedPrompt ? REMOTE_LIMITS.watchedPrompt : REMOTE_LIMITS.proxy);
         if (movePath && tooOldToMove(manager.list().find((machine) => machine.id === id)?.kind, response.status, answerCode(body))) return fail("pc_update_required", PC_UPDATE_REQUIRED, 409);
+        if (trackingPath && !response.ok && tooOldToMove(manager.list().find((machine) => machine.id === id)?.kind, response.status, answerCode(body))) return fail("pc_update_required", "Update Ovis on this PC to set up communication tracking.", 409);
+        if (trackingPath && response.ok && body) {
+          // This PC's bridge credential must not make the browser's non-owner into an owner.
+          const answer = parseJson<CommunicationTrackingStatus>(body);
+          body = new TextEncoder().encode(JSON.stringify({ ...answer, can_manage: owner && answer.can_manage === true }));
+        }
         if (watchedPrompt && response.ok && body) {
           const answer = parseJson<PanePromptResponse>(body);
           if (answer.prompt?.plan_file !== undefined) {

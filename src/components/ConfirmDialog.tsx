@@ -21,6 +21,8 @@ interface Props {
   title: string;
   body: string;
   confirmLabel: string;
+  /** Setup confirmations use the normal action color; destructive actions keep their existing warning. */
+  destructive?: boolean;
   /** resolves once the deed is done; the owner then takes the dialog down */
   onConfirm: () => Promise<void>;
   /** when the deed is refused with this error code, the action becomes this one */
@@ -28,7 +30,7 @@ interface Props {
   onClose: () => void;
 }
 
-export function ConfirmDialog({ title, body, confirmLabel, onConfirm, escalation, onClose }: Props) {
+export function ConfirmDialog({ title, body, confirmLabel, destructive = true, onConfirm, escalation, onClose }: Props) {
   const t = useT();
   const id = useId();
   const cancel = useRef<HTMLButtonElement>(null);
@@ -80,7 +82,7 @@ export function ConfirmDialog({ title, body, confirmLabel, onConfirm, escalation
         </div>
         <footer className="modal-footer">
           <button ref={cancel} type="button" className="btn" disabled={pending} onClick={onClose}>{t("Cancel")}</button>
-          <button ref={action} type="button" className="btn btn-danger" disabled={pending} onClick={() => void confirm()}>{escalated && escalation ? escalation.label : confirmLabel}</button>
+          <button ref={action} type="button" className={destructive ? "btn btn-danger" : "btn"} disabled={pending} onClick={() => void confirm()}>{escalated && escalation ? escalation.label : confirmLabel}</button>
         </footer>
       </div>
     </div>,

@@ -7,9 +7,14 @@ import { withoutHerdrDiagnostics } from "../server/herdr/client.ts";
 import { herdrCliCaller, herdrCliDirectory, herdrCliEndpoint, herdrCliIdentity, herdrCliOperation, herdrCliSocket, herdrCliSubmitted, recordHerdrCli, sameHerdrCliEndpoint } from "../server/herdr/cli-observations.ts";
 
 import { graphCliTerminalMetadata } from "../shared/graph-cli.ts";
+import { herdrCliLauncher } from "../server/herdr/cli-launcher.ts";
 
-interface Config { version: 1; real: string; journal: string }
-const quote = (word: string) => "'" + word.replaceAll("'", "'\\''") + "'";
+interface Config { version: 1; real: string; journal: string; enabled?: boolean }
+
+function captureEnabled(path: string): boolean {
+  try { return (JSON.parse(readFileSync(path, "utf8")) as Config).enabled !== false; }
+  catch { return false; }
+}
 
 function isShim(path: string): boolean {
   const fd = openSync(path, "r");
@@ -29,22 +34,24 @@ async function install(args: string[]): Promise<void> {
   if (process.platform === "win32") throw new Error("Herdr CLI observation installation currently supports Linux and macOS");
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index += 2) {
-    if (!["--real", "--directory", "--journal"].includes(args[index] ?? "") || !args[index + 1] || values.has(args[index]!)) throw new Error("Use install --real /absolute/herdr --directory /absolute/shim-directory [--journal /absolute/journal-directory]");
+    if (!["--real", "--directory", "--journal", "--enabled"].includes(args[index] ?? "") || !args[index + 1] || values.has(args[index]!)) throw new Error("Use install --real /absolute/herdr --directory /absolute/shim-directory [--journal /absolute/journal-directory] [--enabled true|false]");
     values.set(args[index]!, args[index + 1]!);
   }
   const requested = values.get("--real"), directory = values.get("--directory");
+  if (values.has("--enabled") && !["true", "false"].includes(values.get("--enabled")!)) throw new Error("--enabled must be true or false");
   if (!requested || !directory || !isAbsolute(requested) || !isAbsolute(directory) || (values.has("--journal") && !isAbsolute(values.get("--journal")!))) throw new Error("The real binary, shim directory and journal directory must be absolute paths");
   const real = resolve(requested), actual = realpathSync(real), path = resolve(directory);
   if (!lstatSync(actual).isFile() || actual === join(path, "herdr") || isShim(real)) throw new Error("--real must name the installed Herdr executable, not another Ovis shim");
   mkdirSync(path, { mode: 0o700 });
   try {
+    writeFileSync(join(path, "owner.json"), JSON.stringify({ version: 1, owner: "ovis-herdr-cli-shim" }) + "\n", { mode: 0o600, flag: "wx" });
     const bundle = join(path, "observe.js");
     const built = await Bun.build({ entrypoints: [import.meta.path], target: "bun", packages: "bundle", outfile: bundle });
     if (!built.success) throw new Error(`Cannot bundle the shim: ${built.logs.join("\n")}`);
     await Bun.write(bundle, built.outputs[0]!);
     const config = join(path, "config.json");
-    writeFileSync(config, JSON.stringify({ version: 1, real, journal: values.get("--journal") ?? herdrCliDirectory() } satisfies Config) + "\n", { mode: 0o600 });
-    writeFileSync(join(path, "herdr"), `#!/bin/sh\n# Ovis Herdr CLI shim\nexec ${quote(realpathSync(process.execPath))} ${quote(bundle)} --shim ${quote(config)} -- "$@"\n`, { mode: 0o700 });
+    writeFileSync(config, JSON.stringify({ version: 1, real, journal: values.get("--journal") ?? herdrCliDirectory(), enabled: values.get("--enabled") !== "false" } satisfies Config) + "\n", { mode: 0o600 });
+    writeFileSync(join(path, "herdr"), herdrCliLauncher(realpathSync(process.execPath), path), { mode: 0o700 });
     console.log(JSON.stringify({ directory: path, real, journal: values.get("--journal") ?? herdrCliDirectory() }));
   } catch (error) { rmSync(path, { recursive: true, force: true }); throw error; }
 }
@@ -55,7 +62,7 @@ async function run(configPath: string, args: string[]): Promise<void> {
     || !isAbsolute(raw.real) || !("journal" in raw) || typeof raw.journal !== "string" || !isAbsolute(raw.journal)) throw new Error("Cannot read the Herdr CLI shim configuration");
   const config = raw as Config;
   const operation = herdrCliOperation(args);
-  if (!operation || process.env["HERDR_ENV"] !== "1" || !process.env["HERDR_PANE_ID"]) {
+  if (config.enabled === false || !operation || process.env["HERDR_ENV"] !== "1" || !process.env["HERDR_PANE_ID"]) {
     process.execve(config.real, [config.real, ...args], process.env as Record<string, string>);
     throw new Error("Cannot execute Herdr");
   }
@@ -106,14 +113,14 @@ async function run(configPath: string, args: string[]): Promise<void> {
     const index = lengths[0] ? 0 : 1;
     if (lengths[index]! <= 262144) response = JSON.parse(Buffer.concat(buffers[index]!).toString());
   } catch {}
-  if (source && targetNamespace && herdrCliSubmitted(operation.kind, code, response)) {
+  if (source && targetNamespace && captureEnabled(configPath) && herdrCliSubmitted(operation.kind, code, response)) {
     const currentSource = await herdrCliCaller(sourceSocket, caller, config.journal);
     const currentNamespace = herdrCliIdentity(targetSocket, config.journal);
     const reported = (response as { result?: { agent?: AgentInfo } }).result?.agent;
     // A status-wait error has no agent in its final response: retain pre/post recipient proof.
     const waited = !reported && target ? await herdrCliEndpoint(targetSocket, operation.target, config.journal) : null;
     const recipient = reported ?? (sameHerdrCliEndpoint(target, waited) ? target : null);
-    if (sameHerdrCliEndpoint(source, currentSource) && recipient && currentNamespace?.server_id === targetNamespace.server_id && currentNamespace.boot_id === targetNamespace.boot_id) {
+    if (sameHerdrCliEndpoint(source, currentSource) && recipient && currentNamespace?.server_id === targetNamespace.server_id && currentNamespace.boot_id === targetNamespace.boot_id && captureEnabled(configPath)) {
       recordHerdrCli(sourceSocket, { id: randomUUID(), kind: operation.kind, producer: "herdr-cli", scope: "terminal", occurred_at,
         source_terminal: graphCliTerminalMetadata(source),
         target_terminal: { ...targetNamespace, terminal_id: recipient.terminal_id, pane_id: recipient.pane_id, agent: recipient.agent ?? null, name: recipient.name ?? null },

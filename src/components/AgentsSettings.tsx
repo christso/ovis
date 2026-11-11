@@ -28,6 +28,7 @@ import { userErrorMessage, type UserError } from "../lib/userError.ts";
 import { AgentMark } from "./AgentMark.tsx";
 import { AgentTile } from "./AgentTile.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
+import { CommunicationTrackingSettings } from "./CommunicationTrackingSettings.tsx";
 import { Segmented, SettingsBare, SettingsGroup, SettingsQuery, SettingsRow, SettingsSelect, Toggle } from "./SettingsControls.tsx";
 import { UsageAccountDialog } from "./UsageAccountDialog.tsx";
 import { UsageSignInAgain } from "./UsageLocalLogin.tsx";
@@ -421,6 +422,7 @@ export function AgentsSettings({ watching, onLocalLogin, onOpenPane, onOpenGuide
   const otherIntegrations = page?.otherIntegrations ?? [];
   return (
     <SettingsBare.Provider value={true}>
+      {!watching && <CommunicationTrackingSettings key={machineId} />}
       {/* the first-run guide again (lib/setupGuide.ts): it sets up this PC, and a watching device is never shown it */}
       {!watching && local && <SettingsGroup section="guide">
         <SettingsRow icon={Compass} label={t("Setup guide")}>

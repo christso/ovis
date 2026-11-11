@@ -7,6 +7,7 @@ import { graphRegistryInventory } from "../shared/graph-registry-inventory.ts";
 import { graphHerdrEndpointKey, graphRelationships } from "../shared/graph-relationships.ts";
 import { graphInventory, graphTarget } from "../src/features/graph/graphInventory.ts";
 import { GraphRegistryStore } from "./graph-registry.ts";
+import { CommunicationTracking } from "./communication-tracking.ts";
 import { verifyGraphSnapshot } from "./graph-source.ts";
 import { finishHerdrIdentity, herdrLifetime } from "./finishes.ts";
 import { herdrCliEndpoint, herdrCliObservations } from "./herdr/cli-observations.ts";
@@ -83,6 +84,57 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     expect(cancelChild.signalCode).toBe("SIGTERM");
     expect(readFileSync(log, "utf8").split("SHIM_SIGNAL_PROBE")).toHaveLength(2);
     expect((await herdrCliObservations(socket, journal))?.receipts).toHaveLength(3);
+
+    const managedHome = join(root, "managed-home"), managedJournal = join(root, "managed-journal"), managedConfig = join(root, "managed.toml");
+    const managedReal = join(root, "managed-real"), managedScript = join(root, "managed-real.ts"), heldReply = join(root, "managed-ready"), releaseReply = join(root, "managed-release");
+    mkdirSync(managedHome);
+    writeFileSync(managedConfig, '[terminal]\ndefault_shell = "/bin/bash"\nshell_mode = "non_login"\n');
+    writeFileSync(managedScript, `
+import { herdrRpc } from ${JSON.stringify(new URL("./herdr/client.ts", import.meta.url).href)};
+const args = process.argv.slice(2), socket = process.env.HERDR_SOCKET_PATH!;
+const child = Bun.spawn([${JSON.stringify(binary)}, ...args], { stdin: "inherit", stdout: "pipe", stderr: "pipe" });
+const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+if (code === 0 && args[0] === "agent" && args[1] === "prompt" && args[3] === "SHIM_MANAGED_INFLIGHT_PROBE") {
+  await Bun.write(${JSON.stringify(heldReply)}, stdout);
+  const deadline = Date.now() + 15000;
+  while (!(await Bun.file(${JSON.stringify(releaseReply)}).exists())) {
+    if (Date.now() > deadline) throw new Error("Owned managed prompt reply was not released");
+    await herdrRpc("pane.get", { pane_id: ${JSON.stringify(targetPane)} }, socket);
+  }
+}
+process.stdout.write(stdout); process.stderr.write(stderr); process.exit(code);
+`);
+    writeFileSync(managedReal, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(managedScript)} "$@"\n`, { mode: 0o700 });
+    const managed = new CommunicationTracking({ home: managedHome, directory: managedJournal, configPath: managedConfig,
+      env: { HOME: managedHome, SHELL: "/bin/bash", PATH: [bin, process.env["PATH"]].filter(Boolean).join(delimiter), OVIS_HERDR_BIN: managedReal } });
+    const managedEnvironment = { PATH: [join(managedJournal, "installation"), bin, process.env["PATH"]].filter(Boolean).join(delimiter) };
+    expect((await managed.enable()).state).toBe("enabled");
+    expect(await herdrCliEndpoint(socket, sourcePane, managedJournal)).not.toBeNull();
+    expect(await herdrCliEndpoint(socket, name, managedJournal)).not.toBeNull();
+    expect(await invoke(["agent", "prompt", name, "SHIM_MANAGED_CAPTURE_PROBE"], sourcePane, managedEnvironment)).toMatchObject({ code: 0, stderr: "" });
+    const managedPage = await herdrCliObservations(socket, managedJournal);
+    expect(managedPage?.receipts).toHaveLength(1);
+    expect(managedPage!.receipts[0]).toMatchObject({ kind: "communication", scope: "terminal", source_terminal: { terminal_id: source.root_pane.terminal_id }, target_terminal: { terminal_id: target.root_pane.terminal_id } });
+    const held = invoke(["agent", "prompt", name, "SHIM_MANAGED_INFLIGHT_PROBE"], sourcePane, managedEnvironment);
+    for (const deadline = Date.now() + 10000; !(await Bun.file(heldReply).exists());) {
+      if (Date.now() > deadline) throw new Error("Owned managed prompt did not reach its held success reply");
+      await herdrRpc("pane.read", { pane_id: targetPane, source: "recent", strip_ansi: true });
+    }
+    expect(JSON.parse(readFileSync(heldReply, "utf8")).result.agent.terminal_id).toBe(target.root_pane.terminal_id);
+    expect((await managed.disable()).state).toBe("disabled");
+    await Bun.write(releaseReply, "release");
+    expect(await held).toMatchObject({ code: 0, stderr: "" });
+    expect((await herdrCliObservations(socket, managedJournal))?.receipts.map((receipt) => receipt.id)).toEqual(managedPage!.receipts.map((receipt) => receipt.id));
+    expect(await invoke(["agent", "prompt", name, "SHIM_MANAGED_DISABLED_PROBE"], sourcePane, managedEnvironment)).toMatchObject({ code: 0, stderr: "" });
+    expect((await herdrCliObservations(socket, managedJournal))?.receipts.map((receipt) => receipt.id)).toEqual(managedPage!.receipts.map((receipt) => receipt.id));
+    const managedMarkers = ["SHIM_MANAGED_CAPTURE_PROBE", "SHIM_MANAGED_INFLIGHT_PROBE", "SHIM_MANAGED_DISABLED_PROBE"];
+    for (const deadline = Date.now() + 10000; !managedMarkers.every((marker) => readFileSync(log, "utf8").includes(marker));) {
+      if (Date.now() > deadline) throw new Error("A managed prompt did not reach the owned recipient");
+      await herdrRpc("pane.read", { pane_id: targetPane, source: "recent", strip_ansi: true });
+    }
+    const managedReceived = readFileSync(log, "utf8");
+    for (const marker of managedMarkers) expect(managedReceived.split(marker)).toHaveLength(2);
+
     const previous = await herdrCliEndpoint(socket, name, journal);
     const processes = (await herdrRpc("pane.process_info", { pane_id: targetPane })).process_info?.foreground_processes ?? [];
     const ownProcess = processes.find((entry) => entry.argv?.includes(program));
