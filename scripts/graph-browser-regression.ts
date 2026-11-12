@@ -75,11 +75,18 @@ try {
       await page.keyboard.press("+"); assert.notEqual(await surface.locator(":scope > g").getAttribute("transform"), beforeZoom);
       await page.keyboard.press("ArrowRight"); await page.keyboard.press("0");
       const beforeLegend = await surface.locator(":scope > g").getAttribute("transform");
-      await page.getByRole("button", { name: "Legend", exact: true }).click();
+      await page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem("ovis:graph:v4")!);
+        localStorage.setItem("ovis:graph:v4", JSON.stringify({ ...state, legendOpen: false }));
+      });
       await page.reload(); await node("session").waitFor();
-      assert.equal(await page.getByRole("button", { name: "Legend", exact: true }).getAttribute("aria-expanded"), "false");
+      assert.equal(await page.getByRole("button", { name: "Legend", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("group", { name: "Legend", exact: true }).isVisible(), true);
+      assert.equal(await page.locator(".graph-kind-legend").isVisible(), true, "an older collapsed preference cannot hide legend items");
+      const legendHeight = await page.locator(".graph-legend").evaluate((element) => element.getBoundingClientRect().height);
+      const itemHeight = await page.locator(".graph-kind-legend button").first().evaluate((element) => element.getBoundingClientRect().height);
+      assert.ok(legendHeight <= itemHeight + 10, "legend has no extra disclosure row at desktop or phone widths");
       assert.equal(await surface.locator(":scope > g").getAttribute("transform"), beforeLegend);
-      await page.getByRole("button", { name: "Legend", exact: true }).click();
       await page.locator(".graph-kind-legend").getByRole("button", { name: "Terminal", exact: true }).click();
       assert.equal(await page.locator(".graph-node-kind-terminal").count(), 0);
       await page.reload(); assert.equal(await page.locator(".graph-node-kind-terminal").count(), 0);

@@ -40,7 +40,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
   const compact = useMediaQuery("(max-width: 700px)");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const filtersId = useId(), detailsId = useId(), legendId = useId();
+  const filtersId = useId(), detailsId = useId();
   const hiddenKinds = state.filters.hiddenKinds ?? DEFAULT_HIDDEN_KINDS;
   const activeFilters = [state.filters.status, state.filters.machine, state.filters.focus, state.filters.showCompleted, state.groupMachine, state.filters.communication !== "recent", ...hiddenKinds].filter(Boolean).length;
   const host = useRef<HTMLDivElement>(null);
@@ -127,11 +127,8 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           <button type="button" title={t("Copy graph link")} aria-label={t("Copy graph link")} onClick={() => { void copyText(window.location.href); }}><Link size={18} /></button>
         </div>
         </div>
-        {kinds.length > 0 && <div className="graph-legend">
-          <button type="button" className="graph-legend-toggle" aria-expanded={state.legendOpen} aria-controls={legendId} onClick={() => setState((previous) => ({ ...previous, legendOpen: !previous.legendOpen }))}>
-            <ChevronDown size={16} aria-hidden="true" />{t("Legend")}
-          </button>
-          <div className="graph-kind-legend" id={legendId} hidden={!state.legendOpen}>{kinds.map((kind) => <button type="button" key={kind} aria-pressed={!hiddenKinds.includes(kind)} onClick={() => toggleKind(kind)}><i aria-hidden="true" style={{ background: graphNodeColour({ kind }) }} />{graphKindLabel(t, kind)}</button>)}</div>
+        {kinds.length > 0 && <div className="graph-legend" role="group" aria-label={t("Legend")}>
+          <div className="graph-kind-legend">{kinds.map((kind) => <button type="button" key={kind} aria-pressed={!hiddenKinds.includes(kind)} onClick={() => toggleKind(kind)}><i aria-hidden="true" style={{ background: graphNodeColour({ kind }) }} />{graphKindLabel(t, kind)}</button>)}</div>
         </div>}
       </div>
       <aside className="graph-details" aria-label={t("Graph details")}>
