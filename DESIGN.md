@@ -109,10 +109,7 @@ Only tokens overridden by `[data-theme="light"]` have a light value. Both column
 | Syntax/type | `--syntax-type` | `#6cb8d6` | `#155a72` |
 | Syntax/variable | `--syntax-variable` | `#e0c08f` | `#7a5418` |
 | Syntax/meta | `--syntax-meta` | `#b49dd6` | `#5d4791` |
-| Graph/workspace | `--graph-workspace` | `#3b82f6` | `#2563eb` |
-| Graph/worktree | `--graph-worktree` | `#f97316` | `#c2410c` |
-| Graph/tab | `--graph-tab` | `#22c55e` | `#15803d` |
-| Graph/pane | `--graph-pane` | `#a78bfa` | `#7c3aed` |
+| Graph/repository | `--graph-repository` | `#b3b3b3` | `#777777` |
 | Alert/background | `--droplet-bg` | `#000` | `#000` |
 | Alert/text | `--droplet-text` | `#f5f5f7` | `#f5f5f7` |
 | Alert/dim text | `--droplet-text-dim` | `rgba(245, 245, 247, 0.62)` | `rgba(245, 245, 247, 0.62)` |
@@ -5325,123 +5322,64 @@ currently verified target without changing Herdr's focus or sending terminal inp
 Back/Forward restores the graph selection, filters and terminal location. Watch-only devices
 receive neither private Graph inventory nor the lazy graph rendering chunk.
 
-The visual reference is [Folio's graph](https://github.com/evergreen-it-dev/folio/tree/2dd626383e6e2462a642a3d99e6c97d3aa3f9894/web/src/app/graph):
-circular nodes, degree-based size, category colours, tree edges and connected motion. Ovis uses SVG instead
-of Folio's canvas so each node remains a native keyboard target with a complete accessible name,
-plus an inspector selector for phone and keyboard users. The implementation is independently
-written, with the degree-sizing curve adapted as credited in THIRD_PARTY_NOTICES.md. The containment and thread distinction also follows
-[Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel): physical checkout metadata and logical
-session identity remain separate.
+The graph uses circular nodes and connected motion from
+[Folio's graph](https://github.com/evergreen-it-dev/folio/tree/2dd626383e6e2462a642a3d99e6c97d3aa3f9894/web/src/app/graph).
+SVG preserves native keyboard targets and complete accessible names. The degree-sizing curve is
+adapted as credited in THIRD_PARTY_NOTICES.md; other implementation is independently written.
 
-D3 force links pull connected nodes, repulsion separates clusters and collision keeps circles
-apart. Collision padding balances the larger circles so workspace clusters remain distinct.
-Radius grows with distinct visible connections of every type: direct terminals, worktrees,
-communication and delegation. Parallel links, replies, self-links and recorded event counts cannot
-inflate it. Hidden links do not contribute. The capped square-root curve follows
-[Folio's sizing model](https://github.com/evergreen-it-dev/folio/blob/94f4e0a6e9f83bd84f80ae097e47910242b7bd99/web/src/app/graph/graphModel.ts),
-tuned to `6 + 6 × min(16, 1.5 × √degree)`: five connections give about 1.74 times the
-diameter and three times the area of one connection. A fixed curve keeps unrelated inventory
-changes from rescaling existing nodes, and the cap bounds crowded hubs. This connection-based sizing differs from Zed's
-project-grouped thread list because Graph also shows relationships between nodes. Node fills
-identify workspace (blue), worktree (orange) and terminal (green). Dedicated theme tokens keep these
-hues across palettes, with darker light-mode shades and no text-colour blending, following the
-requested Folio-style category contrast. Working status replaces the small spinner icon with a soft edge halo in the node's type colour.
-A partial ring rotates smoothly once every six seconds, and the disc brightens and dims over
-four seconds, including the halo so its steady glow cannot hide a small node’s pulse. The rotating
-arc covers 180 degrees, following the partial-ring and breathing treatment in
-[Rakazo’s BotAvatar](https://github.com/elie222/rakazo/blob/main/packages/ui-web/src/bot-avatar.tsx).
-Its half-circle gap is geometric: SVG non-scaling dashed circles can render as complete rings
-when zoomed out, hiding their rotation. The halo mixes its type colour toward the theme's strong foreground: lighter in
-dark themes and darker in light themes. A soft ten-pixel glow overlaps the disc. Its three-pixel
-arc, two-pixel gap and blur retain their screen size at every zoom; node radius still follows
-connections. Other statuses retain their distinct icons, and stale sources have a dashed outline.
-Reduced motion and unavailable sources keep both indicators static; working status ending removes
-them. Labels and edges do not pulse. Workspace and worktree activity is independent of their attention
-status: any working terminal below the hub activates its halo, including child worktrees, while
-Done/Input badges retain Herdr’s priority. Selection does not change activity, and the Working
-filter includes these active parents.
-Accessible names still include status and freshness. This extends the static, node-coloured local
-centre halo in [Folio's GraphCanvas](https://github.com/evergreen-it-dev/folio/blob/main/web/src/app/graph/GraphCanvas.tsx)
-to indicate active work in Ovis. Unlike Zed's project/thread list, the graph reserves node fills for
-types, so motion sits outside the disc. The SVG and CSS are independently written. The type legend sits below the canvas, with a keyboard-accessible disclosure
-whose state survives reloads. Hierarchy springs are shorter and stronger than communication
-springs; root hubs repel enough to separate work contexts without inventing repository affinity.
+The topology is **Repository → Terminal**, following the maintainer's shared-repository design.
+Verified configured remote identity joins checkouts across machines, while local-only repositories
+and non-Git Folder hubs stay machine-scoped. Workspace and worktree levels are removed; exact
+machine, workspace, branch and checkout context remains in terminal titles and the inspector.
+This follows [Warp's vertical tabs](https://docs.warp.dev/terminal/windows/vertical-tabs/) for
+individual terminal context and [Agent Notifications](https://docs.warp.dev/agents/capabilities/agent-notifications/)
+for terminal-level working, needs-input and completed states. Ovis differs by representing a verified
+repository once across PCs. No Warp code or pixels are copied.
 
-The legend entries are native toggle buttons: visible types are pressed, hidden types are faded
-and crossed out. Entries come from the inventory, so hiding every type never removes the controls
-needed to restore them. Visibility projects the evidenced graph before layout and connection sizing.
-Visible descendants connect to their nearest visible ancestor, including direct workspace → terminal
-containment when worktrees are hidden. Hidden terminal receipts project to visible checkouts or
-workspaces, retaining ordered endpoints, kind, counts, latest activity and source provenance.
-Collapsed self-links and endpoints without an eligible ancestor disappear. Non-type filters keep
-original endpoint eligibility; collapsed-container Focus uses projected adjacency to retain neighbours.
-Unresolved historical activity and Open ownership remain outside this display projection. The existing force simulation reheats for the changed topology and settles again, retaining
-the user's viewport. Reduced motion settles without animation. This follows Folio's graph type
-filters rather than Zed's project/thread list; the graph needs independent type visibility while
-preserving the native workspace hierarchy. The legend controls are independently written.
+Repository discs always use the neutral `--graph-repository` theme token, with no status roll-up,
+icon or halo. Terminal fills reuse sidebar `paneStatus` and `--status-working`, `--status-done`,
+`--status-blocked`; READY and unavailable states use `--text-dim`. DONE carries a tick, INPUT a
+question indicator, and background waiting retains BG rather than being shown as user-blocked.
+Theme variations follow the sidebar tokens. Live RUN terminals keep the six-second rotating
+half-ring and four-second breathing treatment. The geometric half-circle follows the partial-ring
+motion reference in [Rakazo's BotAvatar](https://github.com/elie222/rakazo/blob/main/packages/ui-web/src/bot-avatar.tsx).
+The ten-pixel glow, three-pixel arc and two-pixel gap retain their screen size while zooming.
+Reduced motion stops animation, and disconnected or unavailable sources have no active halo.
 
-Group by machine adds a soft, translucent cloud behind each machine's visible nodes, with a
-machine-name label and a stable background colour. Node fills retain their type colours.
-The padded rounded boundary follows current node positions and sizes through dragging and force
-motion, including single-node groups. Clouds are SVG backgrounds under links and nodes and accept
-no pointer or keyboard input. Filters remove empty clouds; explicit Fit includes their bounds.
-Clouds share the nodes' frames and viewport, so settled polls and reduced motion add no animation.
-This extends the project grouping in [Zed's Agent Panel](https://zed.dev/docs/ai/agent-panel) to
-machine membership in Ovis's cross-machine graph, with soft envelopes in place of rigid lanes.
-The existing grouping force remains; dragging members between clusters can overlap their clouds
-without changing machine identity.
+The legend below the canvas toggles the two types with native pressed buttons. Hiding terminals
+projects their recorded relationships to the repository or Folder hub, retaining counts, latest
+activity, sources, direction and kind. Intra-repository links remain between visible terminals;
+collapsed self-links disappear. Search/status/machine eligibility remains tied to original endpoints.
+Focus on collapsed terminals retains their own receipts. Unresolved historical activity stays in
+details and never gains an action. **Open in Workspace** appears only on a terminal and refreshes
+its exact machine/lifetime/workspace/occupant evidence before opening; repository identity never
+authorizes navigation. Herdr focus and input remain unchanged.
 
-Git workspaces use workspace → worktree → terminal for both main and linked checkouts.
-An orange Main checkout node identifies the physical location without inventing a branch name;
-plain folders and missing native checkout metadata keep direct workspace → terminal containment.
-This follows [Zed's project grouping for parallel agents](https://zed.dev/docs/ai/parallel-agents),
-where linked-worktree threads remain under their project; Ovis also projects recorded graph relationships.
-The implementation is independent, with no adapted code or copied visual assets. The graph has three types: blue Workspace, orange Worktree and
-green Terminal, all visible by default. Every pane contributes exactly one terminal node; a tab
-adds no container node. A single-terminal tab keeps its native tab/worktree name, while splits
-use their individual names and statuses. This follows [Warp's pane view in vertical tabs](https://docs.warp.dev/terminal/windows/vertical-tabs/),
-which exposes each split as an individual row; Ovis adapts that model to a graph and calls each
-leaf Terminal. The implementation is independent, with no adapted Warp code or copied pixels.
+Short hierarchy springs cluster direct terminals, with weaker communication springs. Distinct
+visible neighbours of all link kinds drive `6 + 6 × min(16, 1.5 × √degree)` sizing. Event counts,
+parallel edges, replies and self-links do not inflate it; hidden connections do not count. Dragging
+pulls connected neighbours and releases on pointer cancellation, lost capture, pinch takeover or
+unmount. The simulation settles and stops. Status/order polling preserves coordinates; real topology
+changes reheat from visible positions. Fit and Reset explicitly reframe the graph. Pan, wheel zoom,
+touch/pinch and keyboard input retain viewport until those actions.
 
-Plain folders have workspace hubs without Git metadata; empty workspaces stay visible and
-orphaned worktrees remain independent. Workspace focus follows the sidebar's worktree membership.
-Terminal identity includes machine, daemon lifetime, workspace, native tab and its own pane,
-terminal and agent occupant identity. Renames, status changes and sibling splits preserve it.
-Open resolves only its exact verified current target. A missing agent proof cannot substitute a
-shell; a healthy shell stays openable when another split is unverified. Hub opening chooses only
-one of its own verified terminals, never a child worktree; empty hubs have no terminal action.
+Machine grouping forces and labelled translucent clouds include terminals only. Shared hubs have
+no machine owner or cloud. Filtering to a machine preserves its shared hub as ancestry. Cloud
+geometry follows node motion and radius, adds no pointer target, and is included by Fit.
 
-Recorded endpoints map to individual terminals, including communication between splits in one
-tab. Repeated receipts for the same terminal pair are counted together; historical or ambiguous
-endpoints stay in the related terminal's activity details without invented nodes or actions.
-Incoming and outgoing records retain their counts, timestamps and sources. Communication filters
-affect graph edges while recorded activity remains an archive. Complete names remain available
-in SVG titles, accessible names and the inspector; explicitly named terminals have label priority.
+Repository evidence comes only from the bridge owning the terminal's cwd, as ephemeral sanitized
+Git discovery. Origin wins, otherwise a sole remote is required. SSH/HTTPS equivalence is limited to the standard git account on documented public forges.
+Generic-host SSH retains relative/absolute path semantics and transport; unsupported accounts
+fall back locally. Host/owner/fork and nondefault ports stay distinct. Raw URL
+credentials never reach the graph. Missing evidence uses machine-local Git or Folder identity.
+See [Graph's identity contract](docs/graph.md#repository-identity-evidence) for the exact policy.
 
-Dragging fixes one node temporarily and reheats the connected simulation. Release, pointer
-cancellation, lost capture, pinch takeover and unmount release fixed coordinates. The simulation
-cools and stops when idle. Identical roster polls, status changes and event-count changes neither
-restart nor reseed it. Real topology changes start from the visible coordinates, including while
-a drag is in progress. Reduced motion calculates the same physics in bounded synchronous steps
-instead of animating it. Pan, pointer-centred wheel zoom, touch pan/pinch and keyboard navigation
-retain the viewport until explicit Fit or Reset. Reset rebuilds and settles a natural layout,
-then refits while retaining selection, filters and optional machine grouping.
-
-Adding the main-checkout hub preserves existing node IDs and v3 preference meanings; new nodes receive
-positions without resetting the user's viewport. Main-checkout identity includes its repository key,
-checkout path and the same exact machine/lifetime/workspace/occupant guards as other hubs.
-Graph state uses `ovis:graph:v3`: selection, filters (including hidden types), grouping, legend
-visibility, settled positions and viewport. The first read derives supported v2/v1 filters and
-legend disclosure passively, resets the layout once and clears retired tab/pane selections or
-focus. Old hidden tabs become hidden terminals; the optional pane choice is ignored because
-terminals are visible by default. The older graph, kind and pane stores remain unchanged for old
-open pages and rollback. Old writers cannot overwrite v3, and new writers leave older stores
-alone. No HTTP/WS contract carries this browser-local state. Copied links use `gk=terminal`, accept
-old `gk=tab` and retire `gp`; Ovis's own pane/view URL fields remain intact. See [the storage contract](docs/graph.md).
-Unknown future versions and unparseable JSON are never overwritten. Simulation frames remain
-local to the renderer; only settled layouts and completed gestures are persisted. Shareable query
-fields leave Ovis's pane/view location intact. A saved viewport wins over automatic framing;
-a default empty frame receives its initial Fit when inventory first arrives.
+Graph state moves to the isolated `ovis:graph:v4` store. Supported older stores pass compatible
+filters, terminal selection, legacy workspace focus, grouping and legend disclosure forward, while
+coordinates reset once and removed kinds/selections are dropped. Older stores remain byte-for-byte
+unchanged for open older pages and rollback; unknown or malformed current stores are not overwritten.
+Copied links retain Ovis pane/view fields. Only settled layouts and completed gestures are persisted;
+simulation frames stay renderer-local. The storage details are in [docs/graph.md](docs/graph.md).
 
 Phone controls follow [Paseo's compact workspace header](https://github.com/getpaseo/paseo/blob/main/packages/app/src/screens/workspace/compact-workspace-header/index.tsx)
 and [filter trigger](https://github.com/getpaseo/paseo/blob/main/packages/app/src/components/hosts/host-filter.tsx).

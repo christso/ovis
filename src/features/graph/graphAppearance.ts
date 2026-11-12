@@ -1,4 +1,4 @@
-import type { GraphData, GraphKind } from "./graphModel.ts";
+import type { GraphData, GraphNode } from "./graphModel.ts";
 
 // Folio's capped square-root curve, tuned for stronger contrast between small hubs.
 export const nodeRadius = (degree: number) => 6 + 6 * Math.min(16, 1.5 * Math.sqrt(Math.max(0, degree)));
@@ -8,10 +8,16 @@ export function machineColour(key: string): string {
   return `color-mix(in srgb, hsl(${((hash >>> 0) % 36000) / 100} 65% 52%) 70%, var(--text-strong))`;
 }
 
-const NODE_COLOURS: Record<GraphKind, string> = {
-  workspace: "var(--graph-workspace)", worktree: "var(--graph-worktree)", terminal: "var(--graph-tab)",
-};
-export const graphNodeColour = (kind: GraphKind): string => NODE_COLOURS[kind];
+export function graphNodeColour(node: Pick<GraphNode, "kind" | "status" | "freshness">): string {
+  if (node.kind === "repository") return "var(--graph-repository)";
+  if (node.freshness && node.freshness !== "live") return "var(--text-dim)";
+  switch (node.status) {
+    case "working": case "waiting": return "var(--status-working)";
+    case "blocked": return "var(--status-blocked)";
+    case "done": return "var(--status-done)";
+    default: return "var(--text-dim)";
+  }
+}
 
 export function graphAppearance(data: GraphData) {
   const neighbours = new Map(data.nodes.map((node) => [node.id, new Set<string>()]));
@@ -20,6 +26,6 @@ export function graphAppearance(data: GraphData) {
   }
   return new Map(data.nodes.map((node) => {
     const degree = neighbours.get(node.id)!.size;
-    return [node.id, { degree, radius: nodeRadius(degree), colour: graphNodeColour(node.kind) }];
+    return [node.id, { degree, radius: nodeRadius(degree), colour: graphNodeColour(node) }];
   }));
 }

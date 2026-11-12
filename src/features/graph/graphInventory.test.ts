@@ -36,9 +36,9 @@ it("shows split terminals once under their main checkout and visible by default"
   expect(panes.map((node) => node.label)).toEqual(["Build shell", "Test shell"]);
   expect(panes.map((node) => node.status)).toEqual(["idle", "working"]);
   expect(projectGraph(data, DEFAULT_GRAPH_STATE.filters).nodes.filter((node) => node.kind === "terminal")).toHaveLength(2);
-  expect(data.nodes).toHaveLength(4);
-  const parent = data.nodes.find((node) => node.kind === "worktree")!.id;
-  expect(data.edges.filter((edge) => edge.kind === "terminal-in-worktree").map((edge) => edge.target)).toEqual([parent, parent]);
+  expect(data.nodes).toHaveLength(3);
+  const parent = data.nodes.find((node) => node.kind === "repository")!.id;
+  expect(data.edges.filter((edge) => edge.kind === "terminal-in-repository").map((edge) => edge.target)).toEqual([parent, parent]);
   for (const [index, node] of panes.entries()) expect(graphTarget(state.registry, state.rows(), node.id, state.machines)).toEqual({ machine_id: state.machine.id, pane_id: state.snapshot.panes[index]!.pane_id });
 });
 
@@ -85,7 +85,7 @@ describe("workspace tabs in Graph", () => {
     const state = source(); agent(state, 0);
     const data = state.graph();
     expect(tabNodes(data).map((node) => node.label)).toEqual(["obsidian", "phone", "social"]);
-    expect(data.nodes.filter((node) => node.kind === "workspace")).toHaveLength(1);
+    expect(data.nodes.filter((node) => node.kind === "repository")).toHaveLength(1);
     expect(relationships(data)).toEqual([]);
     const focus = data.groups!.find((group) => group.label === "infra")!;
     expect(tabNodes(projectGraph(data, { ...DEFAULT_GRAPH_STATE.filters, focus: focus.id })).map((node) => node.label)).toEqual(["obsidian", "phone", "social"]);
@@ -174,7 +174,7 @@ describe("workspace tabs in Graph", () => {
     ];
     const data = state.graph(), obsidian = data.nodes.find((node) => node.label === "obsidian")!, phone = data.nodes.find((node) => node.label === "phone")!;
     expect(tabNodes(data)).toHaveLength(3);
-    expect(data.nodes.filter((node) => node.kind === "workspace")).toHaveLength(1);
+    expect(data.nodes.filter((node) => node.kind === "repository")).toHaveLength(1);
     expect(data.edges.find((edge) => edge.kind === "communication")).toMatchObject({ source: obsidian.id, target: phone.id, eventCount: 2, sources: ["codex"] });
     expect(data.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
     expect(obsidian.activity).toHaveLength(1);
@@ -312,7 +312,7 @@ it("projects deduplicated real receipts without granting historical activity an 
   const message = relationships(view)[0]!;
   expect(relationships(view)).toHaveLength(1);
   expect(message).toMatchObject({ eventCount: 2, lastObservedAt: "2026-11-10T00:01:00Z", sources: ["codex"] });
-  expect(view.nodes.find((node) => node.id === message.source)!.kind).toBe("worktree");
+  expect(view.nodes.find((node) => node.id === message.source)!.kind).toBe("repository");
   expect(relationships(raw)).toHaveLength(2);
   expect(graphTarget(state.registry, state.rows(), message.id, state.machines)).toBeNull();
   state.registry.observations = state.registry.observations.slice(0, 2).map((event, index) => event.source === "codex" && index === 0 ? { ...event, target_native_session_id: "00000000-0000-4000-8000-000000000009" } : event);

@@ -32,15 +32,17 @@ import { RUNTIME_MOVE_JA } from "./i18n/runtime-move.ja.ts";
  * in English. Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Folder": "フォルダー",
+  "Repository": "リポジトリ",
+  "Hierarchy links connect repositories or folders directly to terminals. Communication and delegation links show recorded activity.": "階層リンクはリポジトリまたはフォルダーをターミナルに直接接続します。通信と委任のリンクは記録された活動を示します。",
+  "Terminal in repository": "リポジトリ内のターミナル",
+
   "Message from {name}": "{name} からのメッセージ",
   "Open message source": "メッセージの送信元を開く",
   "Message source is unavailable": "メッセージの送信元を利用できません",
 
-  "Terminal in workspace": "ワークスペース内のターミナル",
-  "Terminal in worktree": "ワークツリー内のターミナル",
   "These records have no verified terminal to open.": "これらの記録には開ける確認済みのターミナルがありません。",
   "These sessions have no verified terminal to open.": "これらのセッションには開ける確認済みのターミナルがありません。",
-  "Hierarchy links show workspaces, worktrees and terminals. Communication and delegation links show recorded activity.": "階層リンクはワークスペース、ワークツリー、ターミナルを示します。通信と委任のリンクは記録された活動を示します。",
   "Terminal activity": "ターミナルのアクティビティ",
   "Recorded activity": "記録された活動",
   "Related items: {count}": "関連項目: {count}",
@@ -220,11 +222,7 @@ const BASE: Record<string, string> = {
   "Identity unavailable": "識別情報なし",
   "Loading work registry…": "作業レジストリを読み込み中…",
   "Machine": "マシン",
-  "Worktree in workspace": "ワークスペース内のワークツリー",
-  "Workspace": "ワークスペース",
-  "Main checkout": "メインのチェックアウト",
   "Legend": "凡例",
-  "Worktree": "ワークツリー",
   "Status": "状態",
   "This device can only watch": "このデバイスは閲覧のみ可能です",
   "Searching executables…": "実行ファイルを検索中…",

@@ -1,3 +1,4 @@
+import { graphRepositories } from "./graph-repository.ts";
 import type { Machine } from "../shared/machines.ts";
 import type { SessionSnapshot } from "../shared/protocol.ts";
 import type { MachineManager } from "./machines.ts";
@@ -12,6 +13,7 @@ import { graphHerdrEndpointKey } from "../shared/graph-relationships.ts";
 /** Proof is bridge-owned and ephemeral. Unsupported readers never promote a raw native-session hint. */
 export async function verifyGraphSnapshot(readSnapshot: () => Promise<SessionSnapshot>, codexHome?: string): Promise<SessionSnapshot> {
   const snapshot = await readSnapshot();
+  const repositories = await graphRepositories(snapshot);
   const cliBefore = await herdrCliObservations();
   const forkBefore = await herdrCoordinationSnapshot();
   const coordinationBefore = forkBefore ?? await herdrCliSnapshot(snapshot);
@@ -55,7 +57,7 @@ export async function verifyGraphSnapshot(readSnapshot: () => Promise<SessionSna
     return beforeEndpoint && before && after && before.terminal_id === endpoint.terminal_id && after.terminal_id === endpoint.terminal_id
       && before.agent === endpoint.agent && after.agent === endpoint.agent && !before.restore_error && !after.restore_error;
   }) : [];
-  return { ...current, flock_bindings: proven, flock_observations: proven.flatMap((proof) => observations.get(proof.pane_id) ?? []),
+  return { ...current, graph_repositories: snapshot.herdr_lifetime && current.herdr_lifetime === snapshot.herdr_lifetime ? repositories.filter((item) => current.panes.some((pane) => pane.pane_id === item.pane_id && pane.terminal_id === item.terminal_id && pane.cwd === item.cwd && !pane.restore_error)) : [], flock_bindings: proven, flock_observations: proven.flatMap((proof) => observations.get(proof.pane_id) ?? []),
     flock_coordination: sameDaemon && forkBefore ? { ...forkBefore, ...coordination, agents } : undefined,
     graph_cli: cli && cliBefore && cli.server_id === cliBefore.server_id && cli.boot_id === cliBefore.boot_id && current.herdr_lifetime === snapshot.herdr_lifetime
       ? { ...cli, current_agents: sameDaemon && !forkBefore ? agents : undefined,

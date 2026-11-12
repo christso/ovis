@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, it, spyOn } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { herdrCliIdentity, recordHerdrCli } from "./herdr/cli-observations.ts";
 import * as cli from "./herdr/cli-observations.ts";
@@ -22,6 +23,8 @@ const native = "00000000-0000-4000-8000-000000000019";
 const nextNative = "00000000-0000-4000-8000-000000000020";
 const headers = () => ({ origin: base, "content-type": "application/json", "x-herdr-machine": "1" });
 beforeAll(async () => {
+  execFileSync("git", ["-C", root, "init"], { stdio: "pipe" });
+  execFileSync("git", ["-C", root, "remote", "add", "origin", "https://fixture:secret@github.com/team/graph-contract.git"], { stdio: "pipe" });
   const created = await workspaceCreate({ cwd: root, label: "ovis-test-graphRegistry" });
   workspace = created.workspace.workspace_id; pane = created.root_pane.pane_id;
   await herdrRpc("pane.report_agent", { pane_id: pane, source: "manual", agent: "codex", state: "idle" });
@@ -33,6 +36,21 @@ beforeAll(async () => {
   watchCookie = `ovis_device=${encodeURIComponent(watcher.token)}`;
 }, 15000);
 afterAll(async () => { app?.stop(); if (workspace) await workspaceClose(workspace); rmSync(root, { recursive: true, force: true }); });
+
+it("serves sanitized Git identity only in private graph snapshots and source inventory", async () => {
+  const ordinary = await (await fetch(`${base}/api/session`)).json();
+  expect(ordinary.snapshot.graph_repositories).toBeUndefined();
+  const privateResponse = await fetch(`${base}/api/session?flock=1`);
+  expect(privateResponse.status).toBe(200);
+  const privateBytes = await privateResponse.text();
+  expect(privateBytes).not.toContain("secret");
+  const proof = JSON.parse(privateBytes).snapshot.graph_repositories.find((item: { pane_id: string }) => item.pane_id === pane);
+  expect(proof).toMatchObject({ pane_id: pane, cwd: root, root, remote: "https://github.com/team/graph-contract" });
+  const sources = await (await fetch(`${base}/api/flock?sources=1`)).json();
+  expect(sources.sources.find((source: { id: string }) => source.id === "local").snapshot.graph_repositories).toContainEqual(proof);
+  expect((await fetch(`${base}/api/session?flock=1`, { headers: { cookie: watchCookie } })).status).toBe(403);
+  expect((await fetch(`${base}/api/flock?sources=1`, { headers: { cookie: watchCookie } })).status).toBe(403);
+});
 
 it("persists through authenticated HTTP, refuses stale revisions and never promotes raw native hints", async () => {
   const manager = app.context.services.core.machines!;
@@ -122,6 +140,8 @@ it("keeps populated CLI history and process evidence private through direct and 
       const privateResponse = await fetch(`${base}${prefix}/session?flock=1`);
       expect(privateResponse.status).toBe(200);
       const privateSnapshot = (await privateResponse.json()).snapshot;
+      expect(privateSnapshot.graph_repositories.find((item: { pane_id: string }) => item.pane_id === pane)?.remote).toBe("https://github.com/team/graph-contract");
+      expect(normal.graph_repositories).toBeUndefined();
       expect(privateSnapshot.graph_cli.receipts).toHaveLength(1);
       expect(privateSnapshot.graph_cli.current_agents).toEqual([endpoint]);
       expect(privateSnapshot.flock_coordination).toBeUndefined();

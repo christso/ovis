@@ -34,15 +34,17 @@ import { RUNTIME_MOVE_ZH } from "./i18n/runtime-move.zh.ts";
  * Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Folder": "文件夹",
+  "Repository": "仓库",
+  "Hierarchy links connect repositories or folders directly to terminals. Communication and delegation links show recorded activity.": "层级连线将仓库或文件夹直接连接到终端。通信和委派连线表示已记录的活动。",
+  "Terminal in repository": "仓库中的终端",
+
   "Message from {name}": "来自 {name} 的消息",
   "Open message source": "打开消息来源",
   "Message source is unavailable": "消息来源不可用",
 
-  "Terminal in workspace": "工作区中的终端",
-  "Terminal in worktree": "工作树中的终端",
   "These records have no verified terminal to open.": "这些记录没有可打开的已验证终端。",
   "These sessions have no verified terminal to open.": "这些会话没有可打开的已验证终端。",
-  "Hierarchy links show workspaces, worktrees and terminals. Communication and delegation links show recorded activity.": "层级连线表示工作区、工作树和终端。通信和委派连线表示已记录的活动。",
   "Terminal activity": "终端活动",
   "Recorded activity": "已记录的活动",
   "Related items: {count}": "相关项目：{count}",
@@ -222,11 +224,7 @@ const BASE: Record<string, string> = {
   "Identity unavailable": "身份不可用",
   "Loading work registry…": "正在加载工作登记…",
   "Machine": "机器",
-  "Worktree in workspace": "工作区中的工作树",
-  "Workspace": "工作区",
-  "Main checkout": "主检出目录",
   "Legend": "图例",
-  "Worktree": "工作树",
   "Status": "状态",
   "This device can only watch": "此设备只能观看",
   "Searching executables…": "正在搜索可执行文件…",

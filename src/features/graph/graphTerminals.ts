@@ -3,7 +3,7 @@ import { graphCurrentHerdrEndpoint, graphHerdrEndpointKey } from "../../../share
 import type { Machine } from "../../../shared/machines.ts";
 import { pushPaneTitle } from "../../../shared/notify-policy.ts";
 import { t as defaultTranslate, type Translate } from "../../lib/i18n.ts";
-import { rollupStatus } from "../../lib/status.ts";
+import { paneStatus } from "../../lib/status.ts";
 import { graphTabNames } from "./graphNames.ts";
 import type { GraphNode } from "./graphModel.ts";
 
@@ -31,9 +31,9 @@ export function graphTerminals(machines: readonly Machine[], labels: Readonly<Re
       const checkout = graphCheckout(machine, pane);
       const node: GraphNode = { id, kind: "terminal", label: panes.length === 1 ? label : pushPaneTitle(pane),
         namedTerminal: panes.length === 1 ? !!names.custom || !!linked : !!pane.label, machineId: machine.id,
-        status: available ? rollupStatus([pane.agent_status]) : "unknown",
+        status: available ? paneStatus(pane) : "unknown",
         freshness: available ? "live" : machine.state !== "connected" ? "disconnected" : "unavailable",
-        detail: [...new Set([workspace.label, label, pane.pane_id, checkout?.repository, checkout?.branch, checkout?.path, pane.cwd,
+        detail: [...new Set([machine.name, workspace.label, label, pane.pane_id, checkout?.repository, checkout?.branch, checkout?.path, pane.cwd,
           pane.display_agent || pane.agent, pane.agent_session?.kind === "id" ? pane.agent_session.value : null].filter(Boolean))].join("\n") };
       return { node, panes: [pane], machine, workspace };
     });

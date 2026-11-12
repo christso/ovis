@@ -270,3 +270,31 @@ for (const scenario of ["missing", "missing-before", "missing-after", "ambiguous
     expect(result.flock_observations).toEqual(scenario === "replaced" ? [] : [observation]);
   } finally { processReader.mockRestore(); nativeReader.mockRestore(); }
 });
+
+it("transports only sanitized Git evidence through both graph source responses, and drops it on replacement", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-graph-repository-source-")); roots.push(root);
+  const { execFileSync } = await import("node:child_process");
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { stdio: "pipe" });
+  git("init"); git("remote", "add", "origin", "https://user:secret@github.com/team/orchard.git");
+  const before = snapshot("fixture"); before.panes[0]!.agent = null; before.panes[0]!.cwd = root;
+  before.graph_repositories = [{ pane_id: "injected", terminal_id: "injected", cwd: root, root, common_directory: root, remote: "https://injected.invalid/team/repo" }];
+  const source = { ...machine(), kind: "local" as const, snapshot: before };
+  const manager = { list: () => [source] } as unknown as MachineManager;
+  const read = () => readGraphSource(manager, source.id, async () => before);
+  const verified = (await read())[0]!.snapshot!;
+  expect(verified.graph_repositories).toHaveLength(1);
+  expect(verified.graph_repositories![0]).toMatchObject({ pane_id: "w1:p1", terminal_id: "terminal", cwd: root, remote: "https://github.com/team/orchard" });
+  const response = await handleGraphRequest(new Request("http://localhost/api/flock?sources=1"), new GraphRegistryStore(join(root, "state")), [source], read);
+  const bytes = await response.text();
+  expect(bytes).not.toContain("secret"); expect(bytes).not.toContain("injected.invalid");
+  expect(JSON.parse(bytes).sources[0].snapshot.graph_repositories).toEqual(verified.graph_repositories);
+  for (const replacement of ["terminal", "cwd", "lifetime"] as const) {
+    const after = structuredClone(before);
+    if (replacement === "terminal") after.panes[0]!.terminal_id = "other";
+    if (replacement === "cwd") after.panes[0]!.cwd = "/fixture/other";
+    if (replacement === "lifetime") after.herdr_lifetime = "other";
+    let reads = 0;
+    const result = await verifyGraphSnapshot(async () => ++reads === 1 ? before : after);
+    expect(result.graph_repositories).toEqual([]);
+  }
+});

@@ -88,18 +88,26 @@ it.skipIf(process.env["OVIS_HERDR_COORDINATION_TEST"] !== "1")("captures native 
     expect(delegation.source.herdr?.agent_instance_id).toBe(sourceEndpoint.agent_instance_id);
     expect(delegation.target.herdr?.agent_instance_id).toBe(childEndpoint.agent_instance_id);
     expect(relationships.find((relation) => relation.kind === "communication")?.count).toBe(2);
-    const rows = graphRegistryInventory(registry, [live]), graph = graphInventory(registry, rows);
+    const rows = graphRegistryInventory(registry, [live]), graph = graphInventory(registry, rows, [live]);
     expect(graph.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
     expect(graph.edges.find((edge) => edge.kind === "communication")?.eventCount).toBe(2);
-    expect(graphTarget(registry, rows, delegation.target.id)).toEqual({ machine_id: live.id, pane_id: targetPane });
+    const targetNode = graph.nodes.find((node) => node.kind === "terminal" && graphTarget(registry, rows, node.id, [live])?.pane_id === targetPane)!;
+    expect(targetNode).toBeDefined();
+    expect(graph.edges.find((edge) => edge.kind === "delegation")?.target).toBe(targetNode.id);
+    expect(graphTarget(registry, rows, targetNode.id, [live])).toEqual({ machine_id: live.id, pane_id: targetPane });
     const revision = registry.revision;
     expect(store.observe([await machine()]).revision).toBe(revision);
     expect(new GraphRegistryStore(join(root, "registry")).read().observations).toHaveLength(3);
     await workspaceClose(target.workspace.workspace_id); owned.pop();
     const closed = await machine(), retained = store.observe([closed]);
     expect(retained.observations).toHaveLength(3);
-    expect(graphTarget(retained, graphRegistryInventory(retained, [closed]), delegation.target.id)).toBeNull();
-    expect(graphInventory(retained, graphRegistryInventory(retained, [closed])).nodes.find((node) => node.id === delegation.target.id)?.freshness).toBe("unavailable");
+    const closedRows = graphRegistryInventory(retained, [closed]), closedGraph = graphInventory(retained, closedRows, [closed]);
+    expect(graphTarget(retained, closedRows, targetNode.id, [closed])).toBeNull();
+    expect(closedGraph.nodes.some((node) => node.id === targetNode.id)).toBe(false);
+    expect(closedGraph.nodes.flatMap((node) => node.activity ?? [])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "delegation", direction: "outgoing", eventCount: 1 }),
+      expect.objectContaining({ kind: "communication", direction: "outgoing", eventCount: 2 }),
+    ]));
     expect(ownReceipts(await list())).toHaveLength(3);
     expect(readFileSync(log, "utf8")).toContain(prompt);
 
@@ -145,7 +153,15 @@ it.skipIf(process.env["OVIS_HERDR_COORDINATION_TEST"] !== "1")("captures native 
       expect(afterForward.observations).toHaveLength(5);
       const remoteRelation = graphRelationships(afterForward).find((relation) => relation.kind === "delegation" && relation.target.herdr?.server_id === remotePage.server_id)!;
       expect(remoteRelation.source.herdr?.server_id).toBe(sourceEndpoint.server_id);
-      expect(graphTarget(afterForward, graphRegistryInventory(afterForward, [await machine()]), remoteRelation.target.id)).toBeNull();
+      const current = await machine(), currentRows = graphRegistryInventory(afterForward, [current]);
+      const currentGraph = graphInventory(afterForward, currentRows, [current]);
+      expect(graphTarget(afterForward, currentRows, remoteRelation.target.id, [current])).toBeNull();
+      expect(currentGraph.nodes.some((node) => node.id === remoteRelation.target.id)).toBe(false);
+      expect(currentGraph.edges.filter((edge) => edge.kind === "delegation" || edge.kind === "communication")).toHaveLength(0);
+      expect(currentGraph.nodes.flatMap((node) => node.activity ?? []).filter((item) => item.endpointId === remoteRelation.target.id)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "delegation", direction: "outgoing", eventCount: 1 }),
+        expect.objectContaining({ kind: "communication", direction: "outgoing", eventCount: 1 }),
+      ]));
     } finally {
       await herdrRpc("server.stop", {}, remoteSocket).catch(() => { if (remote.exitCode === null) remote.kill(); });
       await remote.exited; await drained;

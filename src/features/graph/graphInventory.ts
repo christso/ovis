@@ -99,15 +99,12 @@ export function graphInventory(registry: GraphRegistry | null, rows: readonly Gr
   return { nodes: [...nodes.values()], edges: [...edges.values()], groups: hierarchy.groups };
 }
 
-/** Opening a hub resolves only its own current terminals; it never follows a moved session. */
+/** Only an exact terminal selection authorizes navigation; shared hubs never choose a machine. */
 export function graphTarget(registry: GraphRegistry | null, rows: readonly GraphRegistryRow[], id: string, machines: readonly Machine[] = []): PaneTarget | null {
   if (!registry) return null;
   const terminals = graphTerminals(machines, {}, defaultTranslate, rows);
   const terminal = terminals.find((terminal) => terminal.node.id === id);
   if (terminal) return terminalTarget(terminal, rows);
-  const hub = graphHierarchy(machines, terminals).hubs.find((hub) => hub.node.id === id);
-  if (!hub || hub.node.freshness !== "live") return null;
-  for (const member of hub.terminals) { const target = terminalTarget(member, rows); if (target) return target; }
   return null;
 }
 

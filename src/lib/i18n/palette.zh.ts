@@ -4,6 +4,7 @@
  * Register and fixed terms follow ../i18n.zh.ts; a key another feature also uses goes there.
  */
 export const PALETTE_ZH: Record<string, string> = {
+  "Workspace": "工作区",
   "Actions": "操作",
   "Move tab to {workspace}": "将标签页移动到 {workspace}",
   "Enable notifications": "开启通知",
