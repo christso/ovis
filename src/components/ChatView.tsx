@@ -1,3 +1,4 @@
+import { MessageSourceMarker } from "./MessageSourceMarker.tsx";
 import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -1194,6 +1195,12 @@ export const Turn = memo(function Turn({ paneId, turn, rowKey, live, waiting, sh
   if (turn.role === "user") {
     if (outcome !== null && terminalOnlyOutcome(outcome, outcomeActions)) return <TerminalCommandRow outcome={outcome} actions={outcomeActions} />;
     const text = userText(turn);
+    if (turn.sender) return <article className="chat-turn chat-turn-peer">
+      <MessageSourceMarker sender={turn.sender} />
+      <UserMessage text={text} skills={userSkills} />
+      <div className="chat-turn-meta">{time}<CopyButton text={text} label={t("Copy message")} onResult={copied} /></div>
+      {copyError}
+    </article>;
     // a teammate's delivery is recorded as a user prompt, but nobody typed it here
     const teammateParts = teammateMessageParts(text);
     if (teammateParts !== null) return <section className="chat-turn chat-teammate-messages" aria-label={t("Claude teammate messages")}>

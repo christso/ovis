@@ -172,6 +172,8 @@ export function createServer(
     tailnet?: TailnetIdentitySource;
     /** Native Codex store; defaults to CODEX_HOME. Tests use an isolated store. */
     codexHome?: string;
+    /** Isolated metadata-only peer message journal root; defaults to the shim journal. */
+    messageSourcesDirectory?: string;
     grokHome?: string;
     /** Muse Code's data directory; defaults to XDG_DATA_HOME/muse or ~/.local/share/muse. Tests use an isolated store. */
     museData?: string;
@@ -389,7 +391,7 @@ export function createServer(
     return herdrKinds.has(entry?.detect.binaries[0] ?? kind);
   };
   const agentInstaller = new AgentInstaller(agentDetector);
-  const communicationTracking = options.communicationTracking ?? new CommunicationTracking({ configPath: options.herdrConfigPath });
+  const communicationTracking = options.communicationTracking ?? new CommunicationTracking({ configPath: options.herdrConfigPath, stateDir });
   const openCodeState = new OpenCodePromptState();
   const draftTimer = setInterval(() => openCodeState.prune(), 60_000);
   draftTimer.unref();

@@ -634,6 +634,8 @@ export type { PushAction, PushDeliveryFailure, PushKey, PushPayload, PushSubscri
 
 /** One turn of a structured agent conversation (the chat lens source). */
 export interface ConversationTurn {
+  /** Authenticated peer envelope content; verbatim copies retain provenance, not delivery authority. */
+  sender?: import("./message-source.ts").MessageSender;
   role: "user" | "assistant";
   ts: string | null;
   /** Last recorded assistant activity, never the next user's timestamp. */

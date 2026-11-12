@@ -294,8 +294,9 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   // the digits of a waiting comparison are what approving it takes (docs/account.md, "Who may admit a device")
   const pairingDigits = pathname === "/api/relay/pairings";
   const communicationSetup = /^\/api\/(?:machines\/[^/]+\/)?agents\/communication-tracking$/.test(pathname);
+  const messageSource = /^\/api\/(?:machines\/[^/]+\/)?pane\/message-source(?:\/resolve)?$/.test(pathname);
   const coordinationInventory = /^\/api\/(?:machines\/[^/]+\/)?session$/.test(pathname) && url.searchParams.get("flock") === "1";
-  if (readOnly && (communicationSetup || fileRead || directoryListing || repositoryDiff || launcherDefinitions || coordinationInventory || pathname === "/api/flock" || pathname === MOVE_PATH || pathname === MOVE_NODE_PATH || pullRequest || sessionHistory || commandRows || paneFiles || pluginRun || worktreeList || pairingDigits || mutating && !ownPreferences)) {
+  if (readOnly && (messageSource || communicationSetup || fileRead || directoryListing || repositoryDiff || launcherDefinitions || coordinationInventory || pathname === "/api/flock" || pathname === MOVE_PATH || pathname === MOVE_NODE_PATH || pullRequest || sessionHistory || commandRows || paneFiles || pluginRun || worktreeList || pairingDigits || mutating && !ownPreferences)) {
     setRequestRoute("watch-refusal");
     return jsonResponse({ error: { code: "read_only", message: "this device can only watch" } }, 403);
   }
@@ -820,7 +821,7 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   const pluginResponse = await handlePluginRequest(request, url, pathname, options);
   if (pluginResponse) return pluginResponse;
 
-  const paneResponse = await handlePaneRequest(request, url, pathname, options);
+  const paneResponse = await handlePaneRequest(request, url, pathname, { ...options, readOnly });
   if (paneResponse) return paneResponse;
 
   const tasksResponse = await handleTasksRequest(request, url, pathname, { omo, claudeAgents, opencodeAgents });

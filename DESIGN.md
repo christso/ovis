@@ -4843,3 +4843,29 @@ Setup status is machine-owned state, never a synced browser setting. A watching 
 control. An older bridge or unsupported shell is identified in the row. Cancellation writes nothing;
 installation failures stay in the confirmation for retry. The usual modal focus and keyboard handling
 apply, and the confirmation uses the normal action color because enabling is reversible.
+
+## Peer message source markers
+
+Future supported Ovis shim prompts identify peer content in the real receiving terminal. Chat
+shows the independently authenticated body under “Message from [source agent icon] source name ↗”,
+using AgentMark from the authenticated source kind, with a standard source button and text when
+its source is unavailable. The icon sits between “from” and the source name; translations keep
+the icon with their sender placeholder. Older responses without a kind omit the icon. Desktop clicks and touch taps use the
+same browser-only source action. Labels are escaped and stripped of control characters; navigation
+uses daemon, stable terminal and process proof, never the displayed name. Authentic copied content
+retains its original correlation ID; the marker authenticates peer content, not a new direct send
+or human permission. The immutable display snapshot is separate from current endpoint proof.
+
+Sender names prefer explicit source pane label, explicit tab label, meaningful Ovis agent title,
+local shared Ovis first-message label, registered agent name, then kind. The same pure tab-title
+helpers serve browser and shim. Shared labels require the exact local pane/terminal key, and the
+shared automatic-name setting is honored. Paths and endpoint locators are excluded. Browser-only
+or another PC's Ovis labels are unavailable at send time; a split tab uses its source pane's name.
+Historical names stay as sent after a rename; navigation still follows the stable terminal.
+
+The design follows Rakazo's structured received bot messages, separate sender-attributed wake
+prompt and CollaborationMarker at commit
+[`290bdc5e6af35670d9012628fd237e1f4f66bac4`](https://github.com/elie222/rakazo/tree/290bdc5e6af35670d9012628fd237e1f4f66bac4).
+Rakazo's click opens peer exchanges; Ovis resolves the source terminal instead. Rakazo is a design
+precedent, not a literal terminal-to-terminal implementation. Ovis's implementation is independent;
+no Rakazo code or assets are copied or adapted.

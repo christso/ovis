@@ -2236,3 +2236,9 @@ ol.markdown-list {
 .chat-abandoned { margin: var(--space-2) 0; }
 .chat-abandoned > summary { font-style: italic; }
 .chat-abandoned-note { margin: var(--space-2) 0 0; color: var(--text-dim); }
+
+.chat-peer-source { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); color: var(--text-dim); font-size: var(--fs-xs); }
+.chat-turn-peer { border-inline-start: var(--hairline) solid var(--border); padding-inline-start: var(--space-3); }
+.chat-turn-peer .chat-user-message { max-width: 100%; }
+
+.chat-peer-name { display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: middle; }

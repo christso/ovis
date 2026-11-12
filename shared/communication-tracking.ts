@@ -1,3 +1,5 @@
+export const HERDR_SHIM_REVISION = 3;
+
 /** Per-machine installation of optional Herdr CLI observations. */
 export interface CommunicationTrackingStatus {
   state: "disabled" | "enabled" | "needs_attention" | "unsupported";

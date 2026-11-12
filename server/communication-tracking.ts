@@ -1,3 +1,4 @@
+import { HERDR_SHIM_REVISION } from "../shared/communication-tracking.ts";
 /** User-owned, opt-in shell setup for the standalone CLI observer. Never changes the daemon. */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -6,6 +7,7 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { CommunicationTrackingSetupRequest, CommunicationTrackingStatus } from "../shared/communication-tracking.ts";
 import { sysctlCall } from "./darwin-process.ts";
+import { defaultStateDir } from "./update-state.ts";
 import { herdrCliDirectory } from "./herdr/cli-observations.ts";
 import { herdrCliLauncher } from "./herdr/cli-launcher.ts";
 import { paneProcessInfo, sessionSnapshot } from "./herdr/client.ts";
@@ -51,6 +53,7 @@ export async function handleCommunicationTrackingRequest(request: Request, servi
   }
 }
 interface Options {
+  stateDir?: string;
   home?: string;
   env?: Record<string, string | undefined>;
   platform?: NodeJS.Platform;
@@ -251,7 +254,8 @@ export class CommunicationTracking implements CommunicationTrackingService {
       const intact = setup.profiles.every((profile) => { const current = file(profile.path); return current.target === profile.target && current.text.split(profile.block).length === 2; });
       if (!setup.enabled) return { ...base, state: intact ? "needs_attention" : setup.profiles.some((profile) => file(profile.path).text.includes(START)) ? "needs_attention" : "disabled", detail: intact ? "Tracking is off, but its startup block still needs cleanup. Disable it again to retry." : null };
       if (!intact || setup.shell !== context.shell || JSON.stringify(base.profiles) !== JSON.stringify(context.profiles) || !existsSync(join(this.installation, "enabled"))) return { ...base, state: "needs_attention", detail: "The shell setup changed. Disable tracking, then enable it again to verify the new setup." };
-      const config = JSON.parse(file(join(this.installation, "config.json")).text) as { enabled?: boolean };
+      const config = JSON.parse(file(join(this.installation, "config.json")).text) as { enabled?: boolean; bundle_revision?: number; display_state?: unknown };
+      if (config.bundle_revision !== HERDR_SHIM_REVISION || config.display_state !== this.displayState()) return { ...base, state: "needs_attention", detail: "Enable communication tracking again to refresh its wrapper for peer message attribution. Existing commands keep working." };
       return config.enabled !== false && await this.verified(context)
         ? { ...base, state: "enabled" }
         : { ...base, state: "needs_attention", detail: "A new Herdr shell does not resolve herdr to the tracking wrapper. Check for a custom herdr alias or function, then try again." };
@@ -342,8 +346,8 @@ export class CommunicationTracking implements CommunicationTrackingService {
       } else {
         let complete = false;
         try {
-          const config = JSON.parse(file(join(this.installation, "config.json")).text) as { version?: unknown; real?: unknown; journal?: unknown };
-          complete = config.version === 1 && config.real === setup.real && config.journal === this.directory
+          const config = JSON.parse(file(join(this.installation, "config.json")).text) as { version?: unknown; real?: unknown; journal?: unknown; bundle_revision?: unknown; display_state?: unknown };
+          complete = config.version === 1 && config.bundle_revision === HERDR_SHIM_REVISION && config.real === setup.real && config.journal === this.directory && config.display_state === this.displayState()
             && statSync(join(this.installation, "observe.js")).isFile() && statSync(join(this.installation, "herdr")).isFile();
         } catch {}
         if (complete && (await command([join(this.installation, "herdr"), "--version"], env)).ok) return;
@@ -351,7 +355,7 @@ export class CommunicationTracking implements CommunicationTrackingService {
     }
     const stage = join(this.directory, `.installation-${randomUUID()}`);
     try {
-      const installed = await command([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", setup.real, "--directory", stage, "--journal", this.directory, "--enabled", "false"], { ...env, HOME: this.home }, 30_000);
+      const installed = await command([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", setup.real, "--directory", stage, "--journal", this.directory, "--display-state", this.displayState(), "--enabled", "false"], { ...env, HOME: this.home }, 30_000);
       if (!installed.ok || !(await command([process.execPath, join(stage, "observe.js"), "--shim", join(stage, "config.json"), "--", "--version"], env)).ok) throw new Error("install_failed");
       writeFileSync(join(stage, "herdr"), herdrCliLauncher(realpathSync(process.execPath), this.installation), { mode: 0o700 });
       if (!existsSync(this.installation)) renameSync(stage, this.installation);
@@ -366,10 +370,14 @@ export class CommunicationTracking implements CommunicationTrackingService {
     } finally { rmSync(stage, { recursive: true, force: true }); }
   }
 
+  private displayState(): string { return resolve(this.options.stateDir ?? defaultStateDir(this.options.env)); }
+
   private setEnabled(setup: Setup, enabled: boolean): void {
     if (!this.ownsInstallation()) throw new Error("unowned_installation");
     const path = join(this.installation, "config.json"), before = file(path).text;
-    replaceFile(path, before, JSON.stringify({ version: 1, real: setup.real, journal: this.directory, enabled }) + "\n");
+    let bundle_revision: unknown;
+    try { bundle_revision = (JSON.parse(before) as { bundle_revision?: unknown }).bundle_revision; } catch {}
+    replaceFile(path, before, JSON.stringify({ version: 1, bundle_revision, real: setup.real, journal: this.directory, display_state: this.displayState(), enabled }) + "\n");
     if (!enabled) rmSync(join(this.installation, "enabled"), { force: true });
   }
 

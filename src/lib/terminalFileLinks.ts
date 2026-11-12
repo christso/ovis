@@ -1,3 +1,4 @@
+import { messageSourceId } from "../../shared/message-source.ts";
 import type { IBuffer, ILink, ILinkDecorations, ILinkProvider } from "@xterm/xterm";
 import { fileUriPath } from "../../shared/fileUri.ts";
 import { isCodeName } from "./filePaths.ts";
@@ -225,6 +226,9 @@ export function terminalFileLinks(buffer: IBuffer, lineNumber: number, open: (pa
     }
     links.push(found);
   };
+  for (const match of text.matchAll(/ovis-source:\/\/[0-9a-f-]{36}(?![0-9a-z-])/g)) {
+    if (messageSourceId(match[0])) link(match.index, match[0], match[0]);
+  }
   for (const match of text.matchAll(FILE_URI)) {
     const uri = match[0].replace(/[),.;:!?']+$/, "");
     const path = fileUriPath(uri);

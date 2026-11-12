@@ -33,6 +33,10 @@ import { RUNTIME_MOVE_ZH } from "./i18n/runtime-move.zh.ts";
  * Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Message from {name}": "来自 {name} 的消息",
+  "Open message source": "打开消息来源",
+  "Message source is unavailable": "消息来源不可用",
+
   "Terminal in workspace": "工作区中的终端",
   "Terminal in worktree": "工作树中的终端",
   "These records have no verified terminal to open.": "这些记录没有可打开的已验证终端。",

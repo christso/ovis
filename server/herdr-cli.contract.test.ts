@@ -1,3 +1,4 @@
+import { peerMessageTurn, readPeerMessage, resolvePeerSource } from "./message-sources.ts";
 import { expect, it } from "bun:test";
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,7 +36,7 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
   const idle = (pane: string, targetSocket = socket) => herdrRpc("pane.report_agent", { pane_id: pane, source: "manual", agent: "codex", state: "idle" }, targetSocket);
   const snapshot = async () => ({ ...await sessionSnapshot(), herdr_lifetime: herdrLifetime(finishHerdrIdentity(socket)!) });
   try {
-    const install = Bun.spawn([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", binary, "--directory", wrapper, "--journal", journal], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+    const install = Bun.spawn([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", binary, "--directory", wrapper, "--journal", journal, "--display-state", root], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
     expect({ code: await install.exited, stderr: await new Response(install.stderr).text() }).toEqual({ code: 0, stderr: "" });
     const environment = { PATH: [bin, wrapper, process.env["PATH"]].filter(Boolean).join(delimiter), CODEX_HOME: home };
     const source = await workspaceCreate({ cwd: root, label: "ovis-test-shim-source", env: environment }); owned.push(source.workspace.workspace_id);
@@ -47,6 +48,7 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     const start = invoke(["agent", "start", name, "--kind", "codex", "--pane", targetPane, "--", program, log, "first"], sourcePane);
     await ready(targetPane, "first"); await idle(targetPane);
     expect(await start).toMatchObject({ code: 0, stderr: "" });
+    writeFileSync(join(root, "tab-labels.json"), JSON.stringify({ tab_labels: { [`${sourcePane}|${source.root_pane.terminal_id}`]: "Graph worktree projection" } }));
     const message = "offline message 'quoted' \"double\" $HOME `literal`\nsecond line Ω";
     expect(await invoke(["agent", "prompt", name, message], sourcePane)).toMatchObject({ code: 0, stderr: "" });
     const waited = await invoke(["agent", "prompt", name, "SHIM_WAIT_TIMEOUT_PROBE", "--wait", "--timeout", "1500"], sourcePane);
@@ -57,7 +59,27 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     const page = await herdrCliObservations(socket, journal);
     expect(page?.receipts.every((item) => item.producer === "herdr-cli" && item.scope === "terminal")).toBe(true); expect(page?.receipts.map((item) => item.kind).sort()).toEqual(["communication", "communication", "delegation"]);
     expect(JSON.stringify(page)).not.toContain(message); expect(JSON.stringify(page)).not.toContain("SHIM_WAIT_TIMEOUT_PROBE");
-    const namespace = readdirSync(journal)[0]!;
+    // The real CLI wrote one envelope and one Enter, while Ovis was absent.
+    const envelope = received.match(/\[Ovis peer message from [\s\S]*?\[\/Ovis peer message ([0-9a-f-]{36}) [0-9a-f]{64}\]/)!;
+    expect(envelope).not.toBeNull();
+    const firstSender = readPeerMessage(envelope[1]!, journal)!;
+    expect(firstSender).not.toBeNull();
+    expect(firstSender.display_name).toBe("Graph worktree projection");
+    const receivedTurn = { role: "user" as const, ts: null, parts: [{ kind: "text" as const, text: envelope[0] }] };
+    const targetEndpoint = (await herdrCliEndpoint(socket, targetPane, journal))!;
+    const attributed = peerMessageTurn(receivedTurn, targetEndpoint, journal);
+    expect(attributed.parts).toEqual([{ kind: "text", text: message }]);
+    expect(attributed.sender).toEqual({ id: firstSender.id, name: "Graph worktree projection", agent: "codex" });
+    expect(received.split(message)).toHaveLength(2);
+    expect(received.match(/\r/g)).toHaveLength(2);
+    expect(await resolvePeerSource(firstSender.source, journal)).toBe(sourcePane);
+    expect(await resolvePeerSource({ ...firstSender.source, server_id: "other-machine" }, journal)).toBeNull();
+    expect(await resolvePeerSource({ ...firstSender.source, boot_id: "old-daemon" }, journal)).toBeNull();
+    expect(await resolvePeerSource({ ...firstSender.source, agent_instance_id: "replacement" }, journal)).toBeNull();
+    const messageRecords = readdirSync(join(journal, "messages")).filter((name) => name.endsWith(".json"));
+    expect(messageRecords).toHaveLength(2);
+    for (const record of messageRecords) expect(readFileSync(join(journal, "messages", record), "utf8")).not.toContain(message);
+    const namespace = readdirSync(journal).find((name) => name !== "messages")!;
     expect(readdirSync(join(journal, namespace)).filter((name) => name.endsWith(".json") && name !== "identity.json")).toHaveLength(3);
     // No Ovis process has been started. Its bridge can import the durable records later.
     process.env["OVIS_HERDR_CLI_DIR"] = journal;
@@ -74,6 +96,17 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     expect(graph.edges.filter((edge) => edge.kind === "communication")).toHaveLength(1); expect(graph.edges.filter((edge) => edge.kind === "delegation")).toHaveLength(1);
     expect(store.observe([await machine()]).revision).toBe(registry.revision);
     expect(new GraphRegistryStore(join(root, "registry")).read().cli_observations).toHaveLength(3);
+    if (process.platform === "linux") {
+      // The original argument fits Linux's 128 KiB per-argument limit; its envelope does not.
+      const longMessage = "LONG_ORIGINAL_BODY_" + "x".repeat(130850 - "LONG_ORIGINAL_BODY_".length);
+      expect(await invoke(["agent", "prompt", name, longMessage], sourcePane)).toMatchObject({ code: 0, stderr: "" });
+      for (const deadline = Date.now() + 10000; !readFileSync(log, "utf8").includes(longMessage);) {
+        if (Date.now() > deadline) throw new Error("Owned long prompt was not received intact");
+        await herdrRpc("pane.read", { pane_id: targetPane, source: "recent", strip_ansi: true });
+      }
+      expect(readFileSync(log, "utf8").split(longMessage)).toHaveLength(2);
+      expect(readdirSync(join(journal, "messages")).filter((name) => name.endsWith(".json"))).toHaveLength(2);
+    }
     const cancelled = invoke(["agent", "prompt", name, "SHIM_SIGNAL_PROBE", "--wait", "--timeout", "60000"], sourcePane);
     const cancelChild = children[children.length - 1]!;
     for (const deadline = Date.now() + 10000; !readFileSync(log, "utf8").includes("SHIM_SIGNAL_PROBE");) {
@@ -94,7 +127,7 @@ import { herdrRpc } from ${JSON.stringify(new URL("./herdr/client.ts", import.me
 const args = process.argv.slice(2), socket = process.env.HERDR_SOCKET_PATH!;
 const child = Bun.spawn([${JSON.stringify(binary)}, ...args], { stdin: "inherit", stdout: "pipe", stderr: "pipe" });
 const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
-if (code === 0 && args[0] === "agent" && args[1] === "prompt" && args[3] === "SHIM_MANAGED_INFLIGHT_PROBE") {
+if (code === 0 && args[0] === "agent" && args[1] === "prompt" && (args[3]?.includes("SHIM_MANAGED_INFLIGHT_PROBE") || args[3]?.includes("SHIM_HELD_"))) {
   await Bun.write(${JSON.stringify(heldReply)}, stdout);
   const deadline = Date.now() + 15000;
   while (!(await Bun.file(${JSON.stringify(releaseReply)}).exists())) {
@@ -112,6 +145,8 @@ process.stdout.write(stdout); process.stderr.write(stderr); process.exit(code);
     expect(await herdrCliEndpoint(socket, sourcePane, managedJournal)).not.toBeNull();
     expect(await herdrCliEndpoint(socket, name, managedJournal)).not.toBeNull();
     expect(await invoke(["agent", "prompt", name, "SHIM_MANAGED_CAPTURE_PROBE"], sourcePane, managedEnvironment)).toMatchObject({ code: 0, stderr: "" });
+    const managedMessages = () => readdirSync(join(managedJournal, "messages")).filter((name) => name.endsWith(".json"));
+    expect(managedMessages()).toHaveLength(1);
     const managedPage = await herdrCliObservations(socket, managedJournal);
     expect(managedPage?.receipts).toHaveLength(1);
     expect(managedPage!.receipts[0]).toMatchObject({ kind: "communication", scope: "terminal", source_terminal: { terminal_id: source.root_pane.terminal_id }, target_terminal: { terminal_id: target.root_pane.terminal_id } });
@@ -134,6 +169,9 @@ process.stdout.write(stdout); process.stderr.write(stderr); process.exit(code);
     }
     const managedReceived = readFileSync(log, "utf8");
     for (const marker of managedMarkers) expect(managedReceived.split(marker)).toHaveLength(2);
+    expect(managedMessages()).toHaveLength(1);
+    expect(managedReceived).toContain("SHIM_MANAGED_DISABLED_PROBE\r");
+    expect(managedReceived).not.toContain("\n\nSHIM_MANAGED_DISABLED_PROBE\n[/Ovis");
 
     const previous = await herdrCliEndpoint(socket, name, journal);
     const processes = (await herdrRpc("pane.process_info", { pane_id: targetPane })).process_info?.foreground_processes ?? [];
@@ -152,6 +190,7 @@ process.stdout.write(stdout); process.stderr.write(stderr); process.exit(code);
       replaced = await herdrCliEndpoint(socket, targetPane, journal);
     }
     expect(previous).not.toBeNull(); expect(replaced).not.toBeNull(); expect(graphHerdrEndpointKey(replaced!)).not.toBe(graphHerdrEndpointKey(previous!));
+    expect(peerMessageTurn(receivedTurn, replaced!, journal).sender).toBeUndefined();
     const fresh = await machine(), updated = store.observe([fresh]), updatedRows = graphRegistryInventory(updated, [fresh]);
     expect(graphTarget(updated, updatedRows, targetNode.id, [fresh])).toBeNull();
     // Two fresh daemons guarantee equal pane IDs even when the main test daemon has
@@ -265,6 +304,46 @@ process.stdout.write(stdout); process.stderr.write(stderr);
     expect(await installFailure.exited).toBe(0);
     const failOpen = await invoke(["agent", "prompt", targetPane, "SHIM_JOURNAL_FAILURE_PROBE"], sourcePane, { PATH: [noJournalWrapper, bin, process.env["PATH"]].filter(Boolean).join(delimiter) });
     expect(failOpen.code).toBe(0); expect(readFileSync(log, "utf8").split("SHIM_JOURNAL_FAILURE_PROBE")).toHaveLength(2); expect(readFileSync(wrong, "utf8")).toBe("preserve");
+    // A successful CLI reply can be held while either endpoint is replaced. Never promote it.
+    expect((await managed.enable()).state).toBe("enabled");
+    for (const replace of ["sender", "recipient"] as const) {
+      rmSync(heldReply, { force: true }); rmSync(releaseReply, { force: true });
+      const caller = await workspaceCreate({ cwd: root, label: `ovis-test-peer-${replace}-caller`, env: environment }); owned.push(caller.workspace.workspace_id);
+      const recipient = await workspaceCreate({ cwd: root, label: `ovis-test-peer-${replace}-recipient`, env: environment }); owned.push(recipient.workspace.workspace_id);
+      for (const [pane, marker] of [[caller.root_pane.pane_id, `${replace}-caller`], [recipient.root_pane.pane_id, `${replace}-recipient`]]) {
+        await herdrRpc("pane.send_text", { pane_id: pane!, text: `${[executable, program, log, marker!].map(quote).join(" ")}\n` });
+        await ready(pane!, marker!); await idle(pane!);
+      }
+      const marker = `SHIM_HELD_${replace}`, before = managedMessages().length;
+      const operation = invoke(["agent", "prompt", recipient.root_pane.pane_id, marker], caller.root_pane.pane_id, managedEnvironment);
+      for (const deadline = Date.now() + 10000; !(await Bun.file(heldReply).exists());) {
+        if (Date.now() > deadline) throw new Error("Owned replacement prompt did not reach its held success reply");
+        await herdrRpc("pane.read", { pane_id: recipient.root_pane.pane_id, source: "recent", strip_ansi: true });
+      }
+      const pane = replace === "sender" ? caller.root_pane.pane_id : recipient.root_pane.pane_id;
+      const previous = (await herdrCliEndpoint(socket, pane, managedJournal))!;
+      const info = (await herdrRpc("pane.process_info", { pane_id: pane })).process_info!;
+      const processToReplace = info.foreground_processes!.find((entry) => entry.argv?.includes(program))!;
+      process.kill(processToReplace.pid, "SIGTERM");
+      for (const deadline = Date.now() + 10000; await herdrCliEndpoint(socket, pane, managedJournal);) {
+        if (Date.now() > deadline) throw new Error("Owned peer did not exit before replacement");
+      }
+      await herdrRpc("pane.send_text", { pane_id: pane, text: `${[executable, program, log, `${replace}-new`].map(quote).join(" ")}\n` });
+      await ready(pane, `${replace}-new`); await idle(pane);
+      expect((await herdrCliEndpoint(socket, pane, managedJournal))?.agent_instance_id).not.toBe(previous.agent_instance_id);
+      await Bun.write(releaseReply, "continue");
+      expect(await operation).toMatchObject({ code: 0, stderr: "" });
+      expect(readFileSync(log, "utf8").split(marker)).toHaveLength(2);
+      expect(managedMessages()).toHaveLength(before);
+    }
+    const moved = await herdrRpc<{ move_result: { pane: { pane_id: string } } }>("pane.move", { pane_id: sourcePane, destination: { type: "new_tab", workspace_id: target.workspace.workspace_id }, focus: false });
+    const movedSource = moved.move_result.pane.pane_id;
+    expect(movedSource).not.toBe(sourcePane);
+    const focusedBeforeLookup = (await sessionSnapshot()).focused_pane_id;
+    expect(await resolvePeerSource(firstSender.source, journal)).toBe(movedSource);
+    expect((await sessionSnapshot()).focused_pane_id).toBe(focusedBeforeLookup);
+    await herdrRpc("pane.close", { pane_id: movedSource });
+    expect(await resolvePeerSource(firstSender.source, journal)).toBeNull();
   } finally {
     if (beforeJournal === undefined) delete process.env["OVIS_HERDR_CLI_DIR"]; else process.env["OVIS_HERDR_CLI_DIR"] = beforeJournal;
     for (const child of children) if (child.exitCode === null) child.kill();

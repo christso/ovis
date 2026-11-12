@@ -4,12 +4,17 @@ import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { withoutHerdrDiagnostics } from "../server/herdr/client.ts";
-import { herdrCliCaller, herdrCliDirectory, herdrCliEndpoint, herdrCliIdentity, herdrCliOperation, herdrCliSocket, herdrCliSubmitted, recordHerdrCli, sameHerdrCliEndpoint } from "../server/herdr/cli-observations.ts";
+import { herdrCliCaller, herdrCliDirectory, herdrCliEndpoint, herdrCliIdentity, herdrCliOperation, herdrCliPrompt, herdrCliSocket, herdrCliSubmitted, recordHerdrCli, sameHerdrCliEndpoint } from "../server/herdr/cli-observations.ts";
 
 import { graphCliTerminalMetadata } from "../shared/graph-cli.ts";
 import { herdrCliLauncher } from "../server/herdr/cli-launcher.ts";
 
-interface Config { version: 1; real: string; journal: string; enabled?: boolean }
+import { preparePeerMessage, publishPeerMessage } from "../server/message-sources.ts";
+import { observePeerDisplayName } from "../server/message-source-name.ts";
+import { defaultStateDir } from "../server/update-state.ts";
+import { HERDR_SHIM_REVISION } from "../shared/communication-tracking.ts";
+
+interface Config { version: 1; bundle_revision?: number; real: string; journal: string; display_state?: string; enabled?: boolean }
 
 function captureEnabled(path: string): boolean {
   try { return (JSON.parse(readFileSync(path, "utf8")) as Config).enabled !== false; }
@@ -34,12 +39,12 @@ async function install(args: string[]): Promise<void> {
   if (process.platform === "win32") throw new Error("Herdr CLI observation installation currently supports Linux and macOS");
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index += 2) {
-    if (!["--real", "--directory", "--journal", "--enabled"].includes(args[index] ?? "") || !args[index + 1] || values.has(args[index]!)) throw new Error("Use install --real /absolute/herdr --directory /absolute/shim-directory [--journal /absolute/journal-directory] [--enabled true|false]");
+    if (!["--real", "--directory", "--journal", "--display-state", "--enabled"].includes(args[index] ?? "") || !args[index + 1] || values.has(args[index]!)) throw new Error("Use install --real /absolute/herdr --directory /absolute/shim-directory [--journal /absolute/journal-directory] [--display-state /absolute/ovis-state-directory] [--enabled true|false]");
     values.set(args[index]!, args[index + 1]!);
   }
   const requested = values.get("--real"), directory = values.get("--directory");
   if (values.has("--enabled") && !["true", "false"].includes(values.get("--enabled")!)) throw new Error("--enabled must be true or false");
-  if (!requested || !directory || !isAbsolute(requested) || !isAbsolute(directory) || (values.has("--journal") && !isAbsolute(values.get("--journal")!))) throw new Error("The real binary, shim directory and journal directory must be absolute paths");
+  if (!requested || !directory || !isAbsolute(requested) || !isAbsolute(directory) || (values.has("--journal") && !isAbsolute(values.get("--journal")!)) || (values.has("--display-state") && !isAbsolute(values.get("--display-state")!))) throw new Error("The real binary, shim directory and journal directory must be absolute paths");
   const real = resolve(requested), actual = realpathSync(real), path = resolve(directory);
   if (!lstatSync(actual).isFile() || actual === join(path, "herdr") || isShim(real)) throw new Error("--real must name the installed Herdr executable, not another Ovis shim");
   mkdirSync(path, { mode: 0o700 });
@@ -50,10 +55,15 @@ async function install(args: string[]): Promise<void> {
     if (!built.success) throw new Error(`Cannot bundle the shim: ${built.logs.join("\n")}`);
     await Bun.write(bundle, built.outputs[0]!);
     const config = join(path, "config.json");
-    writeFileSync(config, JSON.stringify({ version: 1, real, journal: values.get("--journal") ?? herdrCliDirectory(), enabled: values.get("--enabled") !== "false" } satisfies Config) + "\n", { mode: 0o600 });
+    writeFileSync(config, JSON.stringify({ version: 1, bundle_revision: HERDR_SHIM_REVISION, display_state: resolve(values.get("--display-state") ?? defaultStateDir()), real, journal: values.get("--journal") ?? herdrCliDirectory(), enabled: values.get("--enabled") !== "false" } satisfies Config) + "\n", { mode: 0o600 });
     writeFileSync(join(path, "herdr"), herdrCliLauncher(realpathSync(process.execPath), path), { mode: 0o700 });
     console.log(JSON.stringify({ directory: path, real, journal: values.get("--journal") ?? herdrCliDirectory() }));
   } catch (error) { rmSync(path, { recursive: true, force: true }); throw error; }
+}
+
+function executeHerdr(real: string, args: string[]): never {
+  process.execve(real, [real, ...args], process.env as Record<string, string>);
+  throw new Error("Cannot execute Herdr");
 }
 
 async function run(configPath: string, args: string[]): Promise<void> {
@@ -63,8 +73,7 @@ async function run(configPath: string, args: string[]): Promise<void> {
   const config = raw as Config;
   const operation = herdrCliOperation(args);
   if (config.enabled === false || !operation || process.env["HERDR_ENV"] !== "1" || !process.env["HERDR_PANE_ID"]) {
-    process.execve(config.real, [config.real, ...args], process.env as Record<string, string>);
-    throw new Error("Cannot execute Herdr");
+    executeHerdr(config.real, args);
   }
   const sourceSocket = herdrCliSocket(null), targetSocket = herdrCliSocket(operation.session), caller = process.env["HERDR_PANE_ID"]!;
   const occurred_at = new Date().toISOString(), targetNamespace = herdrCliIdentity(targetSocket, config.journal);
@@ -72,9 +81,20 @@ async function run(configPath: string, args: string[]): Promise<void> {
     herdrCliCaller(sourceSocket, caller, config.journal),
     operation.kind === "communication" ? herdrCliEndpoint(targetSocket, operation.target, config.journal) : Promise.resolve(null),
   ]);
+  const prompt = herdrCliPrompt(args);
+  const prepared = prompt && source && target && captureEnabled(configPath)
+    ? preparePeerMessage(args[prompt.body]!, source, target, config.journal, await observePeerDisplayName(sourceSocket, source, typeof config.display_state === "string" && isAbsolute(config.display_state) ? config.display_state : undefined)) : null;
+  const forwarded = [...args];
+  if (prepared && prompt) forwarded[prompt.body] = prepared.text;
   // A separate session receives terminal signals only through us. Inherited stdin remains
   // the same TTY/file descriptor; noninteractive start/prompt never acquire terminal control.
-  const child = spawn(config.real, args, { detached: true, stdio: ["inherit", "pipe", "pipe"], env: process.env });
+  let child: ReturnType<typeof spawn>;
+  try { child = spawn(config.real, forwarded, { detached: true, stdio: ["inherit", "pipe", "pipe"], env: process.env }); }
+  catch (error) {
+    // Envelope growth can exceed exec's argument limit. E2BIG proves no command executed.
+    if (prepared && (error as NodeJS.ErrnoException).code === "E2BIG") executeHerdr(config.real, args);
+    throw error;
+  }
   let childClosed = false;
   const forward = (signal: NodeJS.Signals) => { if (!childClosed && child.pid) try { process.kill(-child.pid, signal); } catch {} };
   let outputExitCode = 0, reapTimer: ReturnType<typeof setTimeout> | undefined;
@@ -99,7 +119,10 @@ async function run(configPath: string, args: string[]): Promise<void> {
   const signals = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"] as const;
   const handlers = signals.map((signal) => { const handler = () => forward(signal); process.on(signal, handler); return handler; });
   const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
-    child.once("close", (code, signal) => { childClosed = true; resolve([code, signal]); }); child.once("error", reject);
+    child.once("close", (code, signal) => { childClosed = true; resolve([code, signal]); }); child.once("error", (error: NodeJS.ErrnoException) => {
+      if (prepared && !child.pid && error.code === "E2BIG") executeHerdr(config.real, args);
+      reject(error);
+    });
   });
   // Queue a write barrier after the forwarded bytes, so an early consumer close is observed
   // even if the CLI already exited before the destination finished writing its last chunk.
@@ -116,6 +139,10 @@ async function run(configPath: string, args: string[]): Promise<void> {
   if (source && targetNamespace && captureEnabled(configPath) && herdrCliSubmitted(operation.kind, code, response)) {
     const currentSource = await herdrCliCaller(sourceSocket, caller, config.journal);
     const currentNamespace = herdrCliIdentity(targetSocket, config.journal);
+    if (prepared && target && sameHerdrCliEndpoint(source, currentSource) && captureEnabled(configPath)) {
+      const currentTarget = await herdrCliEndpoint(targetSocket, target.pane_id, config.journal);
+      if (sameHerdrCliEndpoint(target, currentTarget) && captureEnabled(configPath)) publishPeerMessage(prepared, config.journal);
+    }
     const reported = (response as { result?: { agent?: AgentInfo } }).result?.agent;
     // A status-wait error has no agent in its final response: retain pre/post recipient proof.
     const waited = !reported && target ? await herdrCliEndpoint(targetSocket, operation.target, config.journal) : null;

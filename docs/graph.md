@@ -308,3 +308,88 @@ proof separately from terminal receipts; it is never persisted as `herdr_associa
 `flock_coordination` field remains fork-owned, so older managers ignore CLI process proof. Open
 rechecks the selected process against a fresh source response before navigating to its pane.
 Watch devices cannot read this history, current process evidence or namespace data.
+
+## Received peer messages
+
+After refreshing an owned wrapper through **Enable communication tracking**, supported future
+`herdr agent prompt TARGET TEXT` sends from a verified agent carry a generated peer envelope.
+The receiving agent sees its sender, `ovis-source://<send UUID>`, an explicit peer-content notice,
+the unchanged original body, and an authentication footer in the actual submitted prompt. Herdr
+still receives one CLI invocation and one submission. The wrapper does not inject terminal output,
+edit native transcripts, retry a send, or grant the peer human permissions.
+
+Chat responses carry only the send ID, sanitized historical display name and authenticated source
+agent kind, never private daemon or process identities. Older responses without a kind keep their
+name and source action without an icon. This remains safe through older Ovis managers that forward remote conversations using
+a driving bridge credential. Ovis projects an exact authenticated envelope in a single user text part into a **Message from [source agent icon] source name ↗** marker and the original body. It never joins ordinary chat rows to Graph receipts,
+names, similar text or nearby timestamps. Separate sends have separate UUIDs even with identical
+bodies. A verbatim copy of an authentic envelope retains its original peer-content provenance
+and UUID: stock native transcripts do not prove whether that row is a direct delivery or a
+copy. The marker therefore describes authenticated content, not a new delivery or human
+instruction. Altered, malformed, unsigned, unrecognized and historical plain messages stay as
+recorded. Native tools that normalize, split, summarize or truncate the envelope may prevent
+structured chat attribution; their terminal still shows what Herdr delivered.
+
+
+The sender name uses the source pane's explicit label, then its explicit tab label, then Ovis's
+meaningful agent conversation title, then its locally shared Ovis `tab_labels` entry, then Herdr's
+registered agent name, then the agent kind. The title and first-message shortening rules are the
+same pure helpers Ovis uses for tab names. Automatic names are skipped when the shared
+`autoTabNames` setting is off. Labels are sanitized and bounded; labels containing path separators are excluded, including
+relative paths and endpoint locators. This also excludes slash-separated custom titles. The shared-label lookup uses the local pane ID **and stable terminal ID**;
+another PC's keys and a replaced terminal's labels cannot name this sender. Managed installation
+binds the wrapper to that Ovis server's state directory; a manual install can use `--display-state`.
+No Ovis server needs to be running to read these files. Browser-only labels learned while reading
+a transcript, or labels held only on another PC's Ovis server, are unavailable to the shim. For a
+split tab, the actual source pane supplies an automatic name, not its sibling's. Thus this matches
+those supported Ovis naming inputs, rather than promising every browser's current sidebar text.
+Renames affect later sends; old receipts retain the authenticated name at send time, and navigation
+continues to follow stable terminal/process proof. The source icon is the authenticated sender's
+agent kind, independent of the recipient. The friendlier wording does not assert a new delivery or
+human permission, including when someone copies an authentic envelope.
+
+The terminal locator and chat source button work inside Ovis, by mouse or touch. They first read
+the registered message metadata from the receiving PC, then ask connected PCs for fresh shim
+process proof. The source must match the original server identity, daemon incarnation, stable
+terminal and agent process instance. A moved source opens its current workspace/tab; a closed,
+replaced, disconnected, ambiguous or unavailable source stays attributed but cannot open an
+unrelated terminal. Opening changes only browser selection, never Herdr focus, input or attachment
+ownership. The locator embeds no hostname, browser origin, credential or arbitrary destination;
+it is inert outside clients that understand it. Watching devices retain the terminal text but
+cannot read the private message-source lookup or process-resolution APIs.
+
+This works at send time while Ovis is down. It covers the strict supported local/named-session
+prompt syntax through the enabled wrapper on Linux/macOS. If envelope expansion hits exec's
+argument limit before a child can execute, the original argv executes once as passthrough, without
+a peer receipt. A started command is never retried. Unknown flags or ambiguous argv pass
+through unchanged. `agent start` remains observation-only; native subagents, direct real-binary
+or socket calls, Windows and `--machine`/`--remote` forwarding do not acquire envelopes. A saved
+remote PC can show attributed messages sent by its own installed wrapper, once its Ovis bridge
+supports these routes; forwarding to it from another PC remains a bypass. Cross-session source
+navigation requires that source session to be represented by a connected Ovis PC.
+
+`server/message-sources.ts` owns a separate additive `messages/` directory beneath the CLI journal:
+a private 32-byte authentication `key`, and immutable version-1 `<send UUID>.json` receipts with
+`version`, `id`, `source`, `target`, optional `display_name` and `proof`. Endpoints include daemon/terminal/process identity
+and registration labels. `display_name` is a separate immutable send-time display snapshot, also
+authenticated by `proof`; it never changes endpoint identity. Receipts without it retain their
+original authentication and registration-name fallback. `proof` authenticates metadata only. No prompt text, native arguments,
+terminal output or body hash is persisted there. The body authenticator travels only in the
+native prompt/transcript. Receipt publication waits for successful CLI submission and unchanged
+pre/post endpoints; a killed wrapper, collection disabled in flight, storage failure or ambiguous
+result leaves a visible envelope without verified projection/navigation. Nothing is replayed to
+repair such a gap. This is local provenance evidence, not a security boundary against programs
+with the same account's filesystem access.
+
+Graph journal and registry formats are unchanged. Older Ovis releases ignore `messages/`; they
+cannot erase it in unrelated writes and render native envelopes as ordinary text. Deleting the
+new proof files removes structured attribution/navigation but leaves native transcript content.
+Wrapper `config.json` keeps version 1 and adds optional `bundle_revision: 3` and `display_state`
+(the local Ovis state directory). Older wrappers ignore these fields; older setup writers may omit
+them, causing the new status reader to request explicit setup again. A changed state directory
+also requires an explicit refresh. Status checks never refresh code. Managed setup stages a new bundle only on explicit enable,
+preserves the real executable and command path, and disables collection during replacement.
+Manually installed wrappers use a fresh directory and an explicit PATH change as before. Disabling
+tracking keeps inherited wrappers working as passthrough; it retains existing metadata. Rolling
+Ovis back requires no data migration; remove the wrapper PATH entry or disable tracking to return
+to original prompt bodies. Never delete native transcripts as rollback.
