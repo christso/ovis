@@ -9,7 +9,8 @@ import { savedLaunchersSupported, type SavedLauncherStore } from "./saved-launch
 import { HerdrError } from "./herdr/client.ts";
 import type { AgentKind } from "../shared/agents.ts";
 import { agentManifests } from "./herdr/client.ts";
-import { hcMachine, servingCore } from "./herdr-core/runtime.ts";
+import { hcMachine } from "./herdr-core/runtime.ts";
+import { capabilities } from "./runtime/capabilities.ts";
 import { badRequest, errorResponse, jsonResponse, setRequestRoute } from "./http.ts";
 import { SHELL_AGENTS, type ShellAgentLocator } from "./shell-agent.ts";
 
@@ -59,10 +60,10 @@ export async function handleAgentsRequest(request: Request, pathname: string, sh
           .sort((left, right) => left.label.localeCompare(right.label) || left.kind.localeCompare(right.kind));
         return jsonResponse({ agents });
       }
-      if (canSaveLaunchers && !servingCore()) for (const kind of SAVED_LAUNCHER_KINDS) kinds.add(kind);
+      if (canSaveLaunchers && capabilities().runtime === "herdr") for (const kind of SAVED_LAUNCHER_KINDS) kinds.add(kind);
       // herdr starts these two without a manifest; herdr-core's manifests already name every kind its
       // panes can start (adapter.ts)
-      if (!servingCore()) {
+      if (capabilities().runtime === "herdr") {
         kinds.add("omp");
         kinds.add("claude");
       }

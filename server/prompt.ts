@@ -35,6 +35,7 @@ import { navigatePiAsk } from "./dialogs/pi-ask-navigate.ts";
 import { draftKept, nativeStepTarget, navigateNativeSteps } from "./dialogs/step-navigate.ts";
 import { gjcCustomEditorMatches, parseFallbackPrompt } from "./dialogs/fallback.ts";
 import { SUGGESTION_READ_MS, claudeHeldIsGrey, claudeInputBoxContent, claudeInputDraft, claudeRestoredDraft, parseClaudeSuggestion, viewportShowsLive } from "./claude-input.ts";
+import { parseGjcSuggestion, parseOmpSuggestion } from "./omp-input.ts";
 import { OMO_FORM_RE, omoAskOf, omoAsksFor } from "./omo-questions.ts";
 import { codexQueuedPrompt, queuedQuestionCount, type QueueFront } from "./codex-queue.ts";
 import { OpenCodePromptState } from "./opencode-prompt.ts";
@@ -820,6 +821,53 @@ async function piOwnsInput(paneId: string): Promise<boolean> {
     || agentProcesses([entry], "pi").length > 0 || agentProcesses([entry], "omo").length > 0);
 }
 
+/**
+ * Whether Hermes holds the pane's input (it is the pane's foreground process), not a shell it was
+ * suspended behind (Ctrl+Z), where herdr still names the pane Hermes and anything run there can show an
+ * approval's text. Unknown (herdr did not answer) is not Hermes's, and neither is Windows, which lists no
+ * foreground process group: its approval stays for the terminal there, as one this reader leaves out.
+ */
+async function hermesOwnsInput(paneId: string): Promise<boolean> {
+  if (process.platform === "win32") return false;
+  const info = await paneProcessInfo(paneId).catch(() => null);
+  return (info?.foreground_processes ?? []).some(isHermesForeground);
+}
+
+/**
+ * The foreground process is Hermes itself: its own executable, or Python running Hermes's entry script as the
+ * script (the first argument that is not an option). isHermesProcess also takes a Python with "hermes" anywhere in its
+ * arguments (`python3 -c '…' /tmp/hermes`), which may label a pane but must not let it take an approval's keys.
+ */
+export function isHermesForeground(entry: { name?: string | null; argv0?: string | null; argv?: readonly string[] | null }): boolean {
+  const named = (value: string) => {
+    const lower = value.toLowerCase();
+    return lower === "hermes" || lower === "hermes.exe" || lower.endsWith("/hermes") || lower.endsWith("\\hermes.exe");
+  };
+  const argv = entry.argv ?? [];
+  const first = argv[0] ?? entry.argv0 ?? entry.name ?? "";
+  if (named(first)) return true;
+  const interpreter = (first.split(/[\\/]/).pop() ?? "").toLowerCase();
+  if (!/^python[\d.]*(?:\.exe)?$/u.test(interpreter)) return false;
+  // Python's own options before the script, read as Python reads them, combined flags included (-uX opt): -c and -m
+  // run something else, -X/-W/-Q take a value (the rest of the argument, or the next one), and a long option this
+  // does not know may take one too, so it is no Hermes
+  for (let at = 1; at < argv.length; at += 1) {
+    const arg = argv[at]!;
+    if (arg === "--") return named(argv[at + 1] ?? "");
+    if (arg.startsWith("--")) return false;
+    if (!arg.startsWith("-") || arg === "-") return named(arg);
+    for (let flag = 1; flag < arg.length; flag += 1) {
+      const option = arg[flag]!;
+      if (option === "c" || option === "m") return false;
+      if (option === "X" || option === "W" || option === "Q") {
+        if (flag === arg.length - 1) at += 1;
+        break;
+      }
+    }
+  }
+  return false;
+}
+
 /** A move between a form's questions ran out of its request's time, or its asking ended: no further key. */
 class MoveLapsed extends KeyRefused {}
 
@@ -1148,6 +1196,13 @@ async function readKnownPrompt(
   if (agent === "omp" && (prompt !== null || pane.agent_status === "blocked") && !(await ompOwnsInput(paneId))) {
     return { prompt: null, screen, suppressFallback: true };
   }
+  // Hermes's approval answers by keys that grant or refuse: offered only while Hermes holds the input.
+  // Looked at before the read that settles a key, never after it: a look between that read's check and
+  // the key would let a cursor moved meanwhile take the Enter. A Hermes suspended during that read takes
+  // that one key at the shell's fresh prompt, where an arrow or Enter runs nothing, and refuses the next
+  if (agent === "hermes" && prompt !== null && parsedByPublicPrompt.get(prompt)?.responder === "hermes-approval" && !(await hermesOwnsInput(paneId))) {
+    return { prompt: null, screen, suppressFallback: true };
+  }
   // and every card pi's own dialogs and questionnaires draw, which answer by keys (pi-ask's form answers
   // through the extension and returned above; omo's cards on a pane herdr names pi keep their own checks)
   if (agent === "pi" && prompt !== null && parsedByPublicPrompt.get(prompt)?.responder?.startsWith("pi-") && !(await piOwnsInput(paneId))) {
@@ -1384,6 +1439,13 @@ export async function shownPromptText(pane: HerdrPane, panes: HerdrPane[], optio
   return shown !== null && draft ? `${shown}\0${JSON.stringify(draft)}` : shown;
 }
 
+/** What each agent suggests typing next, read from its screen (an ANSI read of the viewport), by herdr's agent name. */
+const SUGGESTION_PARSERS: Readonly<Record<string, (ansi: string) => string | null>> = {
+  claude: parseClaudeSuggestion,
+  gjc: parseGjcSuggestion,
+  omp: parseOmpSuggestion,
+};
+
 export async function handlePromptRequest(request: Request, url: URL, options: PromptRequestOptions = {}): Promise<Response | null> {
   if (url.pathname !== "/api/pane/prompt" && url.pathname !== "/api/pane/prompt/answer") return null;
   setRequestRoute(url.pathname);
@@ -1402,20 +1464,33 @@ export async function handlePromptRequest(request: Request, url: URL, options: P
       // reaches this PC with its own credential: it only ever narrows the answer
       const watching = options.readOnly || url.searchParams.get("plan") === "0";
       const prompt = watching ? read.prompt : await withPlanFile(read.prompt, options.claudeTranscript?.(paneId));
-      // no menu up: what Claude suggests typing next, for the composer's placeholder, and the chat's
-      // own last message where Claude put it back into the box on a cancel. Only a nicety: it is read
-      // only while Claude waits for the next prompt (a working agent shows none), and a failed or
-      // slow read of it (a herdr without ansi reads, a busy one) leaves the prompt answer as it is,
-      // on time.
-      const box = prompt === null && agent === "claude" && (status === "idle" || status === "done")
+      // no menu up: what the agent suggests typing next (Claude, and gjc and omp with their
+      // suggestions turned on), for the composer's placeholder, and the chat's own last message where
+      // Claude put it back into the box on a cancel. Only a nicety: it is read only while the agent
+      // waits for the next prompt (a working agent shows none), and a failed or slow read of it (a
+      // herdr without ansi reads, a busy one) leaves the prompt answer as it is, on time. gjc's and
+      // omp's box is read only at the bottom of the screen: a viewport scrolled into the history
+      // could end in an older frame of it. The snapshot's scroll is from before the read, so for a
+      // suggestion found there, where the viewport is gets asked again (another device may have
+      // scrolled meanwhile), within the same short deadline as the read; a look herdr does not
+      // answer in time proves nothing, and offers none.
+      const parseSuggestion = Object.hasOwn(SUGGESTION_PARSERS, agent) ? SUGGESTION_PARSERS[agent]! : null;
+      const scrolled = agent !== "claude" && (read.pane.scroll?.offset_from_bottom ?? 0) > 0;
+      // herdr-core (hc) does not know gjc, so a gjc pane there has no status: its box is read all the same, as
+      // gjc draws its suggestion only in the empty box after a turn, never while it works (release QA 8a)
+      const resting = status === "idle" || status === "done" || (agent === "gjc" && status === "unknown");
+      const box = prompt === null && parseSuggestion !== null && !scrolled && resting
         ? await paneRead({ paneId, source: "visible", format: "ansi", timeoutMs: SUGGESTION_READ_MS })
           .then((read) => read.text, () => null)
         : null;
+      const found = box === null || parseSuggestion === null ? null : parseSuggestion(box);
+      const suggestion = found === null || agent === "claude" ? found
+        : await paneScrollInfo(paneId, undefined, SUGGESTION_READ_MS).then((scroll) => (scroll?.offset_from_bottom ?? 0) > 0 ? null : found, () => null);
       const outcomes = await commandOutcomes(paneId, read.pane, read.prompt, read.screen, readSendId, options.codexHome, read.snapshot);
       return jsonResponse({
         prompt,
-        suggestion: box === null ? null : parseClaudeSuggestion(box),
-        restored: box === null ? null : await restoredOnLiveScreen(paneId, box).catch(() => null),
+        suggestion,
+        restored: box === null || agent !== "claude" ? null : await restoredOnLiveScreen(paneId, box).catch(() => null),
         ...(outcomes.length ? { outcomes: watching ? outcomes.map(({ preview: _preview, result_text: _resultText, ...outcome }) => outcome) : outcomes } : {}),
       } satisfies PanePromptResponse);
     }

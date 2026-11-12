@@ -21,7 +21,7 @@ import { useReconnectGrace } from "../lib/reconnectGrace.ts";
 import { looksLikeKey } from "../../shared/secret-prompt.ts";
 import { messageQueues } from "../lib/messageQueue.ts";
 import { pendingMessages } from "../lib/pendingMessages.ts";
-import { heldCountShown, heldOpenAtFold, heldOpenOnFocus, heldRefocusDue, heldRowError, heldRowsFold, heldRowsHidden, heldToggleShown, SHORT_PHONE_QUERY } from "../lib/heldRows.ts";
+import { heldOpenAtFold, heldOpenOnFocus, heldRefocusDue, heldRowError, heldRowsFold, heldRowsHidden, heldToggleShown, SHORT_PHONE_QUERY } from "../lib/heldRows.ts";
 import { arrangeNotices, dismissNotice, NO_DISMISSALS, settleDismissed, type DismissedNotices } from "../lib/composerNotices.ts";
 import { MAX_COMPOSER_CHARS, QUEUE_READY_STATUS, agentDisplayLabel, claudeMainAtRest, typedTerminalCommand } from "../lib/compose.ts";
 import { usePaneCommands } from "../lib/usePaneCommands.ts";
@@ -35,6 +35,7 @@ import { answerHint } from "../lib/promptAnswer.ts";
 import { composerDrafts } from "../lib/composerDraft.ts";
 import { appendQuote, formatTerminalQuote } from "../lib/terminalQuote.ts";
 import { useMachineApi, useMachineId } from "../lib/machineContext.tsx";
+import { fetchBridgeHealth } from "../lib/api.ts";
 import { useSessionHistoryOffered } from "../lib/useSessionHistoryOffered.ts";
 import { paneStorageId } from "../../shared/machines.ts";
 import { KeyBar, LineKeysButton } from "./KeyBar.tsx";
@@ -50,7 +51,8 @@ import { PendingMessages } from "./PendingMessages.tsx";
 import type { AgentStatus, ClientRole, PlanSummary, ServerMessage } from "../../shared/protocol.ts";
 import type { PaneControls, PaneView } from "../lib/actions.ts";
 import { usePaneLane } from "../lib/chatLane.ts";
-import { useSettings, type Palette, type ResolvedTheme } from "../lib/settings.ts";
+import { useSettings } from "../lib/settings.ts";
+import type { TerminalColors } from "../lib/themes.ts";
 import { learnFromSend } from "../lib/tabLabels.ts";
 import { useT } from "../lib/i18n.ts";
 import { isAppShortcut } from "../lib/shortcuts.ts";
@@ -115,6 +117,8 @@ export interface PaneTerminalProps {
   cwd?: string | null;
   /** the pane's workspace: its checkout's branch stands beside the folder under the composer */
   workspaceId?: string | null;
+  /** the workspace's displayed label for the prompt card's accessible context */
+  workspaceLabel?: string | null;
   /** that workspace is a linked worktree of this repository (its name, as herdr gives it); null: it is not one */
   worktreeRepo?: string | null;
   machineName?: string;
@@ -147,10 +151,8 @@ export interface PaneTerminalProps {
   terminalWheelSpeed: number;
   /** fonts tried before the built-in stack (settings); "" keeps the built-in one */
   terminalFontFamily: string;
-  /** the resolved UI theme: the xterm theme object mirrors it */
-  theme: ResolvedTheme;
-  /** the chrome palette (settings.ts): the terminal cursor and selection follow it */
-  palette: Palette;
+  /** the drawn theme's terminal colours (lib/themes.ts): xterm reads no CSS, so its theme object is given them */
+  colors: TerminalColors;
   /** The connection's desired role; changes are sent to the server, acks come back via onRoleAck. */
   role?: ClientRole;
   /** Fires with the server-confirmed role (the header toggle shows it). */
@@ -168,6 +170,13 @@ const heldRowNotes = new Map<string, { owner: string; id: string; text: string }
 
 function reconnectHref(machineId: string, paneId: string): string {
   return pageAddress(window.location.pathname, `?machine=${encodeURIComponent(machineId)}&pane=${encodeURIComponent(paneId)}`, "");
+}
+
+function isDemoWatch(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("demo_security") === "watch" || params.get("demo_devices") === "watch") return true;
+  try { return window.sessionStorage.getItem("ovis:demo-security") === "watch"; } catch { return false; }
 }
 
 
@@ -188,6 +197,7 @@ export function PaneTerminal({
   backgroundWait = false,
   cwd = null,
   workspaceId = null,
+  workspaceLabel = null,
   worktreeRepo = null,
   machineName = "",
   view,
@@ -200,8 +210,7 @@ export function PaneTerminal({
   split = false,
   terminalWheelSpeed,
   terminalFontFamily,
-  theme,
-  palette,
+  colors,
   role = "interact",
   onOpenTerminal,
   peek: peekProp = null,
@@ -436,8 +445,19 @@ export function PaneTerminal({
   const endedRef = useRef(false);
   // the modifyOtherKeys level the pane's program asked for, as this pane's stream last said it
   const modifyOtherKeysRef = useRef(0);
-  const [observing, setObserving] = useState(false);
-  const [secret, setSecret] = useState<{ pane: string; prompt: string } | null>(null);
+  const [observing, setObserving] = useState(role === "observe");
+  const [authWatching, setAuthWatching] = useState(() => role === "observe" || isDemoWatch());
+  useEffect(() => {
+    if (role === "observe" || isDemoWatch()) { setAuthWatching(true); return; }
+    let live = true;
+    fetchBridgeHealth().then((health) => {
+      if (live && health?.auth?.role === "watch") setAuthWatching(true);
+    }, () => {});
+    return () => { live = false; };
+  }, [role]);
+  const viewOnly = observing || role === "observe" || authWatching;
+  // `unchecked`: the PC types the answer without reading its screen first (useTerminalMount showSecret)
+  const [secret, setSecret] = useState<{ pane: string; prompt: string; unchecked: boolean } | null>(null);
   const secretRef = useRef<string | null>(null);
   const secretActive = secret !== null && secret.pane === paneId;
   // a touch screen writes in the terminal's input line; typing straight into the grid is chosen
@@ -482,7 +502,7 @@ export function PaneTerminal({
   // Settings → Use alongside herdr's own window: off (the default), a tab out of use keeps its pane and its size
   const releaseAwayRef = useRef(settings.releasePaneAway);
   releaseAwayRef.current = settings.releasePaneAway;
-  const narrowFont = split;
+  const narrowFont = false;
   const narrowFontRef = useRef(narrowFont);
   narrowFontRef.current = narrowFont;
   const narrowFontFitted = useRef(narrowFont);
@@ -607,7 +627,7 @@ export function PaneTerminal({
   const [keyboardRequested, setKeyboardRequested] = useState(false);
   // only while the control can be pressed: offline, held, ended or view only, it is gone or disabled,
   // and a line still taking a draft must raise the keyboard on a tap as it does with the setting off
-  const keyboardControlUsable = connected && inputReady && !held && !ended && !observing;
+  const keyboardControlUsable = connected && inputReady && !held && !ended && !viewOnly;
   const keyboardHeld = settings.terminalKeyboardOnRequest && coarse && !keyboardRequested && keyboardControlUsable;
   const keyboardControlUsableRef = useRef(keyboardControlUsable);
   keyboardControlUsableRef.current = keyboardControlUsable;
@@ -737,9 +757,9 @@ export function PaneTerminal({
   useEffect(() => {
     if (paneId === null) return;
     const key = paneStorageId(machineId, paneId);
-    paneObserving.set(key, observingMount, mountRole({ observing, inputReady }));
+    paneObserving.set(key, observingMount, mountRole({ observing: viewOnly, inputReady }));
     return () => paneObserving.set(key, observingMount, null);
-  }, [machineId, paneId, observing, inputReady, observingMount]);
+  }, [machineId, paneId, viewOnly, inputReady, observingMount]);
 
   useEffect(() => {
     if (active) onRoleAckRef.current?.(observing ? "observe" : "interact");
@@ -758,9 +778,9 @@ export function PaneTerminal({
     }, 2500);
   }, []);
 
-  useTerminalMount({ setTerminalHistory, picturesChoiceRef, typeAheadRef, activeRef, agentRef, barKeyRef, baseFontRef, pinchingRef, cachedRef, watchedRef, cachedReleaseRef, cancelLeaveRef, cancelTouchRef, chatMountedRef, chatOutputRef, chatViewRef, clearModifiers, clipboardTimerRef, coarseRef, commitPendingText, composingRef, compositionCommitPendingRef, consumeModifiers, deferAttachRef, draftHeldForRef, draftPaneRef, endedRef, findOpenRef, fitRef, fittedRef, fixedGridRef, followCursorRef, followRef, frameGateRef, heldRef, hostRef, hyperlinksRef, keyboardHoldsRef, keyboardToggleFocusRef, leaveRef, lineScroll, machineId, machineSessions, mirroredRef, mirrorWrapRef, modifiersRef, modifyOtherKeysRef, narrowFontRef, noteClipboard, observeRef, onChatSuggestion, onInputRowFrameRef, onRoleAckRef, onServerMessageRef, openFileRef, openWebRef, reuseExternalLinkTabRef, osc52AllowedRef, codexDragRef, outputTargetRef, palette, paneRef, pendingEpochRef, pendingScopeRef, pendingSubmissionsRef, pinchBadgeRef, pinchStatusRef, presentationRef, presentedRef, reassertIfStaleRef, reattachRef, redrawGreeting, releaseAwayRef, idleReleaseRef, setIdleView, releaseRef, releasedRef, retireOutputRef, secretRef, sessionRef, setChatInvalidation, setChatRefresh, setChatSent, setComposing, setConnected, setConnectedBefore, setConversationPushes, setDraft, setEnded, setHeld, setInputError, setInputReady, setObserving, setOutputError, setOutputReady, setParsedTarget, setReleased, setSecret, setSelectionQuote, setTerminal, setUnsupported, setViewHeld, setWatching, sharedGridRef, shortcutSettings, shownRef, sizesPty, socketRef, stackRef, stalledRef, stopKeyRef, submitRetention, t, tRef, termRef, terminalFontSize, theme, updateSettings, uploadFileRef, attachFilesRef, watchingRef, wheelStateRef });
+  useTerminalMount({ setTerminalHistory, picturesChoiceRef, typeAheadRef, activeRef, agentRef, barKeyRef, baseFontRef, pinchingRef, cachedRef, watchedRef, cachedReleaseRef, cancelLeaveRef, cancelTouchRef, chatMountedRef, chatOutputRef, chatViewRef, clearModifiers, clipboardTimerRef, coarseRef, commitPendingText, composingRef, compositionCommitPendingRef, consumeModifiers, deferAttachRef, draftHeldForRef, draftPaneRef, endedRef, findOpenRef, fitRef, fittedRef, fixedGridRef, followCursorRef, followRef, frameGateRef, heldRef, hostRef, hyperlinksRef, keyboardHoldsRef, keyboardToggleFocusRef, leaveRef, lineScroll, machineId, machineSessions, mirroredRef, mirrorWrapRef, modifiersRef, modifyOtherKeysRef, narrowFontRef, noteClipboard, observeRef, onChatSuggestion, onInputRowFrameRef, onRoleAckRef, onServerMessageRef, openFileRef, openWebRef, reuseExternalLinkTabRef, osc52AllowedRef, codexDragRef, outputTargetRef, colors, paneRef, pendingEpochRef, pendingScopeRef, pendingSubmissionsRef, pinchBadgeRef, pinchStatusRef, presentationRef, presentedRef, reassertIfStaleRef, reattachRef, redrawGreeting, releaseAwayRef, idleReleaseRef, setIdleView, releaseRef, releasedRef, retireOutputRef, secretRef, sessionRef, setChatInvalidation, setChatRefresh, setChatSent, setComposing, setConnected, setConnectedBefore, setConversationPushes, setDraft, setEnded, setHeld, setInputError, setInputReady, setObserving, setOutputError, setOutputReady, setParsedTarget, setReleased, setSecret, setSelectionQuote, setTerminal, setUnsupported, setViewHeld, setWatching, sharedGridRef, shortcutSettings, shownRef, sizesPty, socketRef, stackRef, stalledRef, stopKeyRef, submitRetention, t, tRef, termRef, terminalFontSize, updateSettings, uploadFileRef, attachFilesRef, watchingRef, wheelStateRef });
 
-  useTerminalRefits({ activeRef, autoSelected, baseFontRef, pinchingRef, fontSettledRef, chatView, chatViewRef, coarseRef, findOpenRef, fitRef, fittedRef, fixedGridRef, follow, followCursorRef, keyboardHoldsRef, narrowFont, narrowFontFitted, observeRef, palette, paneRef, peekRef, sharedGridRef, shown, sizesPty, socketRef, termRef, terminalFontFamily, terminalFontSize, theme });
+  useTerminalRefits({ activeRef, autoSelected, baseFontRef, pinchingRef, fontSettledRef, chatView, chatViewRef, coarseRef, findOpenRef, fitRef, fittedRef, fixedGridRef, follow, followCursorRef, keyboardHoldsRef, narrowFont, narrowFontFitted, observeRef, colors, paneRef, peekRef, sharedGridRef, shown, sizesPty, socketRef, termRef, terminalFontFamily, terminalFontSize });
 
   usePaneAttach({ typeAheadRef, activeRef, autoSelected, cached, watched, coarseRef, deferAttachRef, fontSettledRef, draftPaneRef, findOpenRef, fitRef, fittedRef, fixedGridRef, frameGateRef, hyperlinksRef, hostRef, machineId, mirrored, modifyOtherKeysRef, observeRef, paneId, pending, presented, presentationRef, releaseRef, releasedRef, retireOutputRef, secretRef, setDraft, setComposing, setEnded, setHeld, setInputError, setInputReady, setOutputError, setOutputReady, setReleased, setSecret, setUnsupported, setWatching, sharedGridRef, socketRef, stalledRef, terminalId, termRef, chatViewRef, cancelLeaveRef, cachedRef, watchingRef, keyboardHoldsRef, followRef, followCursorRef, leaveRef, shownRef });
 
@@ -786,7 +806,7 @@ export function PaneTerminal({
   // ask the server for the role change; the role-ack handler applies the local
   // consequences (stdin gate, grid adoption or reclamation) once it is confirmed.
   // The initial default is skipped: the server already treats fresh connections as interact.
-  const lastSentRole = useRef<ClientRole>(role);
+  const lastSentRole = useRef<ClientRole>("interact");
   useEffect(() => {
     if (role === lastSentRole.current) return;
     lastSentRole.current = role;
@@ -1094,12 +1114,12 @@ export function PaneTerminal({
   }, [controls, active, paneId]);
 
   const secretInput = presented && paneId !== null && secretActive && !observing && !ended && connected && outputReady ? <SecretInput
-    key={`${paneId}:${secret.prompt}`} prompt={secret.prompt} active={active}
-    onSend={(value) => socketRef.current?.sendSecret(paneId, secret.prompt, value) ?? null}
+    key={`${paneId}:${secret.prompt}`} prompt={secret.prompt} active={active} unchecked={secret.unchecked}
+    onSend={(value) => socketRef.current?.sendSecret(paneId, secret.prompt, value, () => secretRef.current === secret.prompt) ?? null}
     onCancel={() => { if (socketRef.current?.connected) { cancelTouchRef.current(); socketRef.current.sendInput(paneId, "\u0003"); } }}
   /> : null;
   // the input line's row, kept while the masked input stands in for it
-  const lineSlot = presented && paneId !== null && !observing && !ended && inputLine;
+  const lineSlot = presented && paneId !== null && !viewOnly && !ended && inputLine;
   // What floats from the slot may reach up to the grid's top and no further (TerminalInput.css):
   // in a short pane (a split, a phone in landscape with its keyboard up) a grown line or the masked
   // input would otherwise cover the find bar, or be clipped under the pane's frame
@@ -1257,7 +1277,7 @@ export function PaneTerminal({
             {draft.leftOut && <span className="draft-truncated">{t("An Enter or line break was left out: Send never presses Enter.")}</span>}
           </div>
         )}
-        {paneId !== null && !ended && observing && (
+        {paneId !== null && !ended && (observing || (!chatView && viewOnly)) && (
           <div className="terminal-banner terminal-banner-observe" role="status">
             <Eye aria-hidden="true" />
             {t("View only")}
@@ -1304,7 +1324,7 @@ export function PaneTerminal({
           lineScroll={chatView ? undefined : lineScroll}
           onApplicationPage={sendApplicationPage}
           enabled={presented && connected && outputReady && !chatView && !held && !ended && !released && !unsupported}
-          interactive={!observing && !secretActive && !viewportSearching} search={searchState} onError={setInputError} />}
+          interactive={!viewOnly && !secretActive && !viewportSearching} search={searchState} onError={setInputError} />}
         {paneId !== null && chatMounted && (
           <RenderBoundary resetKey={paneId} fallback={(retry) => (
             <div className="chat-view"><div className="chat-empty" role="alert">
@@ -1356,9 +1376,10 @@ export function PaneTerminal({
             peek={autoPeek}
             onCommandScreenClosed={onCommandScreenClosed}
             onOutcomes={onChatOutcomes}
-            interactive={!observing && role === "interact"}
+            interactive={!viewOnly && role === "interact"}
             quotable={!secretActive}
             cwd={cwd}
+            promptContext={[agentDisplayLabel(agent), workspaceLabel, cwd, machineName].filter((part): part is string => part !== null && part !== "").join(" · ")}
             searchRequest={searchRequest}
           />
           </RenderBoundary>
@@ -1367,7 +1388,7 @@ export function PaneTerminal({
       {/* the queue is the composer's, so it shows under the chat lens only: there alone is an open
           Codex question known (heldByOpenQueue), and Send now must not type into one */}
       {/* under a peek the composer's column stays, inert: the grid has the keyboard */}
-      {presented && paneId !== null && chatMounted && !observing && !ended && queueOwner !== null && queued.length > 0 && (
+      {presented && paneId !== null && chatMounted && !viewOnly && !ended && queueOwner !== null && queued.length > 0 && (
         <section className={`composer-queue${readyForQueue ? " is-ready" : ""}${heldHidden ? " is-folded" : ""}`} aria-label={t("Queued messages")} inert={peek !== null || undefined}>
           {(() => {
             // one caption line: the sentence says the state
@@ -1375,7 +1396,7 @@ export function PaneTerminal({
               <span className="composer-queue-mark" aria-hidden="true"><Clock /></span>
               <span className="composer-queue-caption">
                 {t(readyForQueue ? "Held message — review and send" : "Held until the agent is ready")}
-                {heldCountShown(queued.length, heldFold) && <> · {queued.length === 1 ? t("{n} message", { n: 1 }) : t("{n} messages", { n: queued.length })}</>}
+                <> · {queued.length === 1 ? t("{n} message", { n: 1 }) : t("{n} messages", { n: queued.length })}</>
               </span>
             </>;
             return <div className="composer-queue-heading">
@@ -1434,7 +1455,7 @@ export function PaneTerminal({
           </ol>
         </section>
       )}
-      {presented && paneId !== null && chatMounted && !observing && queueOwner !== null && pending.length > 0 && <PendingMessages
+      {presented && paneId !== null && chatMounted && !viewOnly && queueOwner !== null && pending.length > 0 && <PendingMessages
         key={`pending-${queueOwner}`}
         active={active}
         inert={peek !== null}
@@ -1474,13 +1495,15 @@ export function PaneTerminal({
           metadata={chatMetadata?.pane === paneId ? chatMetadata.value : null}
           connected={connected && !held}
           connectedBefore={connectedBefore}
-          answerHint={answering === null ? null
+          answerHint={viewOnly ? t("View only") : answering === null ? null
             : pendingAnswer?.promptId === answering.id ? t("Confirm your answer in the card above, or type another…") : answerHint(answering)}
           // no suggestion under any card, a fallback or queued one included
           suggestion={chatPrompt?.pane !== paneId && chatSuggestion?.pane === paneId ? chatSuggestion.value : null}
           restored={chatPrompt?.pane !== paneId && chatRestored?.pane === paneId ? chatRestored.value : null}
           notices={composerNotices}
-          role={observing ? "observe" : role}
+          // a device that only watches: the composer locks what writes from this role alone, in its own
+          // render. Its lists (background tasks, side conversations) only read, so their rows stay usable
+          role={viewOnly ? "observe" : role}
           onOpenHistory={historyOffered ? onOpenHistory : undefined}
           greeting={greetingDue ? (
             <div className={`composer-greeting${greeted ? "" : " is-out"}`} ref={greetingRef} aria-hidden={greeted ? undefined : true}>
@@ -1506,14 +1529,14 @@ export function PaneTerminal({
         {secretInput ?? (!chatView && lineSlot && !secretActive && <TerminalInput key={paneId} ref={lineRef} active={active} owner={paneStorageId(machineId, paneId)} onComposing={setLineComposing} connected={connected && !held} onSend={sendTerminalLine} onEnter={pressEnter} onInsert={insertTerminalText} pasteTarget={pasteTarget} onPasting={setLinePasting} uploadFile={uploadImage} attach={settings.terminalAttachButton} onFocus={reassertGrid} keyboardHeld={keyboardHeld}
           {...(foldKeys ? { keyControls: <LineKeysButton open={keysOpen} onToggle={() => setKeysOpen((open) => !open)} /> } : {})} />)}
       </div>}
-      {presented && paneId !== null && !secretActive && !observing && !chatView && (!foldKeys || keysOpen) && <KeyBar disabled={composing || !connected || !inputReady || held || ended} onKey={pressKey}
+      {presented && paneId !== null && !secretActive && !observing && !chatView && (!foldKeys || keysOpen) && <KeyBar disabled={composing || !connected || !inputReady || held || ended || viewOnly} onKey={pressKey}
         holdScope={`${paneStorageId(machineId, paneId)}:${view}`}
         onKeyHoldEnd={consumeModifiers}
         modifiers={modifiers} lockedModifiers={lockedModifiers} onToggleModifier={toggleModifier} items={settings.keyBarItems}
         expanded={settings.keyBarExpanded} onToggleExpanded={() => updateSettings({ keyBarExpanded: !settings.keyBarExpanded })}
-        {...(coarse ? { directTyping, onToggleDirect: toggleDirect, directDisabled: lineComposing, onPaste: pasteIntoLine, pasteDisabled: linePasting,
+        {...(coarse ? { directTyping, onToggleDirect: toggleDirect, directDisabled: lineComposing || viewOnly, onPaste: pasteIntoLine, pasteDisabled: linePasting || viewOnly,
           note: pasteGuidance ? t("Tap Input line to paste.") : null, onNoteDismiss: dismissPasteGuidance,
-          onToggleKeyboard: toggleKeyboard, keyboardOwner, keyboardDisabled: !connected || !inputReady || held || ended, keyboardRefused: composing || lineComposing || linePasting } : {})}
+          onToggleKeyboard: toggleKeyboard, keyboardOwner, keyboardDisabled: !connected || !inputReady || held || ended || viewOnly, keyboardRefused: composing || lineComposing || linePasting } : {})}
         {...(coarse && directTyping && settings.terminalAttachButton ? { onAttach: attachTarget } : {})} />}
     </div>
   );

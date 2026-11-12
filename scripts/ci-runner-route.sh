@@ -47,16 +47,44 @@ pool_labels='["self-hosted","linux","x64","self-hosted-ovis"]'
 # hosted whenever a few runs start at once
 light_job_names='["Detect changes","herdr-core live contract","Integration and browser","Pull request title","bundle-windows"]'
 
+# One Actions API read, asked again up to twice when it fails: a single 502 would otherwise send
+# the whole run hosted, where it depends on the Ubuntu mirror the self-hosted image does not need.
+# Only a whole answer is printed: pages a failed attempt got before failing would be counted twice.
+# A refusal (HTTP 4xx: the token or the path) would answer the same again, so only a server error or
+# no answer is asked again. All reads together have API_BUDGET seconds from the script's start, so the
+# hosted fallback is printed well inside Detect changes' five minutes; each attempt is bounded by a
+# minute or what is left, with timeout or gtimeout where there is one (stock macOS has neither: there
+# an attempt is unbounded, and only the shared budget stops further ones).
+API_BUDGET=240
+bound=""
+if command -v timeout >/dev/null 2>&1; then bound=timeout
+elif command -v gtimeout >/dev/null 2>&1; then bound=gtimeout
+fi
+api() {
+  local out errors left
+  errors=$(mktemp)
+  for _ in 1 2 3; do
+    left=$((API_BUDGET - SECONDS))
+    if [ "$left" -le 0 ]; then break; fi
+    if [ "$left" -gt 60 ]; then left=60; fi
+    if out=$(${bound:+$bound "$left"} gh api --paginate "$1" 2>"$errors"); then rm -f "$errors"; printf '%s\n' "$out"; return 0; fi
+    cat "$errors" >&2
+    if grep -q 'HTTP 4[0-9][0-9]' "$errors"; then break; fi
+  done
+  rm -f "$errors"
+  return 1
+}
+
 # Prints how many unfinished jobs of queued or running workflow runs could take one of those
 # runners, stopping once the count passes $1 (one API call per run adds up while many runs wait);
-# fails when the API does.
+# fails when the API does three times in a row.
 busy_jobs() {
   local limit="$1" ids id jobs n total=0
   ids=$(for status in in_progress queued; do
-    gh api --paginate "repos/$REPOSITORY/actions/runs?status=$status&per_page=100" | jq '.workflow_runs[].id' || exit 1
+    api "repos/$REPOSITORY/actions/runs?status=$status&per_page=100" | jq '.workflow_runs[].id' || exit 1
   done) || return 1
   for id in $ids; do
-    jobs=$(gh api --paginate "repos/$REPOSITORY/actions/runs/$id/jobs?filter=latest&per_page=100") || return 1
+    jobs=$(api "repos/$REPOSITORY/actions/runs/$id/jobs?filter=latest&per_page=100") || return 1
     n=$(jq -s -e --argjson pool "$pool_labels" --argjson light "$light_job_names" '[.[].jobs[] | select(.status != "completed" and (.name as $name | $light | index($name)) == null)
       | [.labels[] | ascii_downcase] | select(index("self-hosted") != null and all(.[]; . as $x | $pool | index($x) != null))]
       | length' <<<"$jobs") || return 1

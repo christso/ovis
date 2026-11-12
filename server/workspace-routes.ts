@@ -4,8 +4,6 @@
  * and the disk; the dispatcher in index.ts runs the access gate first.
  */
 import type { ServerContext } from "./dispatch.ts";
-import { statSync } from "node:fs";
-import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { MAX_LABEL_CHARS } from "../shared/labels.ts";
 import { MAX_INVENTORY_WORKSPACES, type WorktreeInventoryEntry } from "../shared/workspace-lifecycle.ts";
@@ -14,7 +12,7 @@ import type { DirectoryCreated, PendingMessage, ServerMessage, TabMoved, TabMove
 import type { MoveReceipt } from "./order-sequence.ts";
 import type { AgentLauncher } from "./agent-launchers.ts";
 import { agentFault, agentLaunch, type AgentPayload } from "./agent-launch.ts";
-import { createDirectory, listDirectories } from "./directories.ts";
+import { createDirectory, expandedDirectory, listDirectories } from "./directories.ts";
 import { HerdrError, paneMoveToNewTab, sessionSnapshot, tabClose, tabCreate, tabMove, tabRename, workspaceClose, workspaceCreate, workspaceMove, workspaceRename, worktreeCreate, worktreeList, worktreeOpen, worktreeRemove } from "./herdr/client.ts";
 import { badRequest, conflictResponse, errorResponse, isJsonObject, jsonResponse, readJsonObject, setRequestRoute } from "./http.ts";
 import { paneContext } from "./pane-context.ts";
@@ -23,16 +21,6 @@ import { repoDiffResponse } from "./repo-diff.ts";
 import { repoLogResponse } from "./repo-log.ts";
 import type { SavedLauncherStore } from "./saved-launchers.ts";
 import type { ShellAgentLocator } from "./shell-agent.ts";
-
-/** `value` as an absolute path (`~` expanded) when it is a directory this user can read; null otherwise. */
-export function expandedDirectory(value: string): string | null {
-  const expanded = value === "~" ? homedir() : value.startsWith("~/") ? resolve(homedir(), value.slice(2)) : resolve(value);
-  try {
-    return statSync(expanded).isDirectory() ? expanded : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * The folder a repository route reads: the pane's own, or `directory` (absolute, `~/…`, or relative to
@@ -51,7 +39,7 @@ async function routeFolder(paneId: string | null, directory: string): Promise<st
   if (directory !== "") {
     const relative = directory !== "~" && !directory.startsWith("~/") && !isAbsolute(directory);
     if (relative && base === undefined) return badRequest("invalid_cwd", "a relative directory needs the pane it belongs to");
-    cwd = expandedDirectory(relative ? resolve(base!, directory) : directory) ?? undefined;
+    cwd = expandedDirectory(relative ? resolve(base!, directory) : directory, [base === undefined ? null : resolve(base)]) ?? undefined;
   }
   return cwd ?? badRequest("invalid_cwd", "directory must be a directory this user can read");
 }
@@ -212,7 +200,8 @@ export async function handleWorkspaceRequest(request: Request, url: URL, pathnam
     const envProblem = envFault(payload.env);
     if (envProblem !== null) return badRequest("invalid_env", envProblem);
     if (payload.cwd !== undefined && typeof payload.cwd !== "string") return badRequest("invalid_cwd", "cwd must be an existing directory");
-    const cwd = payload.cwd === undefined ? undefined : localFolders ? expandedDirectory(payload.cwd) : payload.cwd;
+    // the folder of a create request is one the user picked and sees: a share too
+    const cwd = payload.cwd === undefined ? undefined : localFolders ? expandedDirectory(payload.cwd, "chosen") : payload.cwd;
     if (payload.cwd !== undefined && cwd === null) return badRequest("invalid_cwd", "cwd must be an existing directory");
     if (payload.label !== undefined && typeof payload.label !== "string") return badRequest("missing_label", "label must be a string");
     if (typeof payload.label === "string") {

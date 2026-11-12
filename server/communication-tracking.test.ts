@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CommunicationTracking } from "./communication-tracking.ts";
 import { shellQuote } from "./machine-security.ts";
+import { HERDR, serveRuntime } from "./runtime/capabilities.ts";
 
 function fixture(shell = "/bin/bash", config = "") {
   const root = mkdtempSync(join(tmpdir(), "ovis-tracking-"));
@@ -18,6 +19,15 @@ function fixture(shell = "/bin/bash", config = "") {
 }
 
 describe.skipIf(process.platform === "win32")("communication tracking setup", () => {
+  it("leaves shell setup untouched when the runtime has no CLI coordination capability", async () => {
+    const f = fixture();
+    serveRuntime({ ...HERDR, cliCoordination: false });
+    try {
+      expect((await f.service.status()).state).toBe("unsupported");
+      expect((await f.service.enable()).state).toBe("unsupported");
+      expect(existsSync(f.journal)).toBe(false);
+    } finally { serveRuntime(null); rmSync(f.root, { recursive: true, force: true }); }
+  });
   it("uses newly confirmed startup paths after disabling the previous setup", async () => {
     const f = fixture();
     try {

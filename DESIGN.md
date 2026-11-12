@@ -154,6 +154,35 @@ The glass tokens are expressions over the palette above, not colors of their own
 | Glass bar | `--bar-bg` | `color-mix(in srgb, var(--bg-panel) 72%, transparent)` | same expression |
 | Glass card | `--card-glass` | `color-mix(in srgb, var(--bg-elevated) 80%, transparent)` | same expression |
 | Glass blur | `--glass-blur` | `saturate(180%) blur(20px)` | same |
+| Surface/canvas | `--surface-canvas` | `var(--bg)` | `var(--bg)` |
+| Surface/chrome | `--surface-chrome` | `var(--bg-panel)` | `var(--bg-elevated)` |
+| Surface/raised | `--surface-raised` | `var(--bg-elevated)` | `var(--bg-panel)` |
+| Surface/overlay | `--surface-overlay` | `var(--bg-elevated)` | `var(--bg-input)` |
+| Surface/navigation | `--bg-nav` | `var(--bg)` | `var(--bg-panel)` |
+| Border/input | `--border-input` | `color-mix(in srgb, var(--text-dim) 78%, var(--border-strong))` | same expression |
+| Border/contrast | `--border-contrast` | `var(--border-strong)` | `var(--border-strong)` |
+| Status/reconnecting | `--status-reconnecting` | `var(--notice)` | `var(--notice)` |
+| Marker/idle | `--status-marker-idle` | `var(--text-dim)` | `var(--text-dim)` |
+| Status ink | `--status-ink` | `var(--bg-panel)` | `var(--bg-panel)` |
+| Minimap tick | `--minimap-tick` | `var(--text-dim)` | `var(--text-dim)` |
+| Switch thumb on | `--switch-thumb-on` | `var(--primary)` | `var(--accent)` |
+| Switch track | `--switch-track-bg` | `color-mix(in srgb, var(--text) 9%, transparent)` | `color-mix(in srgb, var(--text) 6%, transparent)` |
+| Breathe min opacity | `--breathe-min-opacity` | `0.68` | same |
+| Menu shadow | `--shadow-menu` | `0 8px 24px rgba(0, 0, 0, 0.28)` | `0 8px 24px rgba(40, 32, 22, 0.08)` |
+| Switch thumb shadow | `--shadow-thumb` | `0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 var(--hairline) color-mix(in srgb, var(--text) 10%, transparent)` | same expression |
+| Selection background | `--selection-bg` | `color-mix(in srgb, var(--accent) 28%, transparent)` | same expression |
+| Selection text | `--selection-text` | `var(--text-strong)` | `var(--text-strong)` |
+| Caret | `--caret-color` | `var(--accent)` | `var(--accent)` |
+| Scrollbar thumb | `--scrollbar-thumb` | `var(--border-strong)` | `var(--border-strong)` |
+| Scrollbar track | `--scrollbar-track` | `transparent` | `transparent` |
+
+`--border-contrast` is the edge of a field, a card, a chip or a switch that must stay readable when
+the OS asks for more contrast: the strong border by default, the text ink under
+`prefers-contrast: more`, where `--border-input` takes it too (the same block turns the glass bars
+and cards opaque and `--border` strong). `--status-ink` is the numeral drawn on a status fill (the
+More button's waiting count): the panel's paper, which every palette's `--status-blocked` clears at
+6:1 or more (the contrast test floors the status colours at 3:1 on the panel the other way round,
+and the ratio is symmetric).
 
 `--pdf-page` is the one color with the same value in both columns, on purpose: a PDF page is
 paper, not UI, and the viewer (`.file-viewer-pdf`) must not tint it for the theme. It is named in
@@ -184,6 +213,29 @@ starts from `bun scripts/herdr-theme-proposal.ts`. Every role whose value differ
 herdr mapping (`mapTheme`), including repairs the proposal tool already made, is listed in
 `scripts/herdr-theme-overrides.ts` with its dE and reason; every entry passes AA on its
 committed hex.
+
+**Imported themes.** A theme can also come from a file the user imports in Settings → Appearance
+([docs/themes.md](docs/themes.md)): a name and the sixteen Base16 seeds of a dark side, a light
+side or both, and nothing else. No code or CSS is read from a file. The public contract is the
+seeds, not the roles above, so a role can be renamed, split or added without breaking a theme
+file. `src/lib/themeDerive.ts` derives every role, `--notice-tint`, herdr's `--indicator-*` state
+colours and a light row's ANSI colours from the seeds and holds them to
+`src/lib/themeContrast.ts`, the one list of floors `themes.contrast.test.ts` checks the built-in
+themes against: a colour under a floor keeps its hue and moves in lightness by the smallest step
+that clears it, and a surface the text could only be read on by moving far (more than dE 12 past
+reading on the background) moves toward the background instead. `--bg-hover`, the hovered and
+selected row and the terminal's selection, is never under 1.05:1 on `--bg`: one that would end
+there takes a 1.2:1 step off it instead, the built-in themes' median. Which side a block is filed
+under is told by the colours the file wrote (light text on a darker ground is dark), never by what
+the file calls it, and the row's mode by what they are once they read. A scheme that
+already reads is drawn as written.
+`settings.customThemes` holds the imported themes (12 at most) and the one chosen for each side,
+which is drawn in place of that side's `darkTheme` or `lightTheme`; those keep their value under
+it. The row is `data-palette="custom"` over the side's amber base block, with its colours set as
+custom properties on `<html>`, and a built-in row takes them off again. The design follows Warp's
+custom themes, a small file of colours the app draws its interface from; it differs in reading
+Base16, so the schemes that exist work as they are, and in checking contrast when a file is
+imported.
 
 `--bubble-border` is the edge of the chat's user bubble. It is `transparent` where `--bg-elevated`
 alone parts the bubble from `--bg`: dark amber and dark charcoal. It is `var(--border)`
@@ -454,6 +506,44 @@ blocks of `src/styles.css`.
   size as a dim mono `--fs-xs` line; "Opening…" is a `role="status"` note that is in the document from
   the viewer's first render, clipped and empty (`.visually-hidden`, never `display: none`), and gets its
   words a frame later: a live region that appears together with its content is not announced.
+- A page's scripts wait for the person. The Page view draws an HTML file in a frame that allows no
+  script (`sandbox=""`): its HTML and CSS show, with the files the renderer put into it, and nothing
+  in it runs. One line above the frame says **Scripts in this page are off.** beside **Run scripts**
+  (`.file-viewer-scripts`, `--text-dim`, `--fs-sm`); the press loads the page again in a frame with
+  `allow-scripts`, and the line goes. The choice is that file's for as long as the viewer stays open,
+  also through Source and back. Another file, a viewer opened again and a reload start without
+  scripts: nothing is remembered. Over a relay the render host draws the script-less page in a frame
+  of its own inside it, under the same page policy, and writes the page into its own document only
+  once the scripts were asked for. **Open in a new tab** is a press of the same kind: on a direct
+  connection it opens the rendered page in a tab of its own, where its scripts run and no part of
+  the app is; over a relay it opens the reader, which is this viewer and starts without scripts.
+  The reason is what the page's sandbox was measured to hold, by probes that frame a page as the
+  viewer does (Chrome 156 and WebKit 26.6; the scripts are kept outside the tree, in
+  `~/.local/state/ovis-probes/page-sandbox/` on the maintainer's PC). A page's script reaches no
+  other host by a fetch, an image, a form, a popup or a navigation. It does reach one by WebRTC (a
+  STUN or TURN server of its choosing carries its data), in WebKit by a `preconnect` too; it can
+  move its frame to another port of the host name the browser used for the app; and it takes the
+  keyboard focus with `window.focus()`. The press closes none of that: a page whose scripts the
+  person runs can still do all of it, so the press is the person's decision about that file. A page
+  without scripts sent no request to any host in the same probes (a `preconnect` hint, a meta
+  refresh, an image, a stylesheet, a CSS background). One thing is left to it in WebKit: for a
+  `preconnect` hint WebKit opens a connection to the host the page names, with no request on it;
+  Chrome opens none, and a name lookup could not be watched in WebKit. Such a page reads nothing
+  and takes no key, so that connection tells the host that the file was opened and whatever its
+  author wrote into the host's name, nothing the person did.
+  Beside the pane (**Show beside the pane**) the app stays in reach while a page's scripts run, so
+  the page must not take its keys. Nothing on the frame stops a script from taking the focus
+  (`inert`, `tabindex` and a permissions policy were tried), the app sees neither a hover nor a
+  press inside a frame of another origin, and it cannot take the focus back while that frame is
+  there. So the focus is the page's only by the person's doing: the press on **Run scripts**, until
+  the app has the focus again; a press on the page; or Tab into it. While the app has the focus the
+  frame takes no pointer, so a press on the page comes to the viewer, which puts the focus in the
+  page: that press is not the page's, the next one is, and the wheel scrolls the page only once it
+  has the focus. A frame that has the focus otherwise took it. Its scripts are turned off again at
+  once, which is the one thing that gives the keys back, the focus returns to where it was, and the
+  line reads **This page took the keyboard, so its scripts are off again.** It is a `role="status"`
+  line that stays in the document, clipped and without words, while the scripts run, so those
+  words are announced. The popup needs none of this: it holds the focus itself while it is open.
 - A rendered page (Page) looks as before; what changed is where its files come from. The pictures,
   scripts and stylesheets it takes from its folder, and the videos it plays from this server, are
   read only from a descriptor whose opened file was shown to lie in the page's folder (or a folder
@@ -487,6 +577,34 @@ blocks of `src/styles.css`.
   overlay2 and Latte subtext0 darkened to stay AA on `--bg`, as set in its blocks of
   `src/styles.css`.
 
+### Notice tint
+
+The one surface for a row or banner that needs the user (the hosted relay app's Needs you): `--notice`
+mixed over `--bg-panel`, 12% in dark and 6% in light, rounded once to an opaque colour, so it is
+never made transparent again on hover. Text on it is `--notice` or `--text`, at least 4.5:1 in every
+theme (`src/lib/themes.contrast.test.ts`); a stronger light mix failed that floor in several palettes.
+It is a CSS-only role of the relay app, not one of the runtime roles in `src/lib/themeRoles.ts`.
+
+| Role | Token | Dark | Light |
+|------|-------|------|-------|
+| Notice tint (Amber, the base blocks) | `--notice-tint` | `#312b1c` | `#f2efe4` |
+
+| Theme | Dark | Light |
+|-------|------|-------|
+| Charcoal | `#2e2a21` | `#f3f0ea` |
+| Codex | `#353128` | `#f2efea` |
+| Catppuccin / Catppuccin Latte | `#333036` | `#e0e0e2` |
+| Tokyo Night / Tokyo Night Day | `#322d2e` | `#dad9dc` |
+| Black | `#1b150c` | none |
+| Gruvbox / Gruvbox Light | `#413a29` | `#f4e8bc` |
+| One Dark / One Light | `#3f3e3d` | `#f4f1eb` |
+| Solarized / Solarized Light | `#173730` | `#f6edd5` |
+| Kanagawa / Kanagawa Lotus | `#322f30` | `#e9e3b4` |
+| Rose Pine / Rose Pine Dawn | `#342b2e` | `#f4ebe0` |
+| Dracula | `#404340` | none |
+| Nord | `#454649` | none |
+| Vesper | `#352f29` | none |
+
 ### Rules
 - Amber is the one chrome color. Accent (selected, focused, informational) and primary (the user's
   action: Send, primary buttons) are both amber; in light, accent is the darker text-safe ochre and
@@ -515,18 +633,29 @@ blocks of `src/styles.css`.
 The values are the ones in `src/styles.css`. Every token but `--fs-input` is `calc(<size> * var(--ui-scale))`:
 `--ui-scale` is the interface size factor, which Settings → Appearance → Interface font size writes on
 `<html>` (the chosen body size over the density's, `1` until chosen), so the whole scale follows it, while
-`--fs-input` stays the floor under which iOS Safari zooms a focused field.
+`--fs-input` stays the floor under which iOS Safari zooms a focused field. Inside the chat transcript
+and the Markdown viewer (`ChatView.css`: `.chat-transcript`, `.file-viewer-markdown`) `--fs-meta` and
+`--fs-h1`..`--fs-h3` are remapped through `--chat-scale` (`--chat-fs-meta`, `--chat-fs-h1..3`), so a
+timestamp and a heading follow Settings → Chat → Font size as the chat's other type does; the 12px
+floor of `--fs-meta` holds at scale 1 and only grows with it.
 
 | Level | Token | Comfortable | Compact | Typical use |
 |-------|-------|-------------|---------|-------------|
-| Micro | `--fs-2xs` | `calc(11px * var(--ui-scale))` | `calc(10px * var(--ui-scale))` | Badges, hints, kbd |
+| Micro | `--fs-2xs` | `calc(11px * var(--ui-scale))` | `calc(10px * var(--ui-scale))` | The pinned label, meter percents, a prompt card's option keycaps |
 | Meta | `--fs-xs` | `calc(12px * var(--ui-scale))` | `calc(11px * var(--ui-scale))` | Subtitles, field labels |
+| Info floor | `--fs-meta` | `calc(12px * var(--ui-scale))` | `calc(12px * var(--ui-scale))` | Timestamps, badges, pills, menu headings and paths (12px floor) |
 | Small | `--fs-sm` | `calc(13px * var(--ui-scale))` | `calc(12px * var(--ui-scale))` | Controls, row titles |
 | Body | `--fs-md` | `calc(14px * var(--ui-scale))` | `calc(13px * var(--ui-scale))` | Body and dialog copy |
-| Reading | `--fs-chat` | `calc(15px * var(--ui-scale))` | `calc(14px * var(--ui-scale))` | Chat prose, the user's bubble, live narration; the message box with a mouse |
+| Dense row | `--fs-dense-row` | `var(--fs-md)` | `var(--fs-md)` | Dense document and table rows |
+| Reading | `--fs-chat` | `calc(15px * var(--ui-scale))` | `calc(14px * var(--ui-scale))` | Chat prose, the user's bubble, live narration; the message box with a mouse (`16px` on coarse pointer) |
+| Reading role | `--fs-reading` | `var(--fs-chat)` | `var(--fs-chat)` | Long-form reading copy |
 | Large | `--fs-lg` | `calc(16px * var(--ui-scale))` | `calc(15px * var(--ui-scale))` | Header title, modal title |
-| Title | `--fs-xl` | `calc(18px * var(--ui-scale))` | `calc(17px * var(--ui-scale))` | Markdown h1 |
+| Section title | `--fs-section-title` | `calc(17px * var(--ui-scale))` | `calc(16px * var(--ui-scale))` | Dialog and settings section heading (>= 1.25x over row labels) |
+| Title | `--fs-xl` | `calc(18px * var(--ui-scale))` | `calc(17px * var(--ui-scale))` | Compact heading |
+| Heading 3 | `--fs-h3` | `calc(19px * var(--ui-scale))` | `calc(18px * var(--ui-scale))` | Markdown h3 (1.25x+ over reading body) |
 | Display | `--fs-display` | `calc(22px * var(--ui-scale))` | `calc(21px * var(--ui-scale))` | The empty chat's greeting |
+| Heading 2 | `--fs-h2` | `calc(24px * var(--ui-scale))` | `calc(23px * var(--ui-scale))` | Markdown h2 (1.25x+ over h3) |
+| Heading 1 | `--fs-h1` | `calc(30px * var(--ui-scale))` | `calc(29px * var(--ui-scale))` | Markdown h1 (1.25x+ over h2) |
 | Input | `--fs-input` | `16px` | `16px` | Mobile-safe text input |
 | Pairing | `--fs-pairing` | `calc(32px * var(--ui-scale))` | `calc(26px * var(--ui-scale))` | The pairing code in Settings → Devices |
 
@@ -536,16 +665,20 @@ The values are the ones in `src/styles.css`. Every token but `--fs-input` is `ca
 | `--font-ui` | `"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Malgun Gothic", sans-serif`; Settings → Appearance → Interface font writes the token on `<html>`: a typed list in front of this stack, a preset as a whole stack (`src/lib/typography.ts` keeps this one verbatim) | Chrome and chat prose |
 | `--font-mono` | `"Symbols Nerd Font Mono", "JetBrains Mono Web", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "D2Coding", monospace` | Code, paths, keys, terminal-adjacent metadata |
 | `--lh-tight` | `1.2` | Titles |
+| `--lh-heading` | `1.25` | Markdown and section headings |
 | `--lh-base` | `1.5` comfortable / `1.45` compact | Body copy |
 | `--lh-code` | `1.6` | Code blocks; the message box with a mouse |
 | `--lh-prose` | `1.65` | Chat prose and the user's bubble |
 | `--fw-regular` | `400` | Body |
 | `--fw-medium` | `500` | Controls |
 | `--fw-semibold` | `600` | Labels and titles |
+| `--fw-selected` | `var(--fw-semibold)` | Non-color weight cue for selected rows, tabs, segments and filters |
 | `--fw-bold` | `700` | Brand |
+| `--font-numeric` | `tabular-nums` | Counts, elapsed times and numeric columns |
 | `--tracking-tight` | `-0.01em` | Brand and primary titles |
 | `--tracking-display` | `-0.02em` | The display line |
 | `--tracking-caps` | `0.06em` | Uppercase operational labels |
+| `--tracking-code` | `0.12em` | A pairing code or key id spelled out in the mono face (the relay shell's code fields) |
 
 ### Faces
 - The app ships its typefaces (`src/fonts/`, licenses in `THIRD_PARTY_NOTICES.md`) and loads
@@ -792,8 +925,12 @@ All spacing derives from a 4px base.
 
 | Token | Value | Usage |
 |-------|-------|-------|
+| `--space-half` | `2px` | Sub-grid track padding, segmented and option gaps |
+| `--space-px-3` | `3px` | Compact tab and bar rhythm |
 | `--space-1` | `4px` | Tight icon and control gaps |
+| `--space-1-5` | `6px` | Dense control and card inner gaps |
 | `--space-2` | `8px` | Row and menu gaps |
+| `--space-2-5` | `10px` | Compact pill and tab inline padding |
 | `--space-3` | `12px` | Control padding |
 | `--space-4` | `16px` | Section and modal padding |
 | `--space-5` | `20px` | Wide modal padding |
@@ -804,7 +941,8 @@ All spacing derives from a 4px base.
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--radius-sm` | `6px` | Chips and inner controls |
+| `--radius-xs` | `4px` | Preview miniatures and grip bars |
+| `--radius-sm` | `6px` | Chips, tabs and inner controls |
 | `--radius-md` | `8px` | Buttons, inputs, selected rows |
 | `--radius-lg` | `12px` | Menus and chat surfaces |
 | `--radius-xl` | `16px` | Modals and bottom sheets |
@@ -818,28 +956,74 @@ Comfortable values are `:root`; the final column is the complete compact overrid
 | Token | Comfortable | Compact | Usage |
 |-------|-------------|---------|-------|
 | `--header-h` | `52px` | `46px` | App header below `769px` |
-| `--header-h-wide` | `46px` | — | App header from `769px`, in either density (`--header-h` takes this value there) |
+| `--header-h-wide` | `42px` | — | App header from `769px`, in either density (`--header-h` takes this value there) |
 | `--sidebar-w` | `320px` | `300px` | Sidebar/drawer; the default while the user has not dragged the sidebar's edge |
 | `--control-h` | `34px` | `32px` | Buttons and fields |
+| `--bar-control-h` | `28px` | — | Header pills, lens switch and tab overflow control |
+| `--tab-h` | `calc(var(--control-h) - 5px)` | — | Desktop header tab height |
+| `--tab-min-w` | `120px` | — | Minimum tab width in the header strip |
+| `--tab-max-w` | `220px` | — | Maximum tab width in the header strip |
+| `--tab-more-w` | `52px` | — | Tab overflow button width |
+| `--status-bar-h` | `28px` | — | Desktop status bar height |
+| `--pane-bar-h` | `30px` | — | Split pane header bar height |
+| `--split-hit-w` | `8px` | — | Split divider hit band |
 | `--segmented-inset` | `6px` | — | What the segmented track takes from `--control-h` above and below an option (its `2px` padding and the hairline, both sides): an option is `--control-h` less this, and its touch expander grows from that height to `--touch-target` |
 | `--touch-target` | `44px` | — | Coarse-pointer minimum: every control a finger can reach is at least this in both dimensions |
 | `--pointer-target` | `24px` | — | Fine-pointer minimum hit area: a glyph button under `--control-h` (the chat's copy and format buttons, an attachment tile's X) keeps its look and reaches it through an invisible `::before` expander |
 | `--touch-target-header` | `44px` | — | The phone header's controls (`<=768px`) |
 | `--keybar-h` | `48px` | — | Terminal key bar |
 | `--row-h` | `56px` | `44px` | Palette, worktree, device and background-task list rows; chat and composer list height caps |
+| `--sheet-row-h` | `48px` | — | Action sheet row height |
+| `--sheet-grip-w` | `36px` | — | Bottom sheet drag handle width |
+| `--sheet-grip-h` | `4px` | — | Bottom sheet drag handle height |
 | `--chip-h` | `20px` | `18px` | Badge/pill height |
+| `--kbd-h` | `18px` | — | Keyboard shortcut cap height |
+| `--voice-wave-h` | `20px` | — | Voice waveform height |
+| `--icon-size-xs` | `12px` | — | Close and micro glyph size |
+| `--icon-size-sm` | `14px` | — | Header and inline control glyph size |
+| `--icon-size-md` | `16px` | — | Menu, button and disclosure glyph size |
 | `--icon-size` | `18px` | — | Standard icon |
 | `--mark-size` | `22px` | — | Brand mark |
 | `--avatar-size` | `32px` | `26px` | Command-palette mark box |
-| `--dot-size` | `7px` | — | Connection dot |
+| `--dot-size-sm` | `6px` | — | Compact status dot |
+| `--dot-size` | `7px` | — | Connection dot; the inline status glyph (StatusDot `inline`); twice it is the 14px data glyph |
+| `--thumb-w` | `40px` | — | Miniature preview width |
+| `--thumb-h` | `24px` | — | Miniature preview height |
 | `--rail-w` | `3px` | — | Quoted-content rails |
 | `--hairline` | `1px` | — | Borders |
+| `--menu-w-sm` | `208px` | — | Compact popover menu width |
+| `--menu-w` | `280px` | — | Standard popover menu width |
+| `--menu-w-wide` | `420px` | — | Wide popover list width and height cap (the comments list) |
+| `--popover-w` | `360px` | — | Anchored popover form width (the comment form) |
+| `--dialog-w-sm` | `360px` | — | Compact form width |
+| `--dialog-w-md` | `420px` | — | Confirmation dialog width |
+| `--dialog-w-form` | `525px` | — | Form dialog width (the worktree dialog; the new workspace dialog reaches the same width from `--sidebar-w` and `--content-w`) |
+| `--dialog-w` | `560px` | — | Standard modal dialog width (session history, unsent text) |
+| `--dialog-w-lg` | `1100px` | — | Wide file/diff modal width |
+| `--dialog-w-xl` | `1400px` | — | Extra-wide split diff modal width |
+| `--dialog-max-h` | `720px` | — | Modal dialog max height |
+| `--outline-w` | `240px` | — | Markdown outline column width |
+| `--file-panel-min-w` | `320px` | — | Docked file panel minimum width |
+| `--qr-size` | `132px` | — | Pairing QR code box |
+| `--guide-w` | `552px` | — | Onboarding guide column width |
+| `--btn-submit-min-w` | `88px` | — | Modal primary submit button minimum width (stable across idle/pending) |
 | `--content-w` | `820px` | — | Settings and dialog content |
 | `--pending-max-h` | `min(20dvh, 12rem)` | — | Pending-message stack ceiling |
 | `--chat-w` | `--content-w`, then the pane's lane as one length | — | Chat lane: transcript, composer column, held list. Settings → Chat width: Narrow `--content-w`; Default follows the pane (min 820px, max `60rem` = 960px, 71% of the pane between; the px floor wins where 60rem is under it); Wide `72rem` (1152px); Full `100%` |
 | `--chat-fold-lines` | `12` | — | Lines of prose a long user message shows before it folds behind Show full message (Chat turn); `lib/userMessageFold.ts` folds a message past the same count |
 | `--palette-w` | `640px` | — | Command palette |
 | `--palette-top` | `12vh` | — | Palette top offset |
+| `--table-row-h` | `44px` | `40px` | The hosted relay app's rows that carry an action (PC table, attention list); a coarse pointer gets `--touch-target` in either density. `--row-h` stays for the lists above |
+| `--tabbar-h` | `56px` | — | The relay app's phone tab bar, before the bottom safe area; a minimum, larger text grows it |
+| `--relay-sidebar-w` | `240px` | — | The relay dashboard's sidebar: its own width, never the terminal sidebar's density step |
+| `--relay-content-w` | `1280px` | — | The relay dashboard's main column cap, gutters included |
+| `--relay-signin-w` | `368px` | — | The relay sign-in column |
+| `--relay-sheet-w` | `520px` | — | The Add-a-PC sheet |
+| `--relay-detail-w` | `360px` | — | The PC details column from `1100px` |
+| `--relay-table-head-h` | `36px` | — | The PC table's sticky header |
+| `--relay-control-icon-size` | `16px` | — | One glyph size for the relay app's controls and navigation, and every segmented control's glyph (the old `15px` is retired) |
+| `--relay-fs-min` | `11px` | — | Floor under a compact or scaled tab label: `max(var(--relay-fs-min), var(--fs-2xs))` |
+| `--relay-fs-body-min` | `12px` | — | Floor under scaled relay body text |
 | `--context-line` | `calc(var(--fs-lg) * var(--lh-base))` = `24px` | `21.75px`, through the scale | The selected pane's crumb row, min and max height. Scoped to `.context`, not `:root`, so it follows `--fs-lg`/`--lh-base` in either density |
 
 ### Focus and layers
@@ -848,6 +1032,7 @@ Comfortable values are `:root`; the final column is the complete compact overrid
 |-------|-------|-------|
 | `--ring` | `2px solid var(--accent)` | Global `:focus-visible` outline |
 | `--ring-offset` | `2px` | Outline offset |
+| `--ring-inset-offset` | `-2px` | Inset outline offset inside scroll-clipped strips |
 | `--z-header` | `4` | A phone's glass header, over the transcript that scrolls under it |
 | `--z-banner` | `5` | Terminal banners |
 | `--z-popover` | `10` | Composer completions |
@@ -897,17 +1082,25 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   List all tabs and VS Code's tab overflow do, rather than Chrome's tabs shrinking to their icon:
   an Ovis tab is told apart by its name, and a tab too narrow for it is a close button to
   misclick. The open tab is always in the row (the last place when it is past the others), and
-  one picked from the list opens there; `lib/tabOverflow.ts` picks them. The open tab takes the pane's surface (`--bg` under
-  the chat lens, `--term-bg` otherwise) with rounded top corners and no line under it, so it runs
-  on into the pane; its close (×) shows on the open tab and a hovered one. A split view keeps a
+  one picked from the list opens there; `lib/tabOverflow.ts` picks them. The row is the panel's surface and the
+  open tab a raised pill on it (`--bg-elevated`); its close (×) shows on the open tab alone, and a
+  resting tab closes from its menu or a middle click, as a browser's does. A split view keeps a
   strip per half and the title in the header. The Herdr app's Changes button is not carried over:
   Files holds the changes as one of its tabs.
 - The Chat/Terminal switch (`.view-switch`) shows both lenses as Apple's segmented control: a
   track with the open lens on a raised thumb that slides to it in 180ms (`--ease-out`; no motion
   under reduced motion), each lens `aria-pressed`. The chat's label is in the rounded face beside
   its bubble, the terminal's in `--font-mono` beside its prompt glyph, so the two read as
-  different places. A phone draws the two glyphs alone in a bordered control, each a
+  different places. From `641px` to `768px` it draws the two glyphs alone in a bordered control, each a
   `--touch-target-header` wide. Mod+Shift+J switches too.
+- A phone (`<=640px`, the sheets' width) draws no track: one outlined `--touch-target-header` icon
+  button (`.lens-toggle`, `components/LensToggle.tsx`) shows the lens a press opens, the prompt glyph
+  over the chat and the bubble over the terminal, and is named for it ("Switch to terminal", "Switch
+  to chat", the palette item's words). It runs the shortcut's and the palette's switch, so a terminal
+  peek over the chat reads as the terminal and a press ends it. A Windows PC's live terminal that is
+  not there yet is said in its name ("· soon") and title. It follows the lens button a split half
+  already carries, and the Codex and Claude apps' phone headers, which keep a title and a few icon
+  buttons and no segmented control; the owner found the two-option track cluttered there.
 - From `769px` with a fine pointer (a touch screen keeps the room for its key bar) the pane column ends in a 28px status bar (`.status-bar`, after the Herdr app's
   workspace status line) on `--bg-panel` under a `--divider` rule: the PC › workspace (› folder)
   and the branch at its start, the session's worked time; at its end View only on a watching
@@ -1000,6 +1193,7 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
 - One `aria-pressed="true"` option receives hover fill and strong text; the group itself is an
   elevated, bordered `--radius-md` track.
 - Used for Chat/Terminal, theme and density. It is not a generic tab list.
+- An option's glyph is `--relay-control-icon-size` (`16px`), the size of a `.btn`'s glyph.
 - An option is `--control-h` less `--segmented-inset` tall, so the track is `--control-h`. On a coarse
   pointer the track keeps its height; each option is at least `--touch-target` wide, so neighbours
   never share a tap, and reaches `--touch-target` tall through an invisible `::before` expander sized
@@ -1015,7 +1209,8 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   view switch in their bar to follow.
 
 ### Keyboard hint (`.kbd`)
-- An inline mono keycap: `18px` high, strong bottom edge, `--radius-sm`, `--fs-2xs`.
+- An inline mono keycap: `18px` high (`--kbd-h`), strong bottom edge, `--radius-sm`, `--fs-meta`
+  (the 12px information floor holds for the palette's and the shortcut rows' caps too).
 - `Mod` resolves to `⌘` on Apple platforms and `Ctrl` elsewhere.
 
 ### Modal (`.modal*`)
@@ -1070,7 +1265,21 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
 ### Field (`.field`, `.input`, `.select`)
 - Stacked uppercase label, optional hint and `--bg-input` field. Desktop fields use `--fs-sm`;
   small-screen fields retain `--fs-input` to avoid focus zoom.
-- Focus names the edge with accent; errors use blocked/danger tokens and `role="alert"`. A failure
+- A focused field draws one line. On `:focus-visible` that is the shared offset ring (`--ring`,
+  `--ring-offset`) and the field's own border stays as it was: its resting colour, the ink of
+  `prefers-contrast: more`, or an invalid access-gate field's `--status-blocked`. It never turns
+  `--accent` under the ring: two accent lines, one inside the other, read as a drawing error. A
+  browser counts a text field as `:focus-visible` however it took the focus (a click, a tap, a
+  dialog's autofocus), and Chrome a select too, so the ring is what a field shows; the `--accent`
+  border is left for a focus the browser draws no ring for (`:focus:not(:focus-visible)`). The
+  terminal's input line, a reply comment's field and the prompt card's custom answer keep the same
+  rule, as Settings' fields and the access gate's already did (this app's own fields, not another
+  app's, are what it follows). A rename field in the sidebar (a workspace's, a PC's) draws the ring
+  inside its edge, over its border (`--ring-inset-offset`): the list clips what a row draws outside
+  it, and the first row's ring would lose its top. The composer and a queued message being edited
+  draw no ring: their own border names the focus. In forced colours the browser itself paints a
+  focused field's border and the ring in the system's highlight.
+- Errors use blocked/danger tokens and `role="alert"`. A failure
   leads with a plain sentence (`lib/userError.ts`); what the PC or the browser said follows on a
   second line in the interface face, selectable, never in the mono stack (which has no Hangul and
   would set Korean with letter-wide spaces).
@@ -1476,6 +1685,24 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   folder, the mark, the status cell, the menu and the fold count stay where they are, and the menu
   and rename still act on the workspace. The choice is shared with the other browsers of the server
   and applies at once.
+- An agent row is titled by what its agent is on, on One line and Two lines alike: the label the
+  user gave the pane, else (on One line) a tab the user named, else the agent's or the pane's own
+  title. The row's mark already says which agent it is, so an own title that says only that
+  ("Claude Code", "codex", in any case, with or without the glyph an agent puts before its terminal
+  title) gives way to the workspace the agent runs in, a worktree herdr named in its compact form
+  (`brave-valley` for `worktree-brave-valley-7fc6`; `agentRowTitle`, AgentSidebar.tsx): agents with
+  no task title are told apart by where they run, not listed as so many "Claude Code". The place
+  then says neither that workspace again (under the worktree's whole name either) nor the agent's
+  kind or product name beside its mark, so a two-line row with nothing else to place draws its
+  title alone, on the two-line height. A label the user gave the pane is never replaced, and a row
+  with no agent mark keeps its title. The title drawn is the one the row goes by everywhere else:
+  **Within a state** → **Name** sorts by it, and the helpers' line ("Helpers of …"), a helper's
+  "Started by …", the row's `⋯` and its menu's head say it. The tooltip keeps the agent's own title
+  under the drawn one, and a screen reader still hears the agent's kind before the row. Agents
+  under workspaces keeps the agent's own title: its row already hangs from its workspace. It follows
+  Conductor, which names a workspace by its branch, with the workspace's directory name as its
+  second name ([Workspaces and branches](https://www.conductor.build/docs/tips/workspaces-and-branches)):
+  where the work is, not which agent does it.
 - Appearance's **Agents order** is **Workspaces** by default: the Agents list in herdr's
   workspace, tab and pane order. **Activity** pins a blocked agent on top and orders the rest by
   their most recent state change (herdr's `state_change_seq`, read from the snapshot's `agents`),
@@ -1491,7 +1718,8 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   sections do; the Needs you heading takes `--status-blocked`. An empty group is left out, and
   the pinned card stays first. **Within a state** orders each group: **Longest wait** (the
   default; the oldest `state_change_seq` first, as herdr's agent view sorts with
-  `state_change_seq` ascending, #2015), **Recent** (the newest first) or **Name**. herdr's
+  `state_change_seq` ascending, #2015), **Recent** (the newest first) or **Name** (the title each
+  row draws). herdr's
   counters only compare within one PC, so Longest wait and Recent order each PC's rows in the
   PCs' list order; Name orders across PCs. An agent and its helpers stay together, in the
   group of the one of them that needs the reader most. The shared Agents order applies while
@@ -1760,28 +1988,24 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   Codex's `/status` (its "Credits" row), whose own readings these are; no code is borrowed.
 
 ### PC load (`.machine-stats`)
-- Shown while Settings → Remote PCs → **PC load in the sidebar** is on, for this device only. Until
-  it is flipped it follows the roster: on while two or more PCs are connected, off for a lone PC,
-  whose load is not what tells PCs apart.
-- Under an expanded, connected PC's name and above its workspaces: one button holding three
-  meters in a row, each a label, the percent in `tabular-nums` and a 3px bar on a `--border-strong`
-  track (the plan meters' construction): **CPU**, **Memory** (without the file cache) and
-  **Disk** (the fullest of the disks that hold the root and home folder), and a caret at the end
-  that opens the numbers behind them: memory used and total, load average and core count, uptime
-  and a bar per disk. From 85% the percent and bar take `--status-blocked`, as the plan meters do
-  from 80%; amber stays chrome. The open or closed choice is kept per PC in this browser.
+- Shown while Settings → Devices and PCs → **PC load in the status bar** is on, for this device
+  only. It is on until it is turned off: the reading is one small ask every 5 s for the selected PC
+  while the page is visible, read from counters the kernel keeps anyway.
+- In the desktop status bar (a `.status-bar-text` item), as one line of plain text for the selected PC:
+  `CPU 4% · Memory 22% · Disk 50%`, memory without the file cache and the disk the fullest of
+  those that hold the root and home folder. It is text only: no bar, no colour at a high figure
+  and nothing to open. Selecting another PC shows that PC's load. A phone has no status bar and
+  shows none; the sidebar draws no load.
 - It is drawn only for a PC that can say: a PC whose bridge is from before `GET /api/system`
-  shows nothing, and so does one that has not answered yet. A figure the PC cannot measure
-  is a dash, never `0%`. The meters are drawn only; the button's label carries the numbers for a
-  screen reader ("Show system details for Work PC. CPU 4%, Memory 22%, Disk 50%").
-- Nothing is read for a PC that is folded, offline or in a hidden tab, nor while the sidebar, its
-  PCs list or a phone's drawer is closed. The next ask starts 5 s after the last one came back or
-  timed out, so a stuck PC never has more than one open, and a reading no ask has renewed for a
-  minute is dropped rather than shown as now. A herdr-core machine shows none: its server runs on
-  the PC that reaches it, which cannot read that machine's load.
-- Reference: no app listed in `src/AGENTS.md` shows a machine's load in its project list that I
-  know of (they assume one machine); this follows the app's own plan meters and PC group header,
-  and differs only in measuring a PC instead of a subscription. No code is borrowed.
+  shows nothing, and so does one that has not answered yet. A figure the PC cannot measure is
+  left out of the line, never shown as `0%`.
+- Nothing is read for a PC that is not selected, is offline or is in a hidden tab. The next ask
+  starts 5 s after the last one came back or timed out, so a stuck PC never has more than one
+  open, and a reading no ask has renewed for a minute is dropped rather than shown as now. A
+  herdr-core machine shows none: its server runs on the PC that reaches it, which cannot read
+  that machine's load.
+- Reference: no app listed in `src/AGENTS.md` shows a machine's load that I know of (they assume
+  one machine); this follows the app's own status bar text. No code is borrowed.
 
 ### New workspace dialog
 - Launcher management follows [Warp's saved launch configurations](https://docs.warp.dev/terminal/sessions/launch-configurations)
@@ -1839,7 +2063,10 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   (New workspace only, not Files) opens one name field under the bar: Enter makes the folder inside
   the one shown and opens it, so Directory follows; Escape or leaving it empty closes the field
   without closing the dialog, and a refusal (taken name, invalid name, no permission) shows as an
-  inline alert under the field.
+  inline alert under the field. The name field requests the phone keyboard's **Done** action
+  (`enterKeyHint="done"`) rather than its inferred **Next**; moving focus alone makes nothing.
+  Unlike Paseo's separate New directory step, this keeps Ovis's existing inline Enter flow without
+  another control or step; no code is borrowed.
 - Recent folders appear as neutral `.btn` chips with `--radius-pill` and `--space-2` gaps: the
   three most recent, on one row that never wraps. Each shows the folder basename with ellipsis
   and the full path in its tooltip and accessible name. Clicking puts the folder in Directory and
@@ -1995,8 +2222,17 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   `--accent` around the selected pane. The compact header names its pane and, on a screen that takes touch
   (`any-pointer: coarse`), the ellipsis; a mouse opens the same menu by right-click. Keyboard users
   tab to the pane's ellipsis, which becomes visible on keyboard focus, and press Enter.
-  Shift+F10 in the terminal goes to the terminal program, not the app menu. A lone or zoomed
-  pane is borderless; its actions live in the tab's `⋯` menu rather than a second ellipsis, on a desktop as on touch.
+  Where every pane of a split tab is drawn (wider than 768px, on a PC whose layout Ovis keeps),
+  each header ends with two buttons always in sight: Zoom pane / Unzoom pane (`Maximize2` /
+  `Minimize2`), then Close pane (`X`) in the corner, where a window closes: the order of a
+  Windows or GNOME title bar, Maximize just left of Close. Close is the menu's Close pane, with its confirmation (the workspace's last
+  pane, an agent `working` or `blocked`), and is drawn only where the menu offers it (not on a
+  locked agent's pane); a watching device sees it disabled. A pane narrower than its header gives up
+  its title, then its ellipsis, never the corner's Close. `--space-2` more than the header's gap stands between the two, so a press
+  meant for Zoom does not land on Close; each is a `--control-h` square, `--touch-target` under a
+  coarse pointer. herdr's zoomed pane keeps that header, Unzoom and Close included.
+  Shift+F10 in the terminal goes to the terminal program, not the app menu. A lone pane, and a
+  zoomed one where panes are shown one at a time, is borderless and draws neither button; its actions live in the tab's `⋯` menu rather than a second ellipsis, on a desktop as on touch.
 - A left click or keyboard focus selects the actual pane. Right-click opens the clicked pane's
   menu without changing the selected pane: Rename pane, Clear pane name when named, Swap with
   focused pane when another is selected, Split right, Split down, Zoom/Unzoom pane, Recover
@@ -2164,7 +2400,7 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   pane it listed is gone; a pane still listed without a session keeps it however long ago the
   Resume was (time never brings Resume back for a pane that is there), and only a pane the roster
   never lists ends it, after two minutes. A refusal shows under the rows in the blocked colour.
-  An empty store says **No earlier Codex sessions in this folder.**; a PC whose bridge answers
+  An empty store says **No earlier {agent} sessions in this folder. Choose another agent.**; a PC whose bridge answers
   404 for the route says the bridge does not offer this yet, and the workspace menu of such a PC
   has no item (the bridge is asked once, without a workspace, so nothing is listed by the probe).
 - A Pi listing refused with `session_history_busy` keeps **Reading sessions…** while it retries
@@ -2419,7 +2655,10 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   its title the same way; Ovis puts it on the crumb line because the header is one line. A Codex
   goal (kept in Codex's own state store, not the rollout) is not read.
 - The More menu (`.header-more-button`, the `RowMenu` popover, a bottom sheet at `<=640px`) opens
-  with the location on two lines, "PC › workspace" then the full path in mono. Its first item,
+  with the location on two lines, "PC › workspace" then the full path in mono. Where no status bar
+  shows, the pane's whole title and its agent lead those lines (`.header-more-title`, `--text`
+  `--fw-medium`, "Claude Code · Guard the export button"): the header cuts a long title short and a
+  touch has no tooltip, so More is where a phone reads it in full. Its first item,
   at every width, is **Search panes and actions**, which opens the command palette (its shortcut
   as the item's hint where the pointer is fine); then **Find in terminal**, **Browse files** (at
   `<=768px` only: from `769px` Files is the header's own button), **Copy link** and **Alerts**,
@@ -2436,8 +2675,11 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   the Codex app keeps its files in a right sidebar beside the conversation; the button is then a
   toggle (`aria-pressed`). A file docking from it takes its place and closing the file shows the
   list again; the panel keeps the docked viewer's hairline column, resize edge and compact header.
-- At `<=768px` the drawer toggle and More are `--touch-target-header` squares. The lens buttons
-  are not: they keep the switch's track and inset, as the segmented control entry describes.
+- At `<=768px` the drawer toggle and More are `--touch-target-header` squares, and so is a phone's
+  lens button. Between `641px` and `768px` the lens buttons are not: they keep the switch's track and
+  inset, as the segmented control entry describes.
+- A phone's header counts no sessions either: no running or finished marks beside More (they read as
+  clutter there; the drawer's rows say each session's state), only More's waiting dot below.
 - Connection is one quiet chip, drawn only while the bridge is not live: a pulsing dot plus the
   written state - connecting until this page's first connection to the PC's socket, reconnecting
   after a drop, disconnected once output stopped. Below `900px` it keeps only its dot; the word stays as
@@ -2450,7 +2692,9 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   coding-agent app because their case is Ovis's on a phone: one conversation's header, whose link to
   the other end comes and goes with the network. From `769px` it sits on the title's line; at
   `<=768px` it goes under the title, both lines inside the header's height. It swaps in place and
-  is never animated, and while it speaks the chip keeps only its dot (`.conn-quiet`). It is about
+  is never animated, and while it speaks, as while the status bar says the connection, the chip is
+  heard and not seen (`.conn-quiet`: out of the flow like the live chip, still a `role="status"` a
+  screen reader reads), so the lens switch and Files hold their place while reconnecting. It is about
   the PC and split half the header shows, by the half that reported it: a recovery on one PC or half
   is not said once another is shown, and a pane's first connection is not a reconnect. A stalled
   output, which retries nothing, gets no line: the chip says disconnected. The return sends nothing: a draft stays a draft.
@@ -2468,17 +2712,49 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   follows Paseo's app, which says beside a host whether it is reached directly or through its relay.
 - The header draws no session counts: the sidebar and each tab's mark say every session's state, and
   the status bar (from `769px` with a fine pointer) its waiting count. Its "N waiting for you" button
-  (`lib/headerSessions.ts` `nextWaitingPane`) opens the next waiting session after the selected one in
+  (`lib/headerSessions.ts` `nextWaitingTarget`) opens the next waiting session after the selected one in
   the roster's order, wrapping, never the selected one and never one a zoomed tab hides; with none
   to open it stays a button, `aria-disabled`, so a keyboard's focus is not dropped. It follows
   Slack's "next unread". More carries the same jump: **Open the next session waiting for you** is
   its first item, and where no status bar shows the count its button wears a `--status-blocked` dot
   (`.header-more-dot.is-waiting`, in place of the alerts-off dot) and says the count in its name.
+  The dot says the count itself: with `data-count` its `::after` widens it into a `--status-blocked`
+  pill from the dot's own corner, the numeral in `--fs-meta` `--fw-semibold` `--status-ink`, its
+  line box `--lh-tight` so it scales with the type, so a phone reads how many wait without opening
+  More; the button, its glyph and the dot's place do not move.
+- A watching device where no status bar shows says so on the crumb line: **View only**
+  (`.context-watch`, `--text-strong` `--fw-medium`, as the status bar's own pill reads) leads the
+  place, and the connection's word keeps its turn after it. At `<=768px`, where the crumb otherwise
+  wraps out of sight, that line goes under the title in the connection word's place and shape
+  (`.context:has(.context-watch)`: the column layout, one line); the title
+  keeps its top-left.
   Below `769px` the title is followed, `--text-dim` and kept whole, by the selected tab's place in
   its workspace's strip (`.context-position`, "1/2", said "Tab 1 of 2"), only with two tabs or more;
   below `420px` it leaves the header and the title's list marks the open tab.
 
 ### Chat turn (`.chat-turn`)
+- A complete Codex `visualize` reference on its own line of a chat answer is drawn as a small
+  card: the file's own name, the reference's title under it in `--text-dim`, and one button,
+  **Open preview**. The name is always the path's last part, never the title in its place; bidi
+  controls and other invisible format characters are taken out of both, and a long one is cut in
+  the middle so the file's type stays. The press opens the file in the file viewer, where an HTML
+  file is its Page view, as the person has the viewer set: its dialog, which holds the focus
+  while it is open, or with **Show beside the pane** its panel beside the pane, where the rest of
+  the app stays in reach. Either way the page is drawn without its scripts until the person
+  presses **Run scripts** there, and nothing of it stays once that viewer is closed. The card
+  itself looks nothing up and draws no frame. Each card's button names its file to a screen reader
+  (`aria-describedby`), since several cards carry the same words. A copied selection of a card is
+  the name and the title on two lines, as plain and as rich text, without the button's words.
+  Codex's `mode` is not read: every mode, also one this app has never seen, draws the same card.
+  An inline preview was left out on purpose. Measured in Chrome and WebKit, the Page renderer's
+  sandbox keeps a page's script from every other host by a fetch, a form, a popup or a navigation,
+  but not by WebRTC (a STUN or TURN server of its choosing; in WebKit a `preconnect` too), and the
+  script can take the keyboard focus from the app. A frame in the transcript would sit beside the
+  message box for as long as its row is drawn, and would run on a reference's word alone.
+  Every other Markdown (a prompt card, a task result, release notes, the file viewer's Preview of
+  a `.md`) keeps the reference as text. Invalid or streaming references and code examples remain
+  text. Indented under a list item, the card is drawn in that item and the list goes on after it.
+  A path that names a network share is no reference.
 - Native conversation rows use LegendList 3.3.5, with the chat view as the single
   scroll owner. The centered lane, exchange spacing and prompt portal stay separate from
   row lifetime. The list anchors prepends by a browser-local slot, never by a timestamp or
@@ -2619,6 +2895,8 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   `--space-1` carrying the meta line (size or partial-view notice, folder) and, at its end, the
   file's view modes as a compact segmented control (**Preview | Source** for Markdown in place of
   Show source, **Page | Source** for HTML) whose chosen segment is the row's one `--bg-hover` fill.
+  A mode is drawn `--control-h` − `--space-4` tall (`18px`, `16px` compact) and, with a mouse, takes clicks over
+  `--pointer-target` through an invisible `::before` expander above and below it, inside the row.
   The content fills the panel edge to edge (no inset, radius or frame around a page, PDF or
   video; code and Markdown keep their `--space-3` inset). The panel's left edge is an unseen
   `--space-2` grip that draws a 2px `--accent` seam under the pointer, while held and on focus.
@@ -2870,7 +3148,9 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
 - In the composer's background-task list, a running task's row is a disclosure button (the row's
   padding and hover tint, a dim caret at its end, `aria-haspopup="dialog"`, `aria-expanded` while
   its detail is open; `--touch-target` tall under a finger). Ended rows stay plain: what ended has
-  the chat's task card.
+  the chat's task card. The list only reads, so a device that only watches keeps the chip, the
+  fold of ended tasks and these rows usable while its composer locks what writes (the message box,
+  attach, the microphone, the quick replies, Send and Stop).
 - It opens one `.modal` (a sheet on a phone, 640px on a desktop) over the list, which stays open
   under the scrim: the working-tint status glyph, the task's title over its dim `agent · model`
   line (selectable, a phone's sheet header included), **Refresh** and **Close** as icon buttons.
@@ -3179,7 +3459,7 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   provider as a read-only usage reference inside the model pill. Plan-wide five-hour session is
   preferred, with weekly fallback; scoped, failed and unavailable limits do not substitute.
   The title names the account and reset times. This is not active-account detection. Mobile and
-  remote panes omit it. The context ring is inert on mobile; details stay on desktop.
+  remote panes omit it. The context ring only shows: its number is in the tooltip, and a press does nothing.
 - Working Send on a supporting bridge adds a pending message above the input card, before the
   prompt dock. `PendingMessages` uses the chat's column and neutral user-bubble surface: plain
   text aligned right, with no outer card. Its scrolling stack is capped by `--pending-max-h`
@@ -3261,20 +3541,75 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   not another attached typist. The bridge retains disconnected presentation receipts and exact
   consumed IDs for up to ten minutes, capped at 1024 each. An authorized, non-observing reattach
   with the same opaque browser resume ID and device can resume that receipt or receive its exact
-  consumed removal on the local machine only. Remote-machine relays strip the resume ID from every
-  attach because their shared bridge token carries no trusted origin-device namespace; remote
-  reconnection cannot resume presentation receipts. This conveys no input permission. The browser's saved, non-resendable
+  consumed removal. Through a remote PC's relay a controlling attach carries a resume ID scoped to
+  that server (the shared bridge token names no origin device, so the relay makes the ID its own),
+  and a watch-only attach carries none: that one resumes no presentation receipt, and neither does
+  a reconnection after this server restarted. This conveys no input permission. The browser's saved, non-resendable
   **transcript confirmation unavailable** copy remains after server restart or retention expiry;
   neither matching text nor an empty queue clears it. A changed terminal or session also makes
   confirmation unavailable. Ovis does not claim that Pi queued or consumed
   the message until the transcript proves it. Next-turn delivery and an explicit Send
-  now action claim the same server ID. Connection loss never resumes automatic input. Previously
-  held browser messages retain their explicit Send now/Discard recovery.
-  Any other follow-up's exact `sent` or `discarded` receipt is kept the same way (ten minutes, 1024,
-  same browser resume ID and device, local machine only) and replayed with `resumed: true` on its
-  browser's reattach, or to that browser's already attached successor when the Enter's reply comes
-  after the reload. It settles only that exact ID's saved copy: an uncertain copy, which ages out as
-  `dismissed`, stays unconfirmed, and nothing is typed again (#2421).
+  now action claim the same server ID. Connection loss never resumes automatic input. A message its
+  sender held on purpose (`delivery: "hold"`: Alt+Enter, or a follow-up with automatic sending off) stays
+  held, with **Send now** and **Discard**, through a lost connection, a reload, another tab and a restart
+  or update of the server: the bridge never sends it by itself, so its saved copy is held on its own word,
+  as before, and takes no receipt's end. The page knows it by the bridge holding it with no reason (every
+  hold the bridge makes by itself names one) and keeps that for the copy's life, also once a refused Send
+  now gave it a reason; a copy an older release saved held with no reason is one too, and a tab still on
+  an older bundle that saves the list without the mark does not take it from a page that has it. Only a
+  Send now that may have typed it makes it uncertain. Every other held copy (a queued follow-up held as its connection
+  closed, or one the bridge held for a reason of its own) offers **Send now** only on live proof: its own
+  live connection, or the bridge's held receipt for this browser within the receipt's window (below).
+  Saved (after a reload, in another tab, after the connection that held it ended), such a copy shows as
+  uncertain until a receipt proves it again, so it is never sent on the word of storage alone. Inside the
+  receipt's window a reload, another tab of the same browser and a remote PC on this version (its relay
+  scopes the browser's resume ID for a controlling attach) all get the receipt and show the copy held.
+  This is a deliberate change for the rest: past the ten minutes, after a restart or update of this
+  server or of the PC's own, on a remote PC that runs an older version, or through a watch-only attach
+  (which carries no resume ID), such a copy keeps only Copy and **Discard**.
+  Any other follow-up's exact `sent`, `discarded` or `held` receipt is kept the same way (ten minutes on
+  a clock that only moves forward, whatever the PC's clock is set to; at most 1024 held and discarded
+  ones; same browser resume ID and device). A `sent` one is never dropped before its ten minutes, and
+  neither is the note of a Send now that may have typed the copy, which answers every later resend of
+  it "not confirmed" and is told to no browser: a copy another tab still holds on a held receipt is
+  not typed again. That note also outlives its owner's record, which ages out as `dismissed` a minute
+  after its connection closed: a dismissed record ends a held receipt and nothing else. A pane herdr
+  moves under a new ID takes its receipts with it. A pane that ends takes its held receipts away:
+  herdr may give its ID to another pane, so no browser there is told the old pane's copy is held, and
+  a follow-up the bridge still holds for the pane that ended gets no held receipt when its connection
+  closes later. What was sent, or may have been, stays and only refuses. Receipts are replayed
+  with `resumed: true` on its
+  browser's reattach, or to that browser's already attached successor when the Enter's reply or the
+  hold comes after the reload. `sent` and `discarded` settle only that exact ID's saved copy, while
+  `held` recovers an untyped queued copy as **Held message — review and send** (**Send now** /
+  **Discard**): an uncertain copy, which ages out as `dismissed`, stays unconfirmed, and nothing is
+  typed again (#2421). `held` is kept only once the connection that queued the message is gone
+  (while it lives, it alone sends the copy), travels in the frame's own `held` field (clients that
+  predate it remove a copy for any resumed removal), and applies once, to the copy saved when it
+  comes: a later send of that copy, from any tab, is never offered again. Each held ID carries how long
+  the bridge still keeps its receipt (`held_ms`, 0 < ms <= ten minutes, else it proves nothing) and when
+  that ends on the PC's clock (`held_until`); the connection's `features` frame carries the PC's clock
+  (`server_time`). The ten minutes run from when the bridge held the copy as its connection closed, not
+  from the reconnect: a browser that returns after nine has one left. The page holds the copy until the
+  sooner of its arrival plus `held_ms` and `held_until`
+  on its own clock, on this page only (saved, the copy stays uncertain), then shows it uncertain again;
+  every read checks that time too, so a tab that slept or a Send now press past it sends nothing. What
+  is left of the proof runs on a clock that steps forward by the larger of what the device's clock and
+  `performance.now()` moved since it was last read (`proofNow`): a device clock set back does not
+  stretch a proof past the bridge's receipt, and a sleep the forward-only clock did not count still
+  ends it. The
+  proof also ends with the connection that brought it, and only with that one: a page that shows several
+  PCs keeps one PC's held copies when another PC's connection drops. A resend checks and claims the
+  receipt in the pane's serialized turn, by its original ID and for its own pane and browser only, so two
+  resends of one copy type it once. The claim is made before anything is typed and is itself among the
+  receipts (`sending`, told to no browser): while it stands, every resend of that ID, under any pane
+  ID, is answered `pending_busy` and types nothing. A turn is its pane ID's, so a pane herdr moves
+  while the text is on its way would otherwise let the other tab's copy, under the new ID, be typed
+  beside it. The move carries the claim, and the send's end is recorded under the ID the pane has
+  then: `sent`, the "not confirmed" note, or the held receipt back in place when nothing was typed.
+  A connection that may no longer resume when it closes (read-only, a
+  revoked device) leaves no held receipt; a send of its that ends after the close still leaves its `sent`
+  receipt for that browser's next connection.
 - Not connected, the one word `Reconnecting…` (`Connecting…` before this page's first connection to
   the PC's socket) is the placeholder while the box is empty and moves into the status content once
   there is a draft (`composerStatusHint`), on a phone too; it says no more (nothing is queued, and
@@ -3446,6 +3781,42 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   composer's refusal of a Claude box that may not be empty and t3code's composer banner stack;
   Warp and Zed give an interactive program the input until it exits, which this bridge only sees
   on the screen.
+- For Codex the bridge holds that line itself, whatever the page saw. herdr reports Codex at rest
+  while one of its own screens has the input: a list (`/model` and its levels, `/permissions`,
+  `/review`, `/theme`, `/resume`, `/experimental`), a field (`/rename`, the transcript's Find, the
+  search through earlier prompts), an editor (`/statusline`, `/keymap` and its view that waits for
+  a new key), the agents view, a pager (`/diff`, the transcript's where Codex draws one). The folder question reads blocked on a wide
+  pane, but at rest at 40 columns and unknown in its first seconds. `agent.prompt` would paste a
+  message into it: a list drops the paste, and the Enter that follows takes the row under the
+  cursor. On Codex 0.167 that Enter changed the permission mode, answered the folder question
+  with **Trust and continue**, and opened a model's levels, where `enter default · s session ·
+  esc back` saves the row for every new session. Every chat send to a Codex pane therefore reads the live screen
+  last, right before herdr is written to (the queued path in the read it already made for a masked
+  prompt), and is refused (`agent_blocked`, the note of a waiting menu) when the screen ends in a
+  footer of Codex's own. That is a row below the last `›` or `»` that begins with a key and what
+  it does (or `Type to …`), holds the item naming the key that leaves, whole (`esc back`,
+  `esc cancel`, `esc exit`, `esc save/close`, `q close`), by itself or with the rows a narrow pane
+  wrapped it onto, and has nothing but rows of keys under it; the search through earlier prompts
+  has no footer and is known by its `reverse-i-search:` row, and `/keymap`'s view that waits for a
+  key by the sentence it ends with (`Press the new key now. Esc cancels.`). A key the user
+  remapped is drawn as Codex draws it (`^q back`, `alt+x back`) and is read written with a hyphen
+  too (`ctrl-g`). The message stays in the box, **Send anyway** included. A queued one is held
+  with that reason (**Send now** / **Discard**), and with it, in the same step, every other
+  message queued for the pane: tried one by one, a later one would be typed ahead of it if the
+  screen closed between two tries. herdr says nothing when the screen closes, so queued again the
+  message would wait with no reason shown while Codex sits idle, and go out by itself at the next
+  status event, which may be the end of a turn started since. The row says it in the reader's
+  language, with the words of a menu waiting in the terminal. A prompt Codex asks (an approval, a
+  question: a card the chat reads) still queues the message again, as any menu herdr reports
+  does, since its end brings a status event, also when it comes up during the last checks before
+  the paste. Two cards are screens of the other kind: `/model`'s levels, a list the user opened,
+  and the folder question where herdr does not report it (blocked on a wide pane, at rest at 60
+  columns and under), whose answer brings no status event either. A held one stays held. The composer never ends that way: its
+  last rows are its status line, which begins with the model, and `← for agents · ? for
+  shortcuts`; with its shortcuts shown the last row is `? / esc close`, where no item starts at
+  `esc`, and the composer still takes what is typed. A screen whose footer names no such key is
+  not held. The terminal's own input line is not read: it stands in for the keyboard, and a key
+  typed there is the answer to the list.
 - The peek follows Warp's full-screen handoff of an interactive program
   ([Warp's agent workflow](https://docs.warp.dev/agents/)), where the program takes over the
   conversation's area and the conversation is back as it was when the program exits, and Zed's
@@ -3567,7 +3938,9 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   Claude phone apps draw their composer buttons at the target size, which here would crowd the
   model label off the row. `scripts/tap-targets-demo-regression.ts` measures each hit area by
   `elementFromPoint` at `390px` and `412px` (and `390px` compact), and that a mouse at `1280px`
-  gets the drawn box only.
+  gets the drawn box only. It also holds a long sheet's Cancel, the Rename pane field and Settings'
+  search field to `--touch-target` on a `360x780` phone, and a changed row's Restore defaults and a
+  docked file's view modes to `--pointer-target` under a mouse.
 
 ### Command palette
 - At `<=480px` the header has no palette button: the More menu's first item, **Search panes and
@@ -3718,7 +4091,11 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   one dim sentence under it (`--fs-xs`, no wider than `54ch`) and one control at the end of the
   line. The controls are a switch, a segmented control for two to four short choices, a select
   for five or more, a stepper (minus, value in `--font-mono`, plus, in one bordered well) and a
-  text field; inside a card they sit on `--bg-input`. On a phone a control that needs the line
+  text field; inside a card they sit on `--bg-input`. The terminal and chat font sizes' value can
+  be typed in its place, and a number out of range is refused, never clamped (G-179, after Warp's
+  Appearance settings); full-width digits from an IME (１６) are read as the number. Each page but
+  About opens with one dim line saying what it holds
+  (`.settings-page-note`, G-173, after Codex's settings panes); About stays sentence-free. On a phone a control that needs the line
   (three or more segments, a text field, or a long sentence above it) goes under its label at
   the card's width, its segments sharing it equally; the rest stay on the label's line. A
   condition that applies right now (Keep screen on without HTTPS) is one more line under the
@@ -3781,8 +4158,25 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   devices** stacks, under a hairline each, the Tailscale address and QR code, the six-digit pairing
   code (`components/CompactPair.tsx`, started when the tab first opens) and Portal where the server
   offers it. **Ovis relay** is the account's: signed out one sentence and **Sign in to Ovis** (which
-  opens the account's sign-in in More settings), signed in how a new device joins, or the relay's
-  switch and **Open the account** while this PC cannot admit one yet. Relay pairing without the
+  opens the account's sign-in in More settings), signed in the relay's switch and **Open the
+  account** while this PC is in no account. Under either, behind a hairline (none where nothing is
+  drawn above it), one part (`.connect-account-qr`) that depends on the PC, not on the sign-in. On a PC in no account it is
+  **Add with a QR code**: one sentence and a neutral **Show the QR code**, which draws the relay's
+  QR code alone (`--qr-size`, its countdown, **New code**; no code to type). The QR code gives way
+  to a notice box (`.connect-account-qr-notice`: `--bg-elevated`, a hairline, `--radius-md`) that
+  says which account the PC joined and which device added it, or asks about a device nobody
+  vouched for. In a notice the `.btn-danger` (**Not me: remove it**, **Not me: revoke every
+  device**) comes first whenever the page cannot call the device or the account its own; the
+  primary **Done** is only for the browser's own account, and no **Done** or **Keep it** shows
+  while a device is unanswered (one still being checked is named in a plain line). Another
+  account's notice takes the `--status-blocked` border on `--danger-tint`. On a PC that is in an
+  account the part has no button and no QR code: its label says which account (the browser's own,
+  another one, or one it cannot tell while signed out), one sentence says to sign in to that
+  account on the device, and a hint says the QR code is only for a PC in no account; the
+  relay's switch stays above while the relay is not online. Linked-device apps draw the same
+  line (WhatsApp shows its linking QR code on the device being added, never on one already
+  linked), and it is deliberate here: a QR code on a PC with members would let in whoever scans
+  it with nobody approving. Relay pairing without the
   account, a code from another PC and Tailscale PCs added through the relay are gone from it. A phone
   opens on Phones and devices, a PC's window on SSH; a tab once opened stays mounted, so its code
   is not minted again. The dialog closes by itself once My devices sees the device a code let in.
@@ -3793,7 +4187,9 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   About links the repository.
 - In the hosted relay shell (app.ovis.sh, `<meta name="ovis-shell">`, lib/shellMode.ts) the page
   opens with a **This app** group of two rows the native build never shows: **Change PC** (a neutral button to the
-  shell's front page, which lists every paired PC, the same row the iOS app gets for its own list)
+  shell's front page: the paired-PC list, or, signed out where the account service runs, the sign-in
+  screen with that list behind **Continue without an account**; the same row the iOS app gets for
+  its own list)
   and **Forget this PC** (a neutral button that asks once in a `ConfirmDialog`, **Forget**, then
   deletes this phone's key for the PC and leaves for the front page). Neither is destructive on the
   PC, which keeps listing the phone until it is revoked there, so neither is a `.btn-danger`.
@@ -4333,6 +4729,10 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   a look where the server answers for a held subscription with no fault, alerts turned off or
   the device locking ends the dismissal; a look that proves nothing keeps it. Settings keeps
   showing the fault even while the line is dismissed.
+- Where the button's label has no room beside the dismiss button even with the sentence cut to
+  nothing (a 320 px phone in Japanese at the 20 px interface text), the label wraps inside its
+  button, which grows in height; the dismiss button keeps its size and its place at the line's
+  right end. Wherever the label fits, the line is unchanged.
 - A failed **Turn alerts on again** replaces the fault sentence with its reason: the browser
   would not make a push subscription (in Brave, turn on **Use Google services for push
   messaging** in its privacy settings), the page's service worker is not running (reload, then
@@ -4356,13 +4756,33 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   rule, with its repair narrowed to the faults re-subscribing mends. Dismissal follows the update
   notice's button and the PC-action notice's per-fault lifetime (`lib/machineNotice.ts`).
 
+### Desktop update line (`.update-notice.is-line`)
+- In the desktop app only (`lib/desktopUpdate.ts`): once the app has downloaded an update, one
+  line on the update notice's row, drawn as a release's line is. "Ovis X.Y.Z is ready.", a
+  `.btn-primary` **Restart to Update** and the update notice's dismiss button. The server such
+  an app carries offers no release of its own, so the release line never shares the row with it.
+- **Restart to Update** is the tray's item: it is disabled from the press until the app says it
+  keeps running (a .deb's password prompt cancelled). No confirmation: the terminals and agents
+  run in the core, which outlives the app, so a restart interrupts none of them.
+- The dismiss button closes the line for that version, in the app rather than in this page's
+  storage: later starts keep it closed, and the next version shows it again. The tray keeps
+  Restart to Update. The app's connection screen
+  (`app/electron/renderer/connect.html`) shows the same sentence and button under its steps,
+  also for a closed line.
+- Design: T3 Code's desktop update control, where the web client draws what the desktop shell
+  reports through its bridge and one press restarts and installs
+  ([`SidebarUpdatePill.tsx`](https://github.com/pingdotgg/t3code/blob/main/apps/web/src/components/sidebar/SidebarUpdatePill.tsx);
+  no code taken). It differs in place and in words: a sentence on the row where this app already
+  tells of a release, not an icon in the sidebar whose meaning is in its tooltip, and no
+  "running tasks will be interrupted" confirmation, since nothing here is.
+
 ### Setup guide (`.setup-*`)
 - Follows the Claude and Codex apps' first runs: one screen in the pane area, the sidebar left in
   place, nothing modal. It opens by itself once, on a fresh install only (no herdr workspace, no
   saved settings, no shared settings, no paired device); Settings opens it again. A watching device
   never sees it.
 - The welcome is centered: the app mark, "Is this your first time using Ovis?" and two big choice rows
-  (`--radius-xl` cards on `--bg-panel`, an accent border on hover).
+  (`--radius-xl` cards on `--bg-panel`, an accent border on hover; keyboard focus is the ring alone).
 - Then one screen in a 552px column, "Set up Ovis" and "Skip setup" over it, no progress bar. It first
   shows Ovis checking the PC (GET /api/agent-catalog): every coding agent in a two-column `--bg-panel`
   list, each line a spinner until the answer, then "Installed · v…" in `--status-done` or "Not
@@ -4445,34 +4865,231 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
   scoped screen, the sentence per state, **Back** to the front page on a PC's page and nowhere
   else, the iPhone browser tab's line "Add to Home Screen to stay paired" (a `--fs-sm` dim line
   over a hairline at the card's foot, only there: the installed app's storage is not cleared).
-- Layout: `centred card`; the document is the one scroller; the saved-PC list is a plain column
+- Layout: `centred card` for the pairing and recovery screens (the sign-in below is an unboxed
+  column); the document is the one scroller; the saved-PC list is a plain column
   inside the card, never a scroller of its own.
 - Precedent: paseo's hosted web app (confirm a new host, remember hosts, one list to pick from)
   for the flow; the states and their words are this app's, in the token gate's own frame, so a
   phone that pairs through the relay and one that pairs with a code see the same room. Neither
   the Codex nor the Claude app has a hosted relay shell to follow.
-- Account part (components/AccountPcs.tsx, lib/account/), only on the front page and only when
-  the page names an account service (`<meta name="ovis-account-service">`, account.ovis.sh unless
-  the build names another) and, in a browser, it is app.ovis.sh, the one page a sign-in comes back
-  to; otherwise the front page is the saved-PC list above, unchanged. Signed out: **Continue with GitHub** and **Continue
-  with Apple**, two equal neutral `.btn`s (App Review 4.8 wants Apple wherever another provider
-  is, and neither is the one to pick), a `--fs-xs` dim line on what the account service learns,
-  then the QR route under a hairline (an `h2`, the page keeps one `h1`). With saved PCs the list
-  comes first and the sign-in follows it. Signed in: **Your PCs** with "Signed in with GitHub"
-  under it, one row per PC of the account merged with the PCs this device is paired with: the
-  name, and under it a `--fs-sm` dim line in words (Paired; This device is not approved on it
-  yet; Offline, last seen 3 h ago; Its Ovis needs an update to join the account), no badge. Only
-  a paired PC is a link with a chevron; the others are plain rows. The `<main>` adds
-  `data-account-state` (`signed-out`, `signing-in`, `signed-in`) for scripts; each row
-  `data-pc-state`. Precedent: Tailscale's admin machine list (every machine of the account, its
-  state in words) for the list, and Signal's linked devices for keeping trust on devices already
-  linked rather than on the sign-in.
+- Account part (components/AccountPcs.tsx, RelayDashboard.tsx, RelayOverview.tsx,
+  RelayPcTable.tsx, RelayPcDetails.tsx, RelayMap.tsx, AddPcSheet.tsx, EnrollmentStatus.tsx,
+  StatusDot.tsx, relayPcState.tsx, lib/account/, lib/relay/dashboard.ts), only on the front page
+  and only when the page names an account service
+  (`<meta name="ovis-account-service">`, account.ovis.sh unless the build names another) and, in a
+  browser, it is app.ovis.sh, the one page a sign-in comes back to; otherwise the front page is the
+  saved-PC list above, unchanged.
+- Sign-in (RelayShellScreens.tsx, AccountPcs.tsx): an unboxed column `--relay-signin-w` (368 px)
+  wide on `--bg`, no card, in this order: the sheep mark; **Sign in to Ovis** (the page's one
+  `h1`); one provider button for each provider the account service lists, in the order GitHub,
+  Google, Apple (production lists GitHub and Google), equal neutral `.btn`s `--touch-target`
+  (44 px) tall with the provider's mark at a fixed inset; then, only when this device holds
+  pairings, **Continue without an account (N PCs)**; a hairline divider; **Pair with a QR or
+  code**, a quiet ghost button; and last a `--fs-xs` dim line, "The account only lists your PCs.
+  Sessions stay end-to-end encrypted." Continuing without an account opens the dashboard in local
+  mode (this device's own pairings, `data-dashboard-mode="local"`, the nav's foot offering the
+  sign-in).
+- Routes: the dashboard is one page with five hash routes, `#overview` (the default), `#pcs`,
+  `#devices`, `#relay` and `#settings`. Devices shows **This device** and the **Account** controls (**Sign out** and **Remove this device from your account**, or **Sign in** in local mode); Relay holds the connection map open and lists each relay host with its PC count and regional or global; Settings is a real page (theme, density, interface
+  font size, language) built from the app's own settings rows.
+- Frame: on a desktop a left nav `--relay-sidebar-w` (240 px) wide on `--bg-panel`, the five places
+  with Overview and PCs carrying their counts, the current one on `--bg-elevated`, and the provider
+  and **Sign out** (or **Without an account** and **Sign in** in local mode) at its foot. The content column stops at `--relay-content-w` (1280 px). A top
+  bar holds the view's title and **Add a PC**, the one primary action on every view (quiet `.btn`
+  when Overview or PCs shows the empty state, which holds the primary **Add a PC**). At 768 px and
+  under the nav becomes a bottom tab bar (`--tabbar-h` over the safe area) of the same places, and
+  the brand bar turns sticky glass at the top with **Add a PC** as a 44 px icon button (`#devices`
+  carries the account controls on a phone). `html:has(.relay-dash)` sets `scroll-padding-top` and
+  `scroll-padding-bottom` so keyboard focus stays above the fixed bottom tab bar and below the
+  sticky top bar, and below 280 px (including 200% zoom on a 390 px phone, 195 CSS px) the tab bar
+  shows icons only while keeping each label as a visually hidden accessible name and 44 px targets.
+- Overview: a strip of three cells with hairlines between them, **Ready** | **Needs you** |
+  **Relays in use** (or **Paired with this device** | **Relays** in local mode), each a state dot,
+  its word and one `--fs-xl` numeral (stacking to one column below 320 px so words never split at
+  200% zoom or +40% text, with `overflow-wrap: break-word` on headings and labels and `word-break:
+  auto-phrase` in Japanese). Needs you counts every
+  PC that wants something, offline ones included, and says so on a dim line under the numeral
+  ("incl. 1 offline"), so the cells add up to the PCs listed. A pressed cell filters the table below
+  (`aria-pressed`). Under the strip, one mono chip per relay host with its PC count,
+  regional or global, and the fastest measured relay RTT when a check answered through it; a chip
+  filters the table to that relay, and once a check has run a dim line summarizes reachability
+  ("Reachable now: {direct} direct · {relay} via relay · {none} no answer"). Then the attention list: PCs that
+  need you, most urgent first, at most three rows of state dot, name, reason (or relay / last seen
+  when the reason is shared) and action, with **View all N** above when more than three need you.
+  When the rows share one reason it's said once as a caption above them ("Join · a device of your
+  account connected to it approves") rather than on every row. Then the PC table (below), and last the
+  **Connection map**, a 44 px disclosure row that opens `#relay` with "N relays · M PCs" on its right.
+  A first-time account gets one empty state instead of the strip: an icon, one title ("No PCs yet"),
+  then three numbered steps read from the start edge: install Ovis on the PC (the macOS or Linux
+  line and the Windows PowerShell line, each a mono box with its own **Copy**, which wraps under the
+  box where the row has no room for both and is described by the system its line is for), sign in
+  there with the same provider account as on this device, and choose Add this PC to my account. A
+  dim line under them says which sign-in this is and that GitHub and Google are separate Ovis
+  accounts until linked; an Apple account, which a PC's page cannot sign in with, is told to use a
+  linked GitHub or Google sign-in or to pair with a QR or code. Then **Check again**, **Add a PC**
+  (the one primary) and **Pair with a QR or code**. Check again reads the account's PCs at once,
+  and once more after a read that was already out; while it reads (1 s at least) it says
+  "Checking…" and stays a button, `aria-disabled`, so a keyboard's focus is not dropped. Under
+  the banner of a list that could not be read there is only the title and the two pairing
+  buttons, with the banner's **Try again**: an unread list is not known to be empty. Without an
+  account the empty state keeps one line ("Sign in on a PC, or scan the QR code it shows, to see it
+  here.") and the two buttons. None of the apps this design looks at has an account that lists PCs
+  to add, so the steps follow this app's own pieces instead: the command box with Copy of the
+  manual-update screen, and the Agents page's Check again.
+- PCs table (RelayPcTable.tsx), filtered by All / Ready / Needs you / Offline with **Check now**
+  beside the filters, `--table-row-h` (44 px) rows under a 36 px head, or a two-line `<ul>` list
+  on phones (768 px and under) and narrow containers. Columns: **Name** (state dot and name),
+  **State** (the specific word below, plus a separate enrollment line `data-pc-enrollment` when
+  account enrollment is pending "Adding it to your account…" or failed "Account setup is incomplete.
+  Open it to try again." on a `paired` or `unchecked` row where **Open** retries setup, or "Account
+  setup is incomplete." otherwise, and a dim subline for a fresh Add countdown "new · {n} min
+  left", "Update Ovis on it", or this device's check result after **Check now**; on a phone row a
+  closed Add window also shows "Join · a device of your account connected to it approves", which is the
+  state word's `title` in the table), **Relay** (how this device reaches a paired PC right now and
+  the measured round trip: "Same network · 4 ms", "Tailscale · 18 ms", the answering relay host as
+  a mono chip followed by " · 62 ms", or "Checking…" / "No answer" / "Not checked", or the assigned
+  host as a mono chip for a PC it isn't paired with), **Last seen**, and the one action its state
+  allows (Open, Add, Join, Update, Details; during pending or failed enrollment each row keeps its
+  own `displayState` word and action, so an `offline` row shows "Offline" or "Offline · {when}" with
+  **Details**, a `needs-update` row shows "Needs update" with **Update**, an unlisted or local `paired`
+  or `unchecked` row shows its local check word ("Paired · not checked", "Answers", or "No answer"),
+  a listed `paired` row shows "Ready" when linked or when enrollment failed and "Ready · not in the
+  account yet" when unlinked and not failed, and only `paired` and `unchecked` rows show **Open**,
+  which reopens the PC's scope at the Ready checkpoint to retry enrollment, so only they get "Open
+  it to try again."). Selecting a
+  row or **Details** opens RelayPcDetails without opening a socket to the PC: beside the list as a
+  `--relay-detail-w` (360 px) side panel at 1100 px and wider, sitting beside the two-line narrow
+  list from 1100 to 1391 px (`NARROW_SPLIT_TABLE_QUERY`) and beside the four-column table (dropping
+  **Last seen** so rows stay on one line) at 1392 px and wider; below 1100 px the details replace the list as a full view with **Back**,
+  moving focus to the details heading and returning it to the PC's row on close (including browser Back), or when an unlisted pairing's row is gone after **Forget**, to the next row, else the previous row, else the **PCs** view heading (`tabIndex={-1}`). Details holds
+  seven labelled rows (state, with an "Account setup is incomplete." subline when enrollment failed;
+  route; relay; last seen; this device; key ID; version) and the PC's
+  actions (Open or Update, Add or Join, Check now for this PC alone, Forget this PC) at its foot; pressing **Forget this PC** opens a portalled `ConfirmDialog` ("Forget this PC?", "This phone's key for it is deleted here, and the PC keeps listing this phone until it is revoked there. Pairing again takes a new QR code from the PC.", **Cancel** and **Forget**) over the `inert` dashboard (`.relay-dash`), moving initial focus to **Cancel**, returning focus to **Forget this PC** on **Cancel** or Escape, and after **Forget** returning focus to the row when the PC stays listed or to the next row, else the previous row, else the **PCs** view heading (`tabIndex={-1}`) when an unlisted pairing's row is removed.
+- Connection map (RelayMap.tsx): this device, each relay hub, the PCs behind it. A PC that answered
+  by the same network or Tailscale draws its wire straight from this device and skips the hub; a
+  PC reached through a relay hangs off that hub. Wires are still lines (`--accent` when live or seen
+  lately, `--text-dim` when unchecked or offline, `--status-working` while checking);
+  only a wire whose PC is being checked animates. On a phone, or past eight PCs, the map is an
+  ordered route list of hops.
+- Add-a-PC sheet and Ready checkpoint (AddPcSheet.tsx, RelayShell.tsx, EnrollmentStatus.tsx,
+  lib/relay/shell.tsx): a modal sheet `--relay-sheet-w` (520 px) wide with four
+  segmented bars and a step list, in the mode the row picked, named in `data-add-pc-mode` and its
+  phase in `data-add-pc-phase`: `start`, `confirm`, `connecting`, `compare` (six digits to type
+  or match), `wrong` (a wrong number, with Try again), `approving`, `ready` and `failed`. **Add**
+  types the six digits the new PC shows, then approves on that PC; **Join** asks through the
+  account, shows this device's digits, and an account member approves on another device. Pressing
+  **Add this PC** or **Ask to join** in the sheet records the consent once (`keepConfirmedPc`) and
+  starts pairing at once on `/s/<id>/` (`start` -> `connecting` -> `compare`) without a second
+  "Pair with {name}?" step; "Pair with {name}?" with **Pair** remains only for pairing links and QR
+  codes opened from outside the dashboard (or when `sessionStorage` is blocked). **Add a
+  PC** with no PC says how one is added ("On the PC, open Settings → Devices and PCs → Account, sign
+  in, then choose Add this PC to my account. It then shows here with Add.") and leads to the QR and code
+  modal sheet (`PairQrDialog`, over the scrimmed inert dashboard), whose QR and code screens name
+  only the current path ("On the PC, open Settings → Devices and PCs → Add a connection → Ovis relay
+  and scan the QR code." and "On the PC, open Settings → Devices and PCs → Add a connection → Ovis
+  relay and type the code it shows."). The sheet drives the
+  shell's existing join, Pair, match and Cancel; failure stays in the sheet, in words of the sheet's
+  own flow where the cause differs from a pairing link's (a new PC that is no longer waiting says
+  to keep its Account screen open; a join nobody approved says to open the PC on a device that
+  already uses it, or to pair with a QR or code), each with **Try again**, and in the shell's own
+  words otherwise, except a new identity, which keeps the shell's screen with its ids and Forget. Ready shows
+  at once when local pairing finishes ("{name} is ready to open on this device." with **Open PC**),
+  without waiting on account enrollment. While account enrollment runs (`enrollment: "pending"`),
+  `EnrollmentStatus` shows a spinner and "Adding it to your account…"; when enrollment finishes, it
+  shows "In your account" (plus " · Devices added: {count}" when `state` is `{ state: "complete",
+  admitted }`, keeping earlier admissions across enrollment and introduction retries, or "In your
+  account" alone when `state === "complete"`); if enrollment fails or times
+  out (`"failed"`), the checkpoint stays on Ready and `EnrollmentStatus` shows "Account setup is
+  incomplete." with **Try again** (`data-action="retry-enrollment"`). The enrolling transport stays open in the
+  background if the user opens the PC or closes the checkpoint before enrollment settles; on the
+  dashboard row, a PC whose enrollment is pending or failed keeps its own `displayState` word and
+  action (an `offline` row shows "Offline" or "Offline · {when}" with **Details**, a `needs-update`
+  row shows "Needs update" with **Update**, an unlisted or local `paired` or `unchecked` row shows
+  its local check word, a listed `paired` row shows "Ready" when linked or when enrollment failed
+  and "Ready · not in the account yet" only while listed, not linked, and not failed, and only
+  `paired` and `unchecked` rows keep **Open**, which retries enrollment at the Ready checkpoint),
+  and adds a separate enrollment line ("Adding it to your account…", "Account setup is incomplete.
+  Open it to try again." only when `paired` or `unchecked`, or "Account setup is incomplete."
+  otherwise). In `AddPcSheet` and
+  `PairQrDialog`, phone dialog and sheet footers (`SHEET_QUERY`, 640 px and under) render the
+  primary action first in DOM markup and stack vertically, putting the primary action first in both
+  visual and Tab order.
+- Status vocabulary: one state word per PC, specific to what's true: Ready (on a listed `paired`
+  row when linked or when account enrollment failed), Ready · not in the account yet (only on a
+  listed `paired` row that is not linked and whose enrollment is not failed), Needs approval, Needs update, Updating, Checking…, Offline (or Offline · {when}), or
+  for a paired PC in local mode or not listed in the account (`unchecked`), Paired · not checked,
+  Answers, or No answer (with pending or failed account enrollment shown on its own line under the
+  state: "Adding it to your account…", "Account setup is incomplete. Open it to try again." on a
+  `paired` or `unchecked` row, or "Account setup is incomplete." otherwise);
+  the strip groups them as Ready, Needs you and Offline. The summary, the filters,
+  the attention list, the table, Details and the map all read one model (`dashboardModel` and
+  `dashboardState()` in lib/relay/dashboard.ts: a live answer from this device beats a stale
+  directory Offline on every surface, while an unlisted pairing without a live answer stays
+  `unchecked` and out of Ready and Needs you). Color rule: color sits only on the state dot (StatusDot.tsx, `--dot-size`
+  7 px): filled `--status-done` for ready, half `--notice` for needs you, ring with an arrow up
+  `--notice` for updating, hollow `--text-dim` for offline, `--status-working` for checking and
+  `--status-blocked` for failed, so the shape alone still reads in forced colors.
+  The words stay `--text`, and no row, badge or cell is tinted by state; the one tinted surface is
+  the error banner (`--danger-tint` with `--danger-text`) when the account read fails.
+- Motion: nothing enters. Hover and the pressed strip cell change background over `--dur-fast`.
+  The only loop is a checking wire's flow in the map (`--dur-spin`); every other wire is still.
+  Under `prefers-reduced-motion: reduce` the flow is hidden and the transitions stop; a checking
+  wire stays as a still line, and its dot and word still say Checking…. Loading skeletons never
+  shimmer.
+- Tokens used: `--bg`, `--bg-panel`, `--bg-elevated`, `--bg-hover`, `--border`, `--divider`,
+  `--text`, `--text-strong`, `--text-dim`, `--status-done`, `--notice`, `--status-working`,
+  `--status-blocked`, `--danger-tint`, `--danger-text`, `--fs-xs` to
+  `--fs-xl`, `--touch-target`, `--control-h`, `--table-row-h`, `--chip-h`, `--dot-size`,
+  `--tabbar-h`, and the relay sizes `--relay-sidebar-w`, `--relay-content-w`, `--relay-signin-w`,
+  `--relay-sheet-w`, `--relay-detail-w`, `--relay-table-head-h`, `--relay-control-icon-size`,
+  `--relay-fs-min` and `--relay-fs-body-min` (the floors that keep small text readable). No
+  color literal lives in the relay CSS.
+- One account read on load, again when the page comes into view and every 60 s while it stays in
+  view. The `<main>` adds `data-account-state` (`signed-out`, `signing-in`, `signed-in`) for
+  scripts; each row `data-pc-state`.
+- Precedent: Linear for the nav, the summary strip and the rows; Geist for the table, the empty
+  state and the sign-in column; Kumo for the banner and the Add-a-PC wizard; Ryu for the status
+  pairs (dot and word) and the actions docked at the foot of Details. Tailscale's admin machine
+  list (every machine of the account, its state in words) and Signal's linked devices (trust
+  kept on devices already linked, not on the sign-in) still hold for what the table and Devices
+  say. Patterns only: no code or pixels are borrowed, so THIRD_PARTY_NOTICES gains nothing.
 - Relay files keep the existing file viewer and its Paseo-style file bar, rather than adding a
   separate remote-files screen. A client without a resource-capable service worker shows the
   usual file note as an alert when the 64 MiB limit is exceeded. Copy link and new-tab actions
   name the paired PC's reader, which opens its own channel; active file content is never a
   navigated blob. Rendered HTML uses the opaque sandbox's own render host and policy, so its
   inline scripts work without access to the shell's origin or device keys.
+
+- Foundation for the console (tokens above; the views adopt them in their own changes): one state
+  glyph, `StatusDot` (components/StatusDot.tsx), for the strip, the attention list, the map, the PC
+  table, the saved-PC list and `ConnectionLine`. A state is a shape, a colour and its word, never
+  the colour alone, and the glyph is `aria-hidden` beside the word:
+
+  | Meaning | Shape | Colour |
+  |---------|-------|--------|
+  | Ready | Filled disc | `--status-done` |
+  | Needs you (an approval, or an update to install) | Ring, its left half filled | `--notice` (a row may sit on `--notice-tint`) |
+  | Offline | Hollow ring | `--text-dim` |
+  | Updating (an installation actually running) | Ring with an arrow up | `--notice` |
+  | Checking / Connecting | Open arc | `--status-working` |
+  | Failed | Ring crossed out | `--status-blocked` |
+
+  `14px` (`2 * --dot-size`) beside data, `--dot-size` inside a line of text (`ConnectionLine`, where
+  Connected and Answers share the ready disc and their words tell them apart); the line is `1.5px`
+  at either size. Every part is drawn in `currentColor`, so forced colours keep each shape, drawn
+  in `CanvasText`. It never moves and casts no shadow: a check in progress is said by its arc and
+  word, the only motion in the console is the `--dur-fast` / `--dur-base` colour change and the
+  phone sheet's `--dur-sheet` / `--dur-sheet-out`, with no count roll, row entrance or decorative
+  loop, and reduced motion removes the transitions. Glyph targets: `3:1` for a state glyph and the
+  focus ring on the surfaces they sit on, `4.5:1` for text, in every theme
+  (`src/lib/themes.contrast.test.ts`). Action icons stay lucide: `16px` in controls and
+  navigation (`--relay-control-icon-size`), `--icon-size` in rows, `--mark-size` in phone tabs.
+- Console precedent: Linear for the navigation, the summary strip and dense rows; Vercel's Geist
+  for the table, the empty state, the sign-in column and its status dot; Cloudflare's Kumo for the
+  banner and the step wizard; Ramp's Ryu for state pairs (glyph and word) and docked phone actions;
+  Paseo's hosted app and Signal's linked devices stay the precedent for the pairing flow. They are
+  followed in structure only: no code or pixels are copied, so nothing is added to
+  THIRD_PARTY_NOTICES.md.
 
 ### Role (no control surface)
 - `interact` types and resizes; `observe` does neither. The server enforces both and the WS protocol
@@ -4492,7 +5109,7 @@ The values are the ones in `src/styles.css`.
 | Standard | `--dur-base` | `180ms` | Drawer slide; reserved dialog timing token |
 | Pulse | `--dur-pulse` | `1600ms` | Working and reconnecting dots (trough opacity 0.35; text never pulses) |
 | Spin | `--dur-spin` | `1600ms` | One turn of a stepped spinner (the command palette's busy arc); the step count sets the frame rate |
-| Breathe | `--dur-breathe` | `2000ms` | The sidebar's working dot: full for 40% of the cycle, six steps down to opacity 0.5, held, six steps back; every dot shares the document clock's phase, so several runs breathe together. It replaced a spinning arc that read as flicker beside the rows |
+| Breathe | `--dur-breathe` | `2000ms` | The sidebar's working dot, and the status badge's RUN dot with it (`badge-breathe`, down to `--breathe-min-opacity`): full for 40% of the cycle, six steps down to opacity 0.5, held, six steps back; every dot shares the document clock's phase, so several runs breathe together. It replaced a spinning arc that read as flicker beside the rows |
 | Easing | `--ease-out` | `cubic-bezier(0.2, 0, 0, 1)` | Finite transitions |
 | Pulse easing | `--ease-pulse` | `steps(2, jump-none)` | Endless working and reconnecting dots; avoids drawing every display refresh |
 | Spring easing | `--ease-spring` | `cubic-bezier(0.32, 0.72, 0, 1)` | Voice recording pill enter (180ms, scale 0.96->1 + opacity, from the mic button) and exit (120ms); a phone's sheet rising and springing back |
@@ -4517,8 +5134,9 @@ The values are the ones in `src/styles.css`.
 - Under reduced motion the voice pill swaps its bars for one level bar updated at 4 Hz and drops
   the ring and the morph; the **Recording** label and the timer stay.
 - Until the app's script runs, `index.html` draws one loading status in `#root` (`.boot`, #2329): a
-  28px ring stepped round once per `--dur-spin` on the saved theme's surface, centred, no visible
-  words (a visually hidden "Loading Ovis", the ring `aria-hidden`), shown only after 400ms so a fast start does not flash it, and
+  28px ring stepped round once per `--dur-spin` on the saved theme's surface, centred, with "Loading Ovis"
+  drawn under it in `--text-dim` at `--fs-sm` in a generic sans-serif no `@font-face` backs (the ring
+  `aria-hidden`, the words the status read out), shown only after 400ms so a fast start does not flash it, and
   still under reduced motion. React's first frame replaces it. It follows T3 Code's `index.html`
   boot shell, which React also replaces; Ovis draws a spinner rather than a still logo, because
   on a slow link a still picture is what looked frozen.
@@ -4539,6 +5157,16 @@ The values are the ones in `src/styles.css`.
 | Drawer shadow | `--shadow-drawer` | Mobile drawer |
 | Overlay shadow | `--shadow-pop` | Menus, palette and modal cards |
 | Card shadow | `--shadow-card` | The composer's input box — the one resting card in chat mode |
+
+The surface roles (`--surface-canvas` < `--surface-chrome` < `--surface-raised` < `--surface-overlay`,
+section 2) climb monotonically in both modes by aliasing the palette, not by new colours. A sheet
+(`.modal`, the bottom sheet) paints `--bg-panel`, and a card inside it reads `--surface-raised`: a
+step up in dark, and in light a hairline group on the sheet's own paper, because the light palettes
+keep their raised step at the panel (amber, charcoal and codex), and six of the herdr ports
+(tokyo-night-day, gruvbox-light, one-light, solarized-light, kanagawa-lotus, rose-pine-dawn) have no
+step above the panel at all: their `--bg-input` and `--bg-elevated` sit below it. A lighter inner
+step would be a new palette colour in every light theme block, an owner's palette call, not a remap;
+until then the card's hairline is its edge in light.
 
 ## 8. Accessibility Constraints & Accepted Debt
 
@@ -4561,6 +5189,13 @@ The values are the ones in `src/styles.css`.
   has text plus color. Compact sidebar states add distinct glyphs and keep their text accessible;
   ready and unknown draw nothing there, and unknown uses a dashed badge edge elsewhere.
 - Touch targets grow to `--touch-target`; fields stay `--fs-input` where mobile zoom is a risk.
+- A Markdown task list's box (`- [ ]` / `- [x]` in a transcript or a document, `.markdown-task-box` in
+  `src/components/Markdown.tsx`) is a read-only indicator, not a control: the agent's text owns the
+  task, so nothing ticks it here, and it is drawn as a span with `role="checkbox"`, `aria-checked`
+  and `aria-disabled="true"`, named by the item's text. The target-size floors (`--touch-target`,
+  `--pointer-target`) are for what a pointer can act on, so the box is exempt from them and keeps
+  its drawn `1em` size beside the item's text; a design-gate `target` hit on it is allowlisted on
+  this ground.
 - On a touch screen (`hover: none` and `pointer: coarse`) the app is an app, not a page: its
   chrome (header, sidebar, tab strip, key bar, menus, sheet heads and feet, buttons, tabs, labels)
   is not selectable and opens no link callout, while the transcript, code, files and fields are;
@@ -4568,6 +5203,9 @@ The values are the ones in `src/styles.css`.
   sizes its font; landscape does not inflate text. A pressed button dims to `0.55` at once in place
   of the amber `:active` box; a list row (sidebar, agent, menu, sheet, Settings page) fills instead.
 - `prefers-reduced-motion` is honored. Lucide/inline SVG decoration is hidden from assistive tech.
+- `prefers-contrast: more` is honored at the root: the glass bar and card take their panel and lose
+  the blur, `--border` becomes `--border-strong`, and `--border-contrast` becomes the text ink, so
+  every field (`--border-input` takes it) and any edge a component draws through it stays readable.
 - Global shortcuts default to **Mod+Shift+key**: Mod is Command on Apple platforms and Ctrl
   elsewhere. Settings lists the global bindings and allows changing or disabling them, with
   duplicate assignments blocked and known browser/OS reservations warned about. Record also keeps
@@ -4673,7 +5311,8 @@ command opens on a typed address; no code is copied.
 
 ## Touch prompt suggestions
 
-The empty composer follows Claude Code's [prompt suggestion model](https://code.claude.com/docs/en/interactive-mode): accept into an editable draft, then send separately. On a touch screen with Settings → Chat → Composer buttons → Suggestion on (off by default), the grey words also accept a tap; with it off, a tap there only focuses the box, so a user who taps the words to write their own reply never gets the suggestion inserted. Only the words receive taps; the surrounding input keeps native focus and scrolling. Tab and the optional suggestion chip share the same acceptance function. A focused inline suggestion also accepts Enter and Space. A suggestion that exceeds the message limit leaves the draft unchanged and shows the limit in the existing alert. No code or visual assets are copied.
+The empty composer follows Claude Code's [prompt suggestion model](https://code.claude.com/docs/en/interactive-mode): accept into an editable draft, then send separately. On a touch screen with Settings → Chat → Composer buttons → Suggestion on (off by default), the grey words also accept a tap; with it off, a tap there only focuses the box, so a user who taps the words to write their own reply never gets the suggestion inserted. Only the words receive taps; the surrounding input keeps native focus and scrolling. Tab and the optional suggestion chip share the same acceptance function. A focused inline suggestion also accepts Enter and Space. A suggestion that exceeds the message limit leaves the draft unchanged and shows the limit in the existing alert. gjc's `promptSuggestions` and omp's `composer.predictions` draw their suggestion the same way, as ghost text in the theme's dim color in their empty box, and the composer offers it as it offers Claude's; one they cut short at the box's edge (ending in `…`) is not offered, since only part of it would go into the draft. Typed text there must never read as a suggestion, so omp's is offered only in the `dim` of one of its built-in themes and in no color any of them types in; the dim `Queueing` header of a queue draft is not offered either. The theme on screen is not known, so a custom omp theme whose text color is exactly one of those dim colors is a known limit: its typed text reads as a suggestion. No code or visual assets are copied.
+
 ## Graph
 
 Graph is the name used in navigation, code and documentation. The legacy registry filename and

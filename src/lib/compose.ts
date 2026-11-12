@@ -9,6 +9,7 @@
  * Pure logic, DOM-free, so the policy is unit-testable (see compose.test.ts).
  */
 
+import { withoutTrailingBreaks } from "../../shared/launch-rules.ts";
 import type { AgentStatus, CommandForm, ConversationTurn, SlashCommand } from "../../shared/protocol.ts";
 import { skillSyntax } from "../../shared/skill-syntax.ts";
 import { knownStatus, STATUS_WORD } from "./status.ts";
@@ -36,7 +37,7 @@ export function composerMessage(text: string): string {
     const from = kept.length - PASTE_START.length;
     if (from >= 0 && kept[from] === "\u001b" && (kept.slice(from).join("") === PASTE_START || kept.slice(from).join("") === PASTE_END)) kept.length = from;
   }
-  return kept.join("").replace(/[\r\n]+$/, "").replace(/\r\n?/g, "\n");
+  return withoutTrailingBreaks(kept.join("")).replace(/\r\n?/g, "\n");
 }
 
 /** The text a composer message types, without its submit (HerdrSocket.submit adds the Enter). */
@@ -167,6 +168,7 @@ export function submitNote(code: string, message: string, agent?: string | null)
   if (code === "input_draft") return t("Not sent: Claude Code's input box in the terminal is not empty. Send or clear it there, then send this message.");
   if (code === "rewind_dialog_open") return t("Not sent: Claude Code's rewind dialog is open in the terminal. Finish or close it there (Esc), then send this message.");
   if (code === "pending_input_unsupported") return t("Update this PC to send messages in the next turn. Your draft stayed here.");
+  if (code === "pending_hold_unsupported") return t("Update this PC to hold messages. Your draft stayed here.");
   // #511: a message with comments on a reply goes only to an agent
   if (code === "agent_only_unsupported") return t("Update this PC to send comments on a reply. Your message and comments stayed here.");
   // the same code also says an agent's input state is unknown: that keeps the bridge's own words
@@ -177,6 +179,7 @@ export function submitNote(code: string, message: string, agent?: string | null)
   if (code === "first_message_unattended") return t("Not sent: the page that started this agent left before it was ready. Send it now or discard it.");
   if (code === "first_message_launch_ended") return t("Not sent: the agent started for this message has ended. Review the message before sending it.");
   if (code === "pending_target_changed") return t("Not sent: the pane's terminal or agent session changed. Review the message before sending it again.");
+  if (code === "typed_while_waiting") return t("Not sent: something was typed in the terminal while omp was starting. Check its input line there, then send this message.");
   if (code === "disconnected" || code === "timeout") return t("Not confirmed: the pane did not confirm this message. Check the terminal before sending it again.");
   return t("Not sent: {message}", { message });
 }
@@ -226,6 +229,12 @@ export const QUEUE_READY_STATUS: Readonly<Partial<Record<string, true>>> = { don
  */
 export function commandListed(command: SlashCommand): boolean {
   return command.visibility !== "agent-hidden";
+}
+
+/** Whether a typed word is, or starts, a command the menu hides: it is a command all the same, never one "no command matches". */
+export function namesHiddenCommand(commands: readonly SlashCommand[], query: string): boolean {
+  const word = query.toLowerCase();
+  return word !== "" && commands.some((command) => !commandListed(command) && command.name.toLowerCase().startsWith(word));
 }
 
 /**

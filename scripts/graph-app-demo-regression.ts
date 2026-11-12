@@ -13,6 +13,7 @@ import { graphTerminals } from "../src/features/graph/graphTerminals.ts";
 import { GraphRegistryStore, handleGraphRequest } from "../server/graph-registry.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
+import { openLens } from "./header-lens.ts";
 import { openGraph as openGraphFromSidebar, openNativeAgent } from "./graph-navigation.ts";
 
 const videoDir = process.env.GRAPH_VIDEO_DIR;
@@ -141,7 +142,7 @@ try {
       if (mobile) await page.getByRole("button", { name: "Open workspace list", exact: true }).waitFor();
       else await page.getByRole("button", { name: "Graph", exact: true }).waitFor();
       assert.equal(assets.length, 0, "Graph dependencies do not load in Workspace");
-      await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
+      await page.locator(".app-header .view-switch, .app-header .lens-toggle").waitFor();
       if (width >= 980) await page.getByRole("button", { name: "Browse files", exact: true }).waitFor();
       const beforePane = new URL(page.url()).searchParams.get("pane");
       await openGraphFromSidebar(page);
@@ -154,7 +155,7 @@ try {
         await split.waitFor(); await inspect((await split.getAttribute("data-graph-node"))!);
         await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
         await page.waitForURL((url) => url.searchParams.get("pane") === "graph-split-shell" && !url.searchParams.has("page"));
-        await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
+        await page.locator(".app-header .view-switch, .app-header .lens-toggle").waitFor();
         await openNativeAgent(page, "local", chosen.pane_id);
         await page.waitForURL((url) => url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
         await openGraphFromSidebar(page); await node().waitFor();
@@ -164,7 +165,7 @@ try {
         await inspect(mainCheckout);
         await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
         await page.waitForURL((url) => url.searchParams.get("pane") === "graph-split-shell" && !url.searchParams.has("page"));
-        await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
+        await page.locator(".app-header .view-switch, .app-header .lens-toggle").waitFor();
         await openGraphFromSidebar(page); await node().waitFor();
         await inspect(selectedTerminalId);
       }
@@ -190,7 +191,7 @@ try {
       await social.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("pane") === "social-pane" && !url.searchParams.has("page"));
-      await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
+      await page.locator(".app-header .view-switch, .app-header .lens-toggle").waitFor();
       await openGraphFromSidebar(page); await node().waitFor();
       assert.equal(await page.getByRole("group", { name: "Graph view", exact: true }).count(), 0, "Graph opens the graph directly without a mode selector");
       assert.equal(await page.getByRole("banner").count(), 1, "Graph keeps one global app banner");
@@ -199,7 +200,7 @@ try {
       assert.equal(await page.getByRole("menuitem", { name: "Find in terminal", exact: true }).count(), 0);
       assert.equal(await page.getByRole("menuitem", { name: "Browse files", exact: true }).count(), 0);
       await page.keyboard.press("Escape");
-      assert.equal(await page.getByRole("group", { name: "Pane view", exact: true }).count(), 0, "Graph hides pane-only controls");
+      assert.equal(await page.locator(".app-header .view-switch, .app-header .lens-toggle").count(), 0, "Graph hides pane-only controls");
       assert.equal(await page.getByRole("button", { name: "Browse files", exact: true }).count(), 0, "pane-only Files control stays with the workspace");
       assert.equal(await page.locator(".agents-sidebar").count(), 1, "only the native Agents section exists");
       assert.equal(await page.getByRole("navigation", { name: "Views", exact: true }).count(), 0, "no duplicate global view navigation");
@@ -208,7 +209,7 @@ try {
       await openGraph(); await node().waitFor(); assert.ok(assets.length > 0, "Graph is a lazy chunk");
       await openNativeAgent(page, "local", chosen.pane_id);
       await page.waitForURL((url) => !url.searchParams.has("page"));
-      await page.getByRole("group", { name: "Pane view", exact: true }).waitFor();
+      await page.locator(".app-header .view-switch, .app-header .lens-toggle").waitFor();
       if (mobile) assert.notEqual(await page.locator(".app-header .context-title-text").innerText(), "Graph", "native pane selection restores its title");
       else assert.equal(await page.locator('.app-header [role="tab"][aria-selected="true"]').getAttribute("data-tab-id"), chosen.tab_id, "native pane selection restores its header tab");
       if (width >= 980) await page.getByRole("button", { name: "Browse files", exact: true }).waitFor();
@@ -309,7 +310,7 @@ try {
       await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
       await page.waitForURL((url) => url.searchParams.get("machine") === remote.id && url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
       if (videoDir) {
-        await page.getByRole("group", { name: "Pane view", exact: true }).getByTitle(/^Live terminal/).click();
+        await openLens(page, "terminal");
         await page.waitForURL((url) => url.searchParams.get("view") === "terminal" && url.searchParams.get("machine") === remote.id);
       }
       stage = "back-cross"; await page.goBack(); await node().waitFor();

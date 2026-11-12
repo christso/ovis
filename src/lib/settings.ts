@@ -8,15 +8,15 @@
 import type { TelemetrySettings } from "../../shared/telemetry.ts";
 import { MAX_PINS, mirrorPalette, SHARED_SETTING_KEYS, type SharedSettingKey } from "../../shared/preferences.ts";
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_THEME, terminalColors, themeColor as themeTableColor, type ThemeId, type ThemeEntry } from "./themes.ts";
+import { DEFAULT_THEME, terminalColors, themeColor as themeTableColor, type DrawnTheme, type ThemeId } from "./themes.ts";
+import { bootRows, drawnTheme, NO_CUSTOM_THEMES, sanitizeCustomThemes, type CustomThemes } from "./customThemes.ts";
 import { LANGUAGE_SETTINGS, LOCALE_TAGS, resolveLanguage, setCurrentLanguage, type Language, type LanguageSetting } from "./i18n.ts";
 import type { AlertPrefs, DoneAlerts } from "../../shared/notify-policy.ts";
 import { chatFontStack, sanitizeFontFamily } from "./fontFamily.ts";
 import { fontScale, sanitizeUiFontSize, uiFontStack } from "./typography.ts";
 import { sanitizeKeyBarExtras, type KeyBarExtra } from "./keys.ts";
-import { themeFor } from "./themeFor.ts";
 import { DEFAULT_KEY_BAR_ITEMS, migrateKeyBarItems, sanitizeKeyBarItems, type KeyBarItem } from "./keyBar.ts";
-import { applyThemeEntry, DARK_QUERY, readStoredAppearance, resolveTheme, sanitizeAppearance, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY, type ResolvedTheme, type ThemeSetting } from "./themeBoot.ts";
+import { applyThemeEntry, CUSTOM_ROWS_STORAGE_KEY, CUSTOM_THEMES_STORAGE_KEY, DARK_QUERY, defaultThemeSetting, readStoredAppearance, resolveTheme, sanitizeAppearance, SETTINGS_STORAGE_KEY, THEMES_STORAGE_KEY, type ResolvedTheme, type ThemeSetting } from "./themeBoot.ts";
 
 export { resolveTheme };
 export type { ResolvedTheme, ThemeSetting };
@@ -24,7 +24,7 @@ export type Density = "compact" | "comfortable";
 /** One line names the workspace; two lines say what its pane is doing, with the workspace under it. */
 export type SidebarRows = "one" | "two";
 /** the Agents list's order: herdr's workspace order, or a waiting agent first and then the latest change */
-export type AgentOrder = "workspace" | "activity";
+export type AgentOrder = "waiting" | "workspace" | "activity";
 /** Settings → Within a state: how each state group of the Agents list is ordered (lib/agentRoster.ts) */
 export const AGENT_GROUP_SORTS = ["wait", "recent", "name"] as const;
 export type AgentGroupSort = (typeof AGENT_GROUP_SORTS)[number];
@@ -98,8 +98,8 @@ export interface Settings {
   foldHelpers: boolean;
   /** each workspace's agents listed under its row in the PCs list (components/Sidebar.tsx), a PC > workspace > agent tree; off until chosen */
   sidebarAgentTree: boolean;
-  /** CPU, memory and the fullest disk under each open PC in the sidebar (components/MachineStats.tsx); null until
-   *  chosen on this device, which shows it while two or more PCs are connected (pcLoadOn) */
+  /** the selected PC's CPU, memory and fullest disk in the status bar (components/MachineStats.tsx PcLoadStatus); null until
+   *  chosen on this device, which keeps it on (pcLoadOn) */
   pcLoad: boolean | null;
   /** The Agents list's order. Activity is display-only: herdr's own order never changes. */
   agentOrder: AgentOrder;
@@ -134,6 +134,8 @@ export interface Settings {
   paletteDark: Palette;
   darkTheme: ThemeId;
   lightTheme: ThemeId;
+  /** the themes imported from a file, and the one drawn on either side in place of that side's theme above (lib/customThemes.ts) */
+  customThemes: CustomThemes;
   /** xterm font size in px */
   terminalFontSize: number;
   /** mouse reports sent to herdr per wheel event in the terminal: 1 is what xterm sends by itself */
@@ -302,7 +304,7 @@ type TelemetrySourceSettings = Omit<Settings,
   | "quickReplies" | "agentLocks" | "lockedAgents" | "opencodeParentEnds" | "ompHeldFiles" | "restoreReplacedServer" | "agentNamedGroups" | "agentGroupNames" | "agentGroupOf" | "usageOrder" | "usageHidden" | "fileOpen" | "filesPanel" | "webLinks" | "reuseExternalLinkTab" | "claudeLaunchMode" | "codexLaunchMode"
   | "claudeLaunchModel" | "claudeLaunchEffort" | "codexLaunchModel" | "codexLaunchEffort"
   | "followHerdrFocus" | "sidebarPeek" | "sidebarBackgroundWorkspaces" | "codexDrag" | "composerArtifacts" | "composerPasteSend" | "composerBtw" | "terminalMirrorWrap" | "sidebarFilter" | "sidebarContext" | "sidebarAgentTree" | "foldHelpers" | "pcLoad"
-  | "expandThinking" | "foldWork" | "autoTabNames" | "voiceEngine" | "agentGroups" | "agentGroupSort" | "terminalImages" | "terminalAttachButton"
+  | "expandThinking" | "foldWork" | "customThemes" | "autoTabNames" | "voiceEngine" | "agentGroups" | "agentGroupSort" | "terminalImages" | "terminalAttachButton"
   | "terminalKeyboardOnRequest" | "terminalFoldKeyBar" | "fileFontSize" | "fileFontBase" | "editTextFiles" | "reopenFileOnReturn">;
 
 /** Compare structured custom settings by content against this app's built-in defaults. */
@@ -317,7 +319,9 @@ export function telemetrySettingsSnapshot(settings: Settings): TelemetrySettings
     theme: settings.theme,
     density: settings.density,
     sidebarRows: settings.sidebarRows,
-    agentOrder: settings.agentOrder,
+    // Waiting first is herdr's workspace order with the waiting agents lifted: reported as that order, so the
+    // receiver's schema (shared/telemetry.ts, changed only with its deploy) keeps accepting the snapshot
+    agentOrder: settings.agentOrder === "waiting" ? "workspace" : settings.agentOrder,
     agentMarks: settings.agentMarks,
     statusIndicators: settings.statusIndicators,
     palette: settings.palette,
@@ -428,6 +432,8 @@ export const SETTING_SCOPE = {
   // a new agent starts the same way whichever device opened it
   claudeLaunchMode: "shared", codexLaunchMode: "shared",
   claudeLaunchModel: "shared", claudeLaunchEffort: "shared", codexLaunchModel: "shared", codexLaunchEffort: "shared",
+  // a theme imported on one device is there to pick on the others, as the side's theme is
+  customThemes: "shared",
 } as const satisfies Record<keyof Settings, "shared" | "device">;
 
 /** The shared part of `settings`, by the names shared/preferences.ts lists. */
@@ -442,7 +448,8 @@ export const DEFAULT_SETTINGS: Settings = {
   keyBarExpanded: false,
   shortcutOverrides: {},
   herdrPrefixKeys: false,
-  theme: "dark",
+  // the startup default (themeBoot.ts defaultThemeSetting): Reset puts back what a fresh device is drawn in
+  theme: "system",
   density: "comfortable",
   sidebarRows: "one",
   sidebarFilter: false,
@@ -450,7 +457,8 @@ export const DEFAULT_SETTINGS: Settings = {
   foldHelpers: false,
   sidebarAgentTree: false,
   pcLoad: null,
-  agentOrder: "workspace",
+  // the Agents list's order (the workspace list keeps herdr's): the agents that need you first, the resting ones folded
+  agentOrder: "waiting",
   agentGroups: false,
   agentGroupSort: "wait",
   agentMarks: "color",
@@ -468,6 +476,7 @@ export const DEFAULT_SETTINGS: Settings = {
   paletteDark: DEFAULT_THEME,
   darkTheme: DEFAULT_THEME,
   lightTheme: DEFAULT_THEME,
+  customThemes: NO_CUSTOM_THEMES,
   terminalFontSize: 13,
   terminalWheelSpeed: 1,
   terminalFontFamily: "",
@@ -675,7 +684,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     foldHelpers: typeof record["foldHelpers"] === "boolean" ? record["foldHelpers"] : DEFAULT_SETTINGS.foldHelpers,
     sidebarAgentTree: typeof record["sidebarAgentTree"] === "boolean" ? record["sidebarAgentTree"] : DEFAULT_SETTINGS.sidebarAgentTree,
     pcLoad: typeof record["pcLoad"] === "boolean" ? record["pcLoad"] : null,
-    agentOrder: record["agentOrder"] === "workspace" || record["agentOrder"] === "activity" ? record["agentOrder"] : DEFAULT_SETTINGS.agentOrder,
+    agentOrder: record["agentOrder"] === "waiting" || record["agentOrder"] === "workspace" || record["agentOrder"] === "activity" ? record["agentOrder"] : DEFAULT_SETTINGS.agentOrder,
     agentGroups: typeof record["agentGroups"] === "boolean" ? record["agentGroups"] : DEFAULT_SETTINGS.agentGroups,
     agentGroupSort: AGENT_GROUP_SORTS.includes(record["agentGroupSort"] as AgentGroupSort) ? record["agentGroupSort"] as AgentGroupSort : DEFAULT_SETTINGS.agentGroupSort,
     agentMarks: record["agentMarks"] === "color" || record["agentMarks"] === "mono" ? record["agentMarks"] : DEFAULT_SETTINGS.agentMarks,
@@ -692,6 +701,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     statusIndicators: record["statusIndicators"] === "classic" || record["statusIndicators"] === "dots" || record["statusIndicators"] === "symbols" ? record["statusIndicators"] : DEFAULT_SETTINGS.statusIndicators,
     darkTheme,
     lightTheme,
+    customThemes: sanitizeCustomThemes(record["customThemes"]),
     palette: mirrorPalette(theme, darkTheme, lightTheme),
     paletteLight: lightTheme,
     paletteDark: darkTheme,
@@ -950,6 +960,15 @@ function readChosen(key: string): boolean | null {
   }
 }
 
+/** The imported themes, from their own key (themeBoot.ts): none where the record is missing, damaged or cannot be read. */
+function readCustomThemes(): CustomThemes {
+  try {
+    return sanitizeCustomThemes(JSON.parse(window.localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY) ?? "null"));
+  } catch {
+    return NO_CUSTOM_THEMES;
+  }
+}
+
 function readChatFold(key: string, fallback: boolean): boolean {
   try {
     const raw = window.localStorage.getItem(key);
@@ -986,9 +1005,10 @@ function coarsePointer(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
 }
 
-/** Whether the sidebar shows each open PC's load: as chosen on this device, else while two or more PCs are connected. */
-export function pcLoadOn(settings: Pick<Settings, "pcLoad">, machines: readonly { state: string }[]): boolean {
-  return settings.pcLoad ?? machines.filter((machine) => machine.state === "connected").length >= 2;
+/** Whether the status bar shows the selected PC's load: as chosen on this device, else on. */
+export function pcLoadOn(settings: Pick<Settings, "pcLoad">, _machines: readonly { state: string }[]): boolean {
+  // on until turned off in Settings: one cheap ask every 5 s for the selected PC, only while the page is visible
+  return settings.pcLoad ?? true;
 }
 
 /** Whether Enter (Return) sends from the composer: the device's choice, else not on a touch screen. */
@@ -999,7 +1019,8 @@ export function enterSendsOn(settings: Pick<Settings, "enterSends">, touch: bool
 export function loadSettings(): Settings {
   // read as the page's boot script reads them (themeBoot.ts), so React starts on the row the first frame showed
   const stored = readStoredAppearance(() => window.localStorage);
-  const settings = stored.main === null ? DEFAULT_SETTINGS : sanitizeSettings(stored.main.value);
+  // no main record: the same theme the boot script draws (the hosted shell follows the system)
+  const settings = stored.main === null ? { ...DEFAULT_SETTINGS, theme: defaultThemeSetting() } : sanitizeSettings(stored.main.value);
   const merged = stored.themes === null ? settings : sanitizeSettings({ ...settings, ...stored.themes });
   return { ...merged, enterSends: readEnterSends(merged.enterSends), uiFontFamily: readUiFontFamily(), terminalMirrorWrap: readMirrorWrap(), sidebarFilter: readSidebarFilter(), pcLoad: readPcLoad(), voiceEngine: readVoiceEngine(), ...readAgentGroups(), ...readFileFont(), composerArtifacts: readComposerArtifacts(),
     expandThinking: readChatFold(EXPAND_THINKING_STORAGE_KEY, DEFAULT_SETTINGS.expandThinking), foldWork: readChatFold(FOLD_WORK_STORAGE_KEY, DEFAULT_SETTINGS.foldWork),
@@ -1013,7 +1034,8 @@ export function loadSettings(): Settings {
     terminalImages: readChosen(TERMINAL_IMAGES_STORAGE_KEY) ?? (readChosen(LEGACY_TERMINAL_IMAGES_STORAGE_KEY) === true ? true : null),
     terminalAttachButton: readChatFold(TERMINAL_ATTACH_BUTTON_STORAGE_KEY, DEFAULT_SETTINGS.terminalAttachButton),
     terminalKeyboardOnRequest: readChatFold(TERMINAL_KEYBOARD_ON_REQUEST_STORAGE_KEY, DEFAULT_SETTINGS.terminalKeyboardOnRequest),
-    terminalFoldKeyBar: readChatFold(TERMINAL_FOLD_KEY_BAR_STORAGE_KEY, DEFAULT_SETTINGS.terminalFoldKeyBar) };
+    terminalFoldKeyBar: readChatFold(TERMINAL_FOLD_KEY_BAR_STORAGE_KEY, DEFAULT_SETTINGS.terminalFoldKeyBar),
+    customThemes: readCustomThemes() };
 }
 
 /** false where storage refused the write (private mode, a full quota) */
@@ -1024,7 +1046,8 @@ export function saveSettings(settings: Settings): boolean {
       darkTheme: mirrored.darkTheme, lightTheme: mirrored.lightTheme,
       mirror: { palette: mirrored.palette, paletteDark: mirrored.paletteDark, paletteLight: mirrored.paletteLight },
     }));
-    const { uiFontFamily, terminalMirrorWrap, sidebarFilter, sidebarContext, sidebarAgentTree, foldHelpers, pcLoad, voiceEngine, agentGroups, agentGroupSort, fileFontSize, fileFontBase, composerArtifacts, composerPasteSend, composerBtw, expandThinking, foldWork, reuseExternalLinkTab, filesPanel, terminalImages, terminalAttachButton, terminalKeyboardOnRequest, terminalFoldKeyBar, ...main } = mirrored;
+    const { uiFontFamily, terminalMirrorWrap, sidebarFilter, sidebarContext, sidebarAgentTree, foldHelpers, pcLoad, voiceEngine, agentGroups, agentGroupSort, fileFontSize, fileFontBase, composerArtifacts, composerPasteSend, composerBtw, expandThinking, foldWork, reuseExternalLinkTab, filesPanel, terminalImages, terminalAttachButton, terminalKeyboardOnRequest, terminalFoldKeyBar, customThemes, ...main } = mirrored;
+    window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(customThemes));
     window.localStorage.setItem(VOICE_ENGINE_STORAGE_KEY, JSON.stringify(voiceEngine));
     window.localStorage.setItem(UI_FONT_STORAGE_KEY, JSON.stringify(uiFontFamily));
     window.localStorage.setItem(MIRROR_WRAP_STORAGE_KEY, JSON.stringify(terminalMirrorWrap));
@@ -1062,6 +1085,19 @@ export function saveSettings(settings: Settings): boolean {
 
 type TerminalColors = { background: string; foreground: string; cursor: string; selectionBackground: string };
 
+/**
+ * Keeps the rows of the imported themes chosen for either side where the page's boot script reads
+ * them (themeBoot.ts savedThemeEntry), so a cold launch opens in those colours; no record while no
+ * side draws one. Storage that refuses the write leaves the first frame to the built-in theme.
+ */
+export function saveBootRows(custom: CustomThemes): void {
+  try {
+    const rows = bootRows(custom);
+    if (Object.keys(rows).length > 0) window.localStorage.setItem(CUSTOM_ROWS_STORAGE_KEY, JSON.stringify(rows));
+    else if (window.localStorage.getItem(CUSTOM_ROWS_STORAGE_KEY) !== null) window.localStorage.removeItem(CUSTOM_ROWS_STORAGE_KEY);
+  } catch { /* private mode or a full quota */ }
+}
+
 export function terminalTheme(theme: ResolvedTheme, palette: Palette = "amber"): TerminalColors {
   return { ...terminalColors(palette, theme) };
 }
@@ -1071,13 +1107,14 @@ export function themeColor(theme: ResolvedTheme, palette: Palette = "amber"): st
   return themeTableColor(palette, theme);
 }
 
-export function applyToDocument(settings: Settings, entry: ThemeEntry, language: Language): void {
+export function applyToDocument(settings: Settings, entry: DrawnTheme, language: Language): void {
   const root = document.documentElement;
   root.lang = LOCALE_TAGS[language];
   applyThemeEntry(root, entry);
   // the boot script's background (src/theme-bootstrap.ts) holds the row's surface until the stylesheet's theme
   // blocks own it; a stylesheet that never loaded leaves the page to it, kept on the row drawn now
-  if (getComputedStyle(root).getPropertyValue("--bg").trim() !== "") root.style.removeProperty("background-color");
+  // (an imported row sets --bg itself, so there the stylesheet is told by a token only it sets)
+  if (getComputedStyle(root).getPropertyValue(entry.vars === undefined ? "--bg" : "--pdf-page").trim() !== "") root.style.removeProperty("background-color");
   else root.style.backgroundColor = entry.bg;
   root.dataset["density"] = settings.density;
   root.dataset["chatWidth"] = settings.chatWidth;
@@ -1116,7 +1153,7 @@ interface SettingsContextValue {
   /** the theme after resolving `system` against the OS preference */
   resolvedTheme: ResolvedTheme;
   /** The actual rendered row, whose mode may differ from the selected side. */
-  resolvedEntry: ThemeEntry;
+  resolvedEntry: DrawnTheme;
   /** the language after resolving `system` against the browser's */
   resolvedLanguage: Language;
   /**
@@ -1157,7 +1194,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const resolvedTheme: ResolvedTheme = settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme;
 
-  const resolvedEntry = themeFor(settings, resolvedTheme);
+  const resolvedEntry = drawnTheme(settings, resolvedTheme);
+  // the rows the page's boot script draws an imported theme from, as this build derives them: written when the
+  // themes or the choice change, not at every other setting's change (the list is a new object after each)
+  const customKey = JSON.stringify(settings.customThemes);
+  useEffect(() => saveBootRows(sanitizeCustomThemes(JSON.parse(customKey))), [customKey]);
 
   const [browserLanguages, setBrowserLanguages] = useState<readonly string[]>(() => (typeof navigator !== "undefined" ? navigator.languages : []));
   useEffect(() => {

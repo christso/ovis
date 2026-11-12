@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename } from "node:path";
 import { createConnection } from "node:net";
 import type { Socket } from "bun";
@@ -112,6 +113,8 @@ export interface AdapterOptions {
   platform?: NodeJS.Platform;
   /** this PC's process table, read afresh within `timeoutMs` each time; a test stands in for it */
   processTable?: (timeoutMs: number) => Promise<ProcessRow[]>;
+  /** what every shell the adapter starts runs in, over the core's own and under a call's `env` (terminal-env.ts) */
+  terminalEnv?: () => Promise<Record<string, string>>;
 }
 
 /** The sessions a terminal named that it keeps as candidates, the newest last. */
@@ -404,6 +407,8 @@ function createAnswers(hc: HcConnection, firstTurn: FirstTurn, forgetTurns: (liv
   const processTable = options.processTable ?? windowsProcessTable;
   /** A Windows pane's programs are read off this PC's process table, which says nothing of another machine's. */
   const programsUnseen = platform === "win32" && options.otherMachine === true;
+  /** Where a shell starts in place of `folder`: hc refuses a folder since removed (a deleted worktree) with `spawn_failed`, so this PC's home instead; another machine's folders are not on this disk, so they go as they are. */
+  const startFolder = (folder: string | undefined): string | undefined => !folder || options.otherMachine || existsSync(folder) ? folder : homedir();
 
   const terminal = async (address: string, missing = "pane_not_found"): Promise<HcTerminal> => {
     const found = await hc.call("terminal.get", { terminal: address }).catch((error: unknown) => {
@@ -614,7 +619,9 @@ function createAnswers(hc: HcConnection, firstTurn: FirstTurn, forgetTurns: (liv
    * answers a new one: the workspace, tab and pane it shows as in the snapshot right after.
    */
   const startShell = async (params: Record<string, unknown>, labels: Record<string, string>) => {
-    const env = isRecord(params["env"]) ? Object.fromEntries(Object.entries(params["env"]).filter((entry): entry is [string, string] => typeof entry[1] === "string")) : undefined;
+    const asked = isRecord(params["env"]) ? Object.fromEntries(Object.entries(params["env"]).filter((entry): entry is [string, string] => typeof entry[1] === "string")) : undefined;
+    const given = { ...await options.terminalEnv?.(), ...asked };
+    const env = Object.keys(given).length > 0 ? given : undefined;
     // a terminal a client starts has had nothing finish yet (herdr-app docs/labels.md)
     const record = await hc.call("terminal.run", { keep: true, labels: { [SEEN_LABEL]: "0", ...labels }, ...(typeof params["cwd"] === "string" ? { cwd: params["cwd"] } : {}), ...(env ? { env } : {}) });
     const shown = await snapshot();
@@ -964,7 +971,7 @@ function createAnswers(hc: HcConnection, firstTurn: FirstTurn, forgetTurns: (liv
       const workspaceName = shown.workspaces.find((candidate) => candidate.workspace_id === pane.workspace_id)?.label;
       const names = { ...(workspaceName ? { [WORKSPACE_NAME_LABEL]: workspaceName } : {}), ...(labels[TAB_NAME_LABEL] ? { [TAB_NAME_LABEL]: labels[TAB_NAME_LABEL] } : {}), ...(labels[WORKTREE_LABEL] ? { [WORKTREE_LABEL]: labels[WORKTREE_LABEL] } : {}) };
       // a move from herdr (runtime-move-run.ts) names the folder the new side had there
-      const cwd = typeof params["cwd"] === "string" && params["cwd"] !== "" ? params["cwd"] : pane.cwd;
+      const cwd = typeof params["cwd"] === "string" && params["cwd"] !== "" ? params["cwd"] : startFolder(pane.cwd ?? undefined);
       const { root_pane } = await startShell({ ...(cwd ? { cwd } : {}) }, { [SPACE_LABEL]: pane.workspace_id, [TAB_LABEL]: pane.tab_id, ...names, ...moveLabel(params) });
       try {
         await editLayout((layout) => {

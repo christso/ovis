@@ -18,7 +18,8 @@ import type {
 } from "../../shared/protocol.ts";
 import type { AgentInfo, AgentManifestInfo, AgentStartParams, PaneInfo, PaneLayoutSnapshot, PaneProcessInfo, PaneScrollInfo, TabInfo, WorkspaceInfo } from "../../shared/herdr-api.generated.ts";
 import type { HerdrMethod, HerdrMethods, SingleHerdrMethod, UntypedHerdrMethod } from "./methods.ts";
-import type { HerdrCoreLayout, HerdrIdentity } from "../../shared/machines.ts";
+import type { HerdrIdentity } from "../../shared/machines.ts";
+import { runtimeIdentity } from "../runtime/capabilities.ts";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const diagnostics = new ConnectionDiagnostics("herdr.rpc");
@@ -416,16 +417,20 @@ export function herdrMayListen(socketPath: string = herdrSocketPath()): Promise<
   });
 }
 
+/** Discovery offers only a socket this account actually connected to, never a permission error. */
+export async function herdrAcceptsConnection(socketPath: string): Promise<boolean> {
+  try {
+    const socket = await Bun.connect({ unix: socketAddress(socketPath), socket: { data() {} } });
+    socket.end();
+    return true;
+  } catch { return false; }
+}
+
 export async function ping(socketPath?: string): Promise<HerdrIdentity> {
   const result = await herdrRpc<{ version: string; protocol: number; capabilities?: Record<string, unknown> }>("ping", {}, socketPath);
   const attach = terminalAttachSupported(result.capabilities);
   // without attach the web server repaints the pane's screen instead (server/mirror.ts)
-  const core = result.capabilities?.["runtime"] === "herdr-core";
-  // herdr-core's layout calls (shared/machines.ts HerdrCoreLayout): each one it did not say yes to is off
-  const offered = result.capabilities?.["layout"];
-  const said = (call: keyof HerdrCoreLayout): boolean => typeof offered === "object" && offered !== null && (offered as Record<string, unknown>)[call] === true;
-  const layout: HerdrCoreLayout = { rename: said("rename"), split: said("split"), move: said("move"), arrange: said("arrange"), worktrees: said("worktrees") };
-  return { version: result.version, protocol: result.protocol, terminal_attach: attach, ...(attach ? {} : { terminal_mirror: true }), ...(core ? { runtime: "herdr-core" as const, layout } : {}) };
+  return { version: result.version, protocol: result.protocol, terminal_attach: attach, ...(attach ? {} : { terminal_mirror: true }), ...runtimeIdentity(result.capabilities) };
 }
 
 export async function sessionSnapshot(socketPath?: string, timeoutMs?: number): Promise<SessionSnapshot> {
@@ -434,8 +439,8 @@ export async function sessionSnapshot(socketPath?: string, timeoutMs?: number): 
 }
 
 /** One pane's metadata; an unknown pane rejects with herdr's `pane_not_found`. */
-export async function paneGet(paneId: string, socketPath?: string): Promise<PaneInfo> {
-  const result = await herdrRpc<{ pane: PaneInfo }>("pane.get", { pane_id: paneId }, socketPath);
+export async function paneGet(paneId: string, socketPath?: string, timeoutMs?: number): Promise<PaneInfo> {
+  const result = await herdrRpc<{ pane: PaneInfo }>("pane.get", { pane_id: paneId }, socketPath, timeoutMs);
   return result.pane;
 }
 
@@ -730,8 +735,8 @@ export async function paneRead(options: PaneReadOptions, socketPath?: string): P
 export interface PaneTextPoint { row: number; col: number }
 
 /** Where the pane's viewport sits in its scrollback; null when herdr reports none. */
-export async function paneScrollInfo(paneId: string, socketPath?: string): Promise<PaneScrollInfo | null> {
-  const pane = await paneGet(paneId, socketPath);
+export async function paneScrollInfo(paneId: string, socketPath?: string, timeoutMs?: number): Promise<PaneScrollInfo | null> {
+  const pane = await paneGet(paneId, socketPath, timeoutMs);
   return pane.scroll ?? null;
 }
 

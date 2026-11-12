@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { skillSyntax } from "../../shared/skill-syntax.ts";
 import { agentDisplayLabel, claudeMainAtRest, composerDelivery, composerMessage, composerSendShown, composerPayload, composerModelDraw, composerStatusCompact, composerStatusHint, composerStatusWord, COMPOSER_STATUS_COMPACT_BELOW, contextLeftPercent, formatTokens, imageMention, insertLeadingMention, insertNote, MAX_COMPOSER_CHARS, QUEUE_READY_STATUS, rankSlashCommands, submitNote, submitNotTyped, submitRefusal, sameMessage, pendingActionUncertain, draftSendNote, endsWithTurn, stoppedTurn } from "./compose.ts";
-import { briefDescription, COMMAND_GROUPS, commandGroup, commandsForTrigger, slashCommandReplacement, terminalCommand, typedTerminalCommand } from "./compose.ts";
+import { briefDescription, COMMAND_GROUPS, commandGroup, commandsForTrigger, namesHiddenCommand, slashCommandReplacement, terminalCommand, typedTerminalCommand } from "./compose.ts";
 import type { ConversationTurn, SlashCommand } from "../../shared/protocol.ts";
 import { activeTrigger, applyCompletion, type ActiveTrigger } from "./mentions.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -127,6 +127,10 @@ describe("omo command completion", () => {
 describe("composerMessage and submitNote", () => {
   it("keeps the message as written for agent.prompt: inner newlines stay, the composer's own trailing ones go", () => {
     expect(composerMessage("line one\r\nline two\n\n")).toBe("line one\nline two");
+    // line breaks that do not end the message are read in one pass, by the rule the server reads them with
+    // (withoutTrailingBreaks): as a pattern they cost their count squared, a third of a second for the 20,000 the
+    // composer takes
+    expect(composerMessage(`${"\n".repeat(60_000)}a\n\n`).length).toBe(60_001);
   });
 
   it("keeps pasted Markdown, blank lines and code indentation in one submitted message", () => {
@@ -175,6 +179,9 @@ describe("composerMessage and submitNote", () => {
     expect(pendingActionUncertain("disconnected", "held")).toBe(true);
     expect(submitNote("held_input", "x")).toBe("Not sent: send or discard the held input first.");
     expect(submitNote("pending_input_unsupported", "x")).toBe("Update this PC to send messages in the next turn. Your draft stayed here.");
+    // Alt+Enter's hold on a PC that cannot hold one: refused by the socket before anything left
+    expect(submitNotTyped("pending_hold_unsupported")).toBe(true);
+    expect(submitNote("pending_hold_unsupported", "x")).toBe("Update this PC to hold messages. Your draft stayed here.");
     // a first message held because its launched agent ended typed nothing, and says so apart from a changed terminal or session, in the client's words (#1547)
     expect(submitNotTyped("first_message_launch_ended")).toBe(true);
     const ended = "The agent started for this message has ended; review the message before sending it";
@@ -182,6 +189,8 @@ describe("composerMessage and submitNote", () => {
     expect(submitNote("first_message_launch_ended", ended)).not.toContain(ended);
     expect(submitNote("pending_target_changed", changed)).not.toContain(changed);
     expect(submitNote("first_message_launch_ended", "x")).not.toBe(submitNote("pending_target_changed", "x"));
+    // held because the terminal was typed into while it waited for a starting omp: where to look, not the bridge's words
+    expect(submitNote("typed_while_waiting", "x")).toBe("Not sent: something was typed in the terminal while omp was starting. Check its input line there, then send this message.");
     expect(submitNotTyped("submit_changed")).toBe(false);
     expect(submitNotTyped("pending_uncertain")).toBe(false);
     expect(submitNotTyped("submit_partial")).toBe(false);
@@ -684,4 +693,17 @@ describe("claudeMainAtRest", () => {
     expect(claudeMainAtRest("ready", ["  ⏵⏵ auto mode on · ← 2 agents"])).toBe(false);
     expect(claudeMainAtRest("ready", ["  ────────────────", "  ⏵⏵ auto mode on"])).toBe(false);
   });
+});
+
+it("takes a word naming a command the menu hides for a command, never for one no command matches", () => {
+  const commands: SlashCommand[] = [
+    { name: "heapdump", description: "Write a heap snapshot", source: "builtin", visibility: "agent-hidden" },
+    { name: "help", description: "Show help", source: "builtin" },
+  ];
+  expect(namesHiddenCommand(commands, "heapdump")).toBe(true);
+  expect(namesHiddenCommand(commands, "Heap")).toBe(true);
+  // a listed command is the menu's to show, and a word no command starts is unmatched
+  expect(namesHiddenCommand(commands, "help")).toBe(false);
+  expect(namesHiddenCommand(commands, "deploy")).toBe(false);
+  expect(namesHiddenCommand(commands, "")).toBe(false);
 });
