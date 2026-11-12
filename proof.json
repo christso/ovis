@@ -1,159 +1,179 @@
 {
-  "video": {
-    "sha256": "73083b3d8bc2b75145580f8720324ba13ad435c7ca53876e25116147028abc1e",
-    "bytes": 4025168,
-    "duration": 64.6,
-    "width": 1920,
-    "height": 1080,
-    "codec": "H.264",
-    "pixel_format": "yuv420p",
-    "fast_start": true,
-    "revision": "2504d40b01e2877dc1786581a47893c87a4dcedf",
-    "chapters": [
-      {
-        "at": 0,
-        "title": "See the whole herd",
-        "subtitle": "Four real agents, two demo projects, and recorded coordination."
-      },
-      {
-        "at": 4.616000175476074,
-        "title": "Spot active work",
-        "subtitle": "Filter to working agents. Their checkouts and workspace stay active too."
-      },
-      {
-        "at": 11.586000204086304,
-        "title": "Follow the coordinator",
-        "subtitle": "Select an agent to inspect its recorded delegation and communication."
-      },
-      {
-        "at": 19.676000118255615,
-        "title": "Zoom out to checkouts",
-        "subtitle": "Hide terminals. Recorded relationships stay visible between checkouts."
-      },
-      {
-        "at": 29.34500002861023,
-        "title": "See the project-level picture",
-        "subtitle": "Hide worktrees too. Keep the recorded relationships between projects."
-      },
-      {
-        "at": 37.193000078201294,
-        "title": "Keep the agents, skip a level",
-        "subtitle": "Restore terminals while worktrees are hidden: Workspace connects directly to Terminal."
-      },
-      {
-        "at": 46.63600015640259,
-        "title": "Jump straight to the terminal",
-        "subtitle": "Open the selected agent's workspace from the Graph."
-      },
-      {
-        "at": 59.30400013923645,
-        "title": "One map to herd the work",
-        "subtitle": "An Obsidian-inspired overview for coordinating parallel agents."
-      }
-    ],
-    "checks": [
-      {
-        "name": "whole graph",
-        "nodes": 9,
-        "terminals": 4,
-        "worktrees": 3,
-        "workspaces": 2,
-        "communication": 3,
-        "delegation": 3,
-        "active": 3
-      },
-      {
-        "name": "working filter",
-        "nodes": 5,
-        "terminals": 2,
-        "worktrees": 2,
-        "workspaces": 1,
-        "communication": 1,
-        "delegation": 1,
-        "active": 5
-      },
-      {
-        "name": "coordinator selection",
-        "nodes": 9,
-        "terminals": 4,
-        "worktrees": 3,
-        "workspaces": 2,
-        "communication": 3,
-        "delegation": 3,
-        "active": 5
-      },
-      {
-        "name": "hide terminals",
-        "nodes": 5,
-        "terminals": 0,
-        "worktrees": 3,
-        "workspaces": 2,
-        "communication": 3,
-        "delegation": 3,
-        "active": 3
-      },
-      {
-        "name": "projects only",
-        "nodes": 2,
-        "terminals": 0,
-        "worktrees": 0,
-        "workspaces": 2,
-        "communication": 1,
-        "delegation": 1,
-        "active": 0
-      },
-      {
-        "name": "workspace to terminal",
-        "nodes": 6,
-        "terminals": 4,
-        "worktrees": 0,
-        "workspaces": 2,
-        "communication": 3,
-        "delegation": 3,
-        "active": 0
-      },
-      {
-        "name": "final overview",
-        "nodes": 9,
-        "terminals": 4,
-        "worktrees": 3,
-        "workspaces": 2,
-        "communication": 3,
-        "delegation": 3,
-        "active": 0
-      }
-    ],
-    "source_duration": 90.933333,
-    "retained_source_ranges": [
-      [
-        0,
-        46.63600015640259
-      ],
-      [
-        72.97100019454956,
-        90.933333
-      ]
-    ]
-  },
-  "demo": {
-    "revision": "2504d40b01e2877dc1786581a47893c87a4dcedf",
-    "agents": 4,
-    "workspaces": 4,
-    "graph_workspace_nodes": 2,
-    "graph_checkout_nodes": 3,
-    "observed_delegations": 3,
-    "observed_communications": 10,
-    "producer_sources": [
-      "herdr"
-    ]
-  },
-  "browser_playback": {
-    "width": 1920,
-    "height": 1080,
-    "duration": 64.6,
-    "browser": "desktop Chrome",
-    "playback_rate": 8,
+  "sha256": "5fa1e676a251e3476491a680ae5125d93f8f88c9aece9a501cb845a4804f7614",
+  "bytes": 3164414,
+  "duration": 70.6,
+  "width": 1920,
+  "height": 1080,
+  "codec": "H.264",
+  "pixel_format": "yuv420p",
+  "fast_start": true,
+  "revision": "147ff722954bbbdce4ea00e0eb349e6217f4d9b5",
+  "chapters": [
+    {
+      "at": 0,
+      "title": "One project. Every machine.",
+      "subtitle": "Shared repositories bring Studio and Laptop terminals into one map."
+    },
+    {
+      "at": 5.199000120162964,
+      "title": "Know where attention is needed",
+      "subtitle": "Blue is working. Green is done. Red is waiting for your input."
+    },
+    {
+      "at": 10.483000040054321,
+      "title": "Follow the hand-off",
+      "subtitle": "Select a terminal to inspect its directed communication and delegation."
+    },
+    {
+      "at": 16.235000133514404,
+      "title": "See progress as it changes",
+      "subtitle": "Demo status updates: waiting for input, then working, then done."
+    },
+    {
+      "at": 30.009999990463257,
+      "title": "Keep machine context",
+      "subtitle": "Machine clouds group terminals while repositories remain shared."
+    },
+    {
+      "at": 38.18300008773804,
+      "title": "Zoom out to the project flow",
+      "subtitle": "Hide terminals. Directed relationships roll up to repositories."
+    },
+    {
+      "at": 46.29299998283386,
+      "title": "Keep the legend in view",
+      "subtitle": "The filters stay visible in one compact row. Restore terminals with one click."
+    },
+    {
+      "at": 53.736000061035156,
+      "title": "Find the terminal you need",
+      "subtitle": "Search keeps its shared repository context and exact checkout details."
+    },
+    {
+      "at": 61.884000062942505,
+      "title": "A clear view of the whole herd",
+      "subtitle": "Three repositories. Two PCs. One place to see work and relationships."
+    }
+  ],
+  "checks": [
+    {
+      "name": "shared repositories",
+      "repositories": 3,
+      "terminals": 10,
+      "communication": 8,
+      "delegation": 3,
+      "working": 5,
+      "machines": 0,
+      "legendVisible": true,
+      "legendHeaders": 0
+    },
+    {
+      "name": "blocked terminal details",
+      "repositories": 3,
+      "terminals": 10,
+      "communication": 8,
+      "delegation": 3,
+      "working": 5,
+      "machines": 0,
+      "legendVisible": true,
+      "legendHeaders": 0
+    },
+    {
+      "name": "coordinator relationships",
+      "repositories": 3,
+      "terminals": 10,
+      "communication": 8,
+      "delegation": 3,
+      "working": 5,
+      "machines": 0,
+      "legendVisible": true,
+      "legendHeaders": 0
+    },
+    {
+      "name": "status transition",
+      "repositories": 3,
+      "terminals": 10,
+      "communication": 8,
+      "delegation": 3,
+      "working": 5,
+      "machines": 0,
+      "legendVisible": true,
+      "legendHeaders": 0
+    },
+    {
+      "name": "machine clouds",
+      "repositories": 3,
+      "terminals": 10,
+      "communication": 8,
+      "delegation": 3,
+      "working": 5,
+      "machines": 2,
+      "legendVisible": true,
+      "legendHeaders": 0
+    },
+    {
+      "name": "repositories only",
+      "repositories": 3,
+      "terminals": 0,
+      "communication": 3,
+      "delegation": 0,
+      "working": 0,
+      "machines": 0,
+      "legendVisible": true,
+      "legendHeaders": 0
+    },
+    {
+      "name": "always-visible legend",
+      "repositories": 3,
+      "terminals": 10,
+      "communication": 8,
+      "delegation": 3,
+      "working": 5,
+      "machines": 2,
+      "legendVisible": true,
+      "legendHeaders": 0
+    },
+    {
+      "name": "search",
+      "repositories": 1,
+      "terminals": 1,
+      "communication": 0,
+      "delegation": 0,
+      "working": 1,
+      "machines": 1,
+      "legendVisible": true,
+      "legendHeaders": 0
+    },
+    {
+      "name": "final overview",
+      "repositories": 3,
+      "terminals": 10,
+      "communication": 8,
+      "delegation": 3,
+      "working": 5,
+      "machines": 0,
+      "legendVisible": true,
+      "legendHeaders": 0
+    }
+  ],
+  "fixture": "Fictional two-PC inventory and synthetic communication/delegation receipts; real Ovis App and GraphRegistryStore.",
+  "source_clean": true,
+  "playback": {
     "ended": true,
-    "error": null
-  }
+    "error": null,
+    "duration": 70.6,
+    "width": 1920,
+    "height": 1080,
+    "decodedFrames": 2118
+  },
+  "validation": {
+    "fast": "16499 pass, 0 fail, 59 platform/capability skips; generation/typecheck/build/workflow syntax passed in the CI runner image",
+    "browser": "All three graph scripts passed in the CI runner image; ten real-App viewport/theme contexts passed",
+    "review": "ce-code-review lite: complete, no findings; no independent agents dispatched"
+  },
+  "limitations": [
+    "Fictional two-PC inventory and synthetic coordination receipts; no live agents or actual cross-machine transport are recorded.",
+    "Status changes and pointer actions are automated.",
+    "Desktop Chrome/Linux capture; native mobile device behavior is not demonstrated."
+  ]
 }

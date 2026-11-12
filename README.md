@@ -1,28 +1,29 @@
-# Ovis Graph: herding parallel agents
+# Ovis Graph: shared repositories across PCs
 
-[![Watch the Graph demo](poster.jpg)](graph-demo.mp4)
+[![Watch the updated Graph demo](poster.jpg)](graph-demo.mp4)
 
 [Download the MP4](graph-demo.mp4) · [Captions](captions.vtt)
 
-An Obsidian-inspired overview of projects, checkouts and agents. This recording shows four real Codex agents in an isolated Herdr session, coordinating on fictional Atlas and Beacon tasks. The links come from observed operations: 3 delegations and 10 communications were present at the final inventory read. They are grouped into directed relationships in the UI.
+The actual Ovis App and production graph/registry code show ten fictional terminals under three repository hubs shared across Studio and Laptop. Blue marks working terminals, green marks done, and red marks a request for user input. The compact Repository and Terminal legend stays visible throughout.
 
-The workflow shows live activity, the Working filter, coordinator selection, relationships at checkout and workspace levels, direct workspace-to-terminal links with worktrees hidden, and opening the selected terminal.
+The recording follows shared project context, terminal status, directed communication/delegation, an injected waiting → working → done transition, machine clouds, repository-level relationship projection and search. The initial graph contains eight directed communication relationships and three delegation relationships, backed by fifteen synthetic receipt fixtures. Hiding terminals leaves three directed inter-repository communication relationships; same-repository links collapse away.
 
 ## Recording
 
-- Source revision: [`2504d40b01e2877dc1786581a47893c87a4dcedf`](https://github.com/christso/ovis/commit/2504d40b01e2877dc1786581a47893c87a4dcedf), merged in [#48](https://github.com/christso/ovis/pull/48).
-- 64.60 seconds · 1920 × 1080 · 30 fps · H.264 / yuv420p · fast-start MP4 · no audio.
-- File size: 4,025,168 bytes.
-- SHA-256: `73083b3d8bc2b75145580f8720324ba13ad435c7ca53876e25116147028abc1e`.
-- Real Ovis client and server from that revision, real Herdr terminals and coding agents, disposable projects, short demo messages, browser-automated interactions, edited for pacing. Only the cursor indicator and explanatory footer were added for the recording.
-- Communication evidence in this recording comes from the installed Herdr fork's coordination journal. The Graph also supports optional local CLI observations; the clip does not demonstrate every capture path or claim a complete communication history.
-- Recorded on desktop Chrome/Linux. Mobile interaction and remote PCs are not shown in this clip.
-- No existing user panes, credentials, or private project content were recorded. The demo Herdr and Ovis runtimes were stopped after capture.
+- Source: [`147ff722954bbbdce4ea00e0eb349e6217f4d9b5`](https://github.com/christso/ovis/commit/147ff722954bbbdce4ea00e0eb349e6217f4d9b5), the always-visible legend follow-up to [#52](https://github.com/christso/ovis/pull/52). The captured source checkout was clean.
+- 70.60 seconds · 1920 × 1080 · 30 fps · H.264 / yuv420p · fast-start MP4 · no audio.
+- File size: 3,164,414 bytes.
+- SHA-256: `5fa1e676a251e3476491a680ae5125d93f8f88c9aece9a501cb845a4804f7614`.
+- Real React App, GraphView and GraphRegistryStore; fictional two-PC roster, local Git evidence and synthetic native coordination receipts. Fixture identities, status changes and browser actions are automated. The footer identifies fixture data throughout. Only the pointer indicator and caption footer are added for capture.
+- No user session, private project, credential or transcript was recorded. The capture ran against a private loopback fixture server and a fresh browser context; both were closed after capture.
+- This clip demonstrates the UI and its fixture-backed evidence projection. It does not demonstrate live agents, network communication or native mobile-device interaction. The earlier [65-second real-agent demo](https://raw.githubusercontent.com/christso/ovis/87e0b5b8dc368a0afa12eac71e928b2e0a37b397/graph-demo.mp4) remains available with its [recording notes](https://github.com/christso/ovis/tree/87e0b5b8dc368a0afa12eac71e928b2e0a37b397).
 
 ## Verification
 
-The retained clip shows the asserted node types and projected relationships at each level, Working filtering while agents were active, and exact terminal navigation. The full capture also checked focus/search context. No browser page errors occurred. The source revision's required Fast checks, Integration and browser, and Native Windows checks passed in #48; its macOS job never acquired a hosted runner. No application code was changed for this recording.
+Capture assertions checked three shared repositories, ten terminals, three delegations, directed communication, status transitions, two machine clouds, projected repository links, search context and the always-visible legend. There were no browser page errors.
 
-The finished MP4 was checked for its codec, dimensions, duration, compatible pixel format, fast-start metadata and hash. The retained workflow and chapter frames were reviewed, and desktop Chrome playback reached the end without errors before publication. See [proof.json](proof.json) for measured scene counts and timing.
+The source passed `CI=1 UNIT_TEST_WORKERS=4 bun run check fast` as `runner` in `herdr-ci-runner:local`: 16,499 unit passes, zero failures, 59 platform/capability skips across 954 files. Generation, typecheck, build and workflow syntax passed. All three graph browser scripts passed in that image, including all ten desktop/phone/theme App contexts. Unrelated full integration/browser lanes and native Windows/macOS checks were not run locally for this UI-only follow-up. The bounded code review completed with no findings.
 
-This branch contains only demo assets and has no parent commit from the application's history.
+The exported MP4 was checked for codec, dimensions, duration, compatible pixel format, fast-start metadata and hash. Chapter frames, captions, the refined machine/repository scenes and the final exported footage were reviewed. Full desktop Chrome playback reached the end without an error and decoded 2,118 frames. See [proof.json](proof.json) for scene counts and playback results.
+
+This evidence branch is separate from application history. Its preceding asset revision preserves the original real-agent demonstration.
