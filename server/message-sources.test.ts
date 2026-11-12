@@ -3,10 +3,11 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { preparePeerMessage, publishPeerMessage, peerMessageTurn, readPeerMessage } from "./message-sources.ts";
+import legacy from "./fixtures/message-source-v1.json";
 import type { HerdrCoordinationEndpoint } from "../shared/graph-registry.ts";
 
 const source: HerdrCoordinationEndpoint = { server_id: "source-server", boot_id: "boot", terminal_id: "source-terminal", agent_instance_id: "source-process", pane_id: "w1:p1", agent: "codex", name: "worker\n\u001b[31m" };
-const target = { ...source, server_id: "target-server", terminal_id: "target-terminal", agent_instance_id: "target-process", pane_id: "w2:p1", name: "receiver" };
+const target = { ...source, server_id: "target-server", terminal_id: "target-terminal", agent_instance_id: "target-process", pane_id: "w2:p1", agent: "omp", name: "receiver" };
 
 it("authenticates each exact delivered peer body against its recipient without journaling content", () => {
   const root = mkdtempSync(join(tmpdir(), "ovis-peer-"));
@@ -73,5 +74,41 @@ if(!prepared)process.exit(1);publishPeerMessage(prepared,${JSON.stringify(root)}
     for (const send of sends) expect(peerMessageTurn({ role: "user", ts: null, parts: [{ kind: "text", text: send.text }] }, target, root)).toMatchObject({ sender: { id: send.id }, parts: [{ kind: "text", text: "identical concurrent body" }] });
     expect(readdirSync(join(root, "messages")).filter((name) => name.endsWith(".json"))).toHaveLength(6);
     expect(readdirSync(join(root, "messages")).some((name) => name.endsWith(".tmp"))).toBe(false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it("authenticates the historical display name separately from the source process and kind", () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-peer-name-"));
+  try {
+    const prepared = preparePeerMessage("body unchanged", source, target, root, "Graph worktree projection")!;
+    publishPeerMessage(prepared, root);
+    const turn = { role: "user" as const, ts: null, parts: [{ kind: "text" as const, text: prepared.text }] };
+    expect(prepared.text).toContain("from Graph worktree projection (codex)");
+    expect(peerMessageTurn(turn, target, root).sender).toEqual({ id: prepared.id, name: "Graph worktree projection", agent: "codex" });
+    expect(readPeerMessage(prepared.id, root)?.source).toEqual(source);
+    const renamed = preparePeerMessage("later body", source, target, root, "Renamed release coordinator")!;
+    publishPeerMessage(renamed, root);
+    expect(peerMessageTurn({ ...turn, parts: [{ kind: "text", text: renamed.text }] }, target, root).sender?.name).toBe("Renamed release coordinator");
+    expect(peerMessageTurn(turn, target, root).sender?.name).toBe("Graph worktree projection");
+    expect(readPeerMessage(renamed.id, root)?.source).toEqual(source);
+    const path = join(root, "messages", `${prepared.id}.json`);
+    const forged = JSON.parse(readFileSync(path, "utf8"));
+    forged.display_name = "Forged title";
+    writeFileSync(path, JSON.stringify(forged));
+    expect(peerMessageTurn(turn, target, root).sender).toBeUndefined();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it("reads a fixed signed receipt and envelope produced by the pre-display-name implementation", () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-peer-legacy-"));
+  try {
+    mkdirSync(join(root, "messages"), { mode: 0o700 });
+    writeFileSync(join(root, "messages", "key"), Buffer.from(legacy.secret, "hex"), { mode: 0o600 });
+    writeFileSync(join(root, "messages", `${legacy.id}.json`), JSON.stringify(legacy.receipt), { mode: 0o600 });
+    const turn = { role: "user" as const, ts: null, parts: [{ kind: "text" as const, text: legacy.text }] };
+    expect(readPeerMessage(legacy.id, root)).toEqual({ ...legacy.receipt, version: 1 });
+    expect(peerMessageTurn(turn, legacy.receipt.target, root)).toEqual({ ...turn, parts: [{ kind: "text", text: legacy.body }], sender: { id: legacy.id, name: "Legacy worker", agent: "codex" } });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, type Browser } from "playwright-core";
 import fixture from "../site/demo/fixtures/machines.json";
+import type { ConversationTurn } from "../shared/protocol.ts";
+import { preparePeerMessage, publishPeerMessage, peerMessageTurn } from "../server/message-sources.ts";
 import type { Machine } from "../shared/machines.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
@@ -14,13 +16,21 @@ const evidence = process.env.UI_EVIDENCE_DIR;
 if (evidence) mkdirSync(evidence, { recursive: true });
 const root = mkdtempSync(join(tmpdir(), "ovis-peer-browser-")), app = join(root, "app");
 const local = structuredClone(fixture.machines[0]) as Machine;
-const receiver = local.snapshot!.panes.find((pane) => pane.agent === "codex")!;
-const sourcePane = local.snapshot!.panes.find((pane) => pane.agent === "claude")!;
+const receiver = local.snapshot!.panes.find((pane) => pane.agent === "claude")!;
+receiver.agent = "omp"; receiver.label = "Release coordinator";
+const sourcePane = local.snapshot!.panes.find((pane) => pane.agent === "codex")!;
+sourcePane.label = "Graph worktree projection";
 const remote: Machine = { ...structuredClone(local), id: "peer-source-pc", name: "Peer source PC", kind: "ssh", target: { destination: "fixture.invalid" } };
-const id = "11111111-1111-4111-8111-111111111111", secondId = "22222222-2222-4222-8222-222222222222";
-const source = { server_id: "fictional-source-server", boot_id: "fictional-boot", terminal_id: sourcePane.terminal_id!, agent_instance_id: "fictional-process", pane_id: sourcePane.pane_id, agent: "claude", name: "Worker" };
-const turns = [id, secondId].map((id) => ({ role: "user", ts: "2026-11-11T01:00:00Z", sender: { id, name: "Worker" }, parts: [{ kind: "text", text: "Identical peer update" }] }));
-turns.push({ role: "user", ts: "2026-11-11T01:00:01Z", parts: [{ kind: "text", text: "Ordinary human message" }] } as typeof turns[number]);
+const source = { server_id: "fictional-source-server", boot_id: "fictional-boot", terminal_id: sourcePane.terminal_id!, agent_instance_id: "fictional-process", pane_id: sourcePane.pane_id, agent: "codex", name: "graph-worker" };
+const target = { ...source, terminal_id: receiver.terminal_id!, pane_id: receiver.pane_id, agent_instance_id: "receiver-process", agent: "omp" };
+const turns: ConversationTurn[] = ["codex", "omp", "claude"].map((agent) => {
+  const prepared = preparePeerMessage("Identical peer update", { ...source, agent }, target, root, "Graph worktree projection")!;
+  publishPeerMessage(prepared, root);
+  return peerMessageTurn({ role: "user", ts: "2026-11-11T01:00:00Z", parts: [{ kind: "text", text: prepared.text }] }, target, root);
+});
+const id = turns[0]!.sender!.id;
+turns.push({ role: "user", ts: null, sender: { id, name: "Legacy source" }, parts: [{ kind: "text", text: "Older response without a kind" }] });
+turns.push({ role: "user", ts: "2026-11-11T01:00:01Z", parts: [{ kind: "text", text: "Ordinary human message" }] });
 const harness = `<script>(() => {
   const machines = ${JSON.stringify([local, remote])}, turns = ${JSON.stringify(turns)}, source = ${JSON.stringify(source)};
   const demo = window.fetch, sockets = [], controls = [], sources = new Set();
@@ -85,7 +95,19 @@ try {
       };
       await openReceiver();
       await page.getByText("Ordinary human message", { exact: true }).waitFor();
-      assert.equal(await page.getByText("Peer content from Worker", { exact: true }).count(), 2);
+      const markers = page.locator(".chat-peer-source");
+      assert.equal(await markers.count(), 4);
+      for (const [index, agent] of ["codex", "omp", "claude"].entries()) {
+        const marker = markers.nth(index);
+        assert.equal(await marker.locator(`.agent-mark.${agent}`).count(), 1);
+        assert.equal(await marker.locator(".chat-peer-label").textContent(), "Message from Graph worktree projection");
+        assert.equal(await marker.locator(".chat-peer-name").evaluate((node) => node.firstElementChild?.classList.contains("agent-mark") && node.textContent === "Graph worktree projection"), true);
+        const mark = await marker.locator(".agent-mark").boundingBox(), name = await marker.locator(".chat-peer-name").boundingBox();
+        assert.ok(mark && name && mark.x >= name.x && mark.y >= name.y - 2);
+        assert.equal(await marker.getByRole("button", { name: "Open message source", exact: true }).count(), 1);
+      }
+      assert.equal(await markers.nth(3).locator(".agent-mark").count(), 0);
+      assert.equal(await markers.nth(3).locator(".chat-peer-label").textContent(), "Message from Legacy source");
       assert.equal(await page.locator(".chat-turn-user").filter({ hasText: "Ordinary human message" }).count(), 1);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       if (evidence) await page.screenshot({ path: join(evidence, `peer-source-${width}.png`), animations: "disabled" });

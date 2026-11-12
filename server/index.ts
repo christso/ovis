@@ -391,7 +391,7 @@ export function createServer(
     return herdrKinds.has(entry?.detect.binaries[0] ?? kind);
   };
   const agentInstaller = new AgentInstaller(agentDetector);
-  const communicationTracking = options.communicationTracking ?? new CommunicationTracking({ configPath: options.herdrConfigPath });
+  const communicationTracking = options.communicationTracking ?? new CommunicationTracking({ configPath: options.herdrConfigPath, stateDir });
   const openCodeState = new OpenCodePromptState();
   const draftTimer = setInterval(() => openCodeState.prune(), 60_000);
   draftTimer.unref();

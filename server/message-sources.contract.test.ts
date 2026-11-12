@@ -11,8 +11,8 @@ import { preparePeerMessage, publishPeerMessage } from "./message-sources.ts";
 it("serves authenticated peer attribution and invalidates a pre-publication conversation ETag", async () => {
   const root = mkdtempSync(join(tmpdir(), "ovis-peer-http-"));
   const source = { server_id: "fictional-server", boot_id: "fictional-boot", terminal_id: "source", agent_instance_id: "source-process", pane_id: "source-pane", agent: "codex", name: "Worker" };
-  const target = { ...source, terminal_id: "recipient", agent_instance_id: "recipient-process", pane_id: "recipient-pane" };
-  const prepared = preparePeerMessage("original body\nΩ", source, target, root)!;
+  const target = { ...source, terminal_id: "recipient", agent_instance_id: "recipient-process", pane_id: "recipient-pane", agent: "omp" };
+  const prepared = preparePeerMessage("original body\nΩ", source, target, root, "Graph worktree projection")!;
   const turn = { role: "user" as const, ts: null, parts: [{ kind: "text" as const, text: prepared.text }] };
   const read = spyOn(conversation, "paneConversation").mockImplementation(async () => ({ source: "codex-transcript", turns: [turn], metadata: { model: null, reasoning_effort: null }, cursor: null, history_id: "native-fixture", version: "native-fixture-version" }));
   // Only native transcript/process identification is fictional; HTTP, authentication and disk proofs are real.
@@ -34,7 +34,7 @@ it("serves authenticated peer attribution and invalidates a pre-publication conv
     const after = await ask(path, { headers: { "if-none-match": etag } });
     expect(after.status).toBe(200);
     expect(after.headers.get("etag")).not.toBe(etag);
-    expect((await after.json()).turns[0]).toMatchObject({ sender: { id: prepared.id, name: "Worker" }, parts: [{ kind: "text", text: "original body\nΩ" }] });
+    expect((await after.json()).turns[0]).toMatchObject({ sender: { id: prepared.id, name: "Graph worktree projection", agent: "codex" }, parts: [{ kind: "text", text: "original body\nΩ" }] });
     expect((await ask(path, { headers: { "if-none-match": after.headers.get("etag")! } })).status).toBe(304);
     expect(await (await ask(`/api/pane/message-source?id=${prepared.id}`)).json()).toEqual({ sender: { id: prepared.id, source } });
     expect(await (await ask("/api/pane/message-source?id=unknown")).json()).toEqual({ sender: null });

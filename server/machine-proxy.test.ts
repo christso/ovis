@@ -344,7 +344,7 @@ it("proxies authenticated peer content to watchers without private source identi
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).not.toContain("private-source-");
-    expect(JSON.parse(body).turns[0].sender).toEqual({ id: prepared.id, name: "Worker" });
+    expect(JSON.parse(body).turns[0].sender).toEqual({ id: prepared.id, name: "Worker", agent: "codex" });
     for (const suffix of ["message-source", "message-source/resolve"]) {
       const lookup = await handleMachineRequest(new Request(`http://127.0.0.1/api/machines/pc1/pane/${suffix}?id=${prepared.id}`), manager, undefined, undefined, true);
       expect(lookup.status).toBe(403);

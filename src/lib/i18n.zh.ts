@@ -33,7 +33,7 @@ import { RUNTIME_MOVE_ZH } from "./i18n/runtime-move.zh.ts";
  * Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
-  "Peer content from {name}": "来自 {name} 的协作代理内容",
+  "Message from {name}": "来自 {name} 的消息",
   "Open message source": "打开消息来源",
   "Message source is unavailable": "消息来源不可用",
 

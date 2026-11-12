@@ -13,7 +13,7 @@ function fixture(shell = "/bin/bash", config = "") {
   writeFileSync(real, "#!/bin/sh\nprintf 'real:%s\\n' \"$*\"\n"); chmodSync(real, 0o700);
   writeFileSync(configPath, `[terminal]\ndefault_shell = ${JSON.stringify(shell)}\n${config}`);
   const env = { HOME: home, PATH: `${bin}:/usr/bin:/bin`, SHELL: shell, OVIS_HERDR_BIN: real };
-  const service = new CommunicationTracking({ home, env, configPath, directory: journal });
+  const service = new CommunicationTracking({ home, env, configPath, directory: journal, stateDir: join(root, "ovis-state") });
   return { root, home, bin, journal, real, configPath, env, service };
 }
 
@@ -106,7 +106,7 @@ describe.skipIf(process.platform === "win32")("communication tracking setup", ()
       expect(lookup(false)).toBe(f.real);
       expect((await f.service.enable()).state).toBe("enabled");
       writeFileSync(join(f.home, ".bashrc"), readFileSync(join(f.home, ".bashrc"), "utf8") + "export ADDED_LATER=kept\n");
-      expect((await new CommunicationTracking({ home: f.home, env: f.env, configPath: f.configPath, directory: f.journal }).status()).state).toBe("enabled");
+      expect((await new CommunicationTracking({ home: f.home, env: f.env, configPath: f.configPath, directory: f.journal, stateDir: join(f.root, "ovis-state") }).status()).state).toBe("enabled");
       expect((await f.service.disable()).state).toBe("disabled");
       expect(existsSync(join(f.home, ".bash_profile"))).toBe(false);
       expect(readFileSync(join(f.home, ".bashrc"), "utf8")).toBe("export USER_SETTING=kept\nexport ADDED_LATER=kept\n");
@@ -246,7 +246,9 @@ it.skipIf(process.platform !== "linux")("refreshes an owned older wrapper only t
     expect(readFileSync(bundle, "utf8")).toBe(old);
     expect((await f.service.enable()).state).toBe("enabled");
     expect(readFileSync(bundle, "utf8")).not.toContain("preserved old bundle");
-    expect(JSON.parse(readFileSync(configPath, "utf8")).bundle_revision).toBe(2);
+    expect(JSON.parse(readFileSync(configPath, "utf8")).bundle_revision).toBe(3);
+    expect(JSON.parse(readFileSync(configPath, "utf8")).display_state).toBe(join(f.root, "ovis-state"));
     expect((await f.service.disable()).state).toBe("disabled");
+    expect(JSON.parse(readFileSync(configPath, "utf8")).display_state).toBe(join(f.root, "ovis-state"));
   } finally { rmSync(f.root, { recursive: true, force: true }); }
 });

@@ -60,3 +60,8 @@ test("peer correlation and source identity changes invalidate an otherwise ident
   expect(turnRevision(second)).not.toBe(turnRevision(first));
   expect(turnRevision({ ...first, sender: { ...first.sender!, name: "Other worker" } })).not.toBe(turnRevision(first));
 });
+
+test("a source agent kind arriving after a cached legacy sender invalidates its row", () => {
+  const plain = { role: "user" as const, ts: null, parts: [{ kind: "text" as const, text: "body" }], sender: { id: "fixture", name: "Graph projection" } };
+  expect(turnRevision({ ...plain, sender: { ...plain.sender, agent: "codex" } })).not.toBe(turnRevision(plain));
+});

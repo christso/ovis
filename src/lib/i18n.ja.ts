@@ -31,7 +31,7 @@ import { RUNTIME_MOVE_JA } from "./i18n/runtime-move.ja.ts";
  * in English. Placeholders in braces keep their English names.
  */
 const BASE: Record<string, string> = {
-  "Peer content from {name}": "{name} からのエージェントの内容",
+  "Message from {name}": "{name} からのメッセージ",
   "Open message source": "メッセージの送信元を開く",
   "Message source is unavailable": "メッセージの送信元を利用できません",
 

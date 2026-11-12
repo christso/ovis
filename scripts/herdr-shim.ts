@@ -10,9 +10,11 @@ import { graphCliTerminalMetadata } from "../shared/graph-cli.ts";
 import { herdrCliLauncher } from "../server/herdr/cli-launcher.ts";
 
 import { preparePeerMessage, publishPeerMessage } from "../server/message-sources.ts";
+import { observePeerDisplayName } from "../server/message-source-name.ts";
+import { defaultStateDir } from "../server/update-state.ts";
 import { HERDR_SHIM_REVISION } from "../shared/communication-tracking.ts";
 
-interface Config { version: 1; bundle_revision?: number; real: string; journal: string; enabled?: boolean }
+interface Config { version: 1; bundle_revision?: number; real: string; journal: string; display_state?: string; enabled?: boolean }
 
 function captureEnabled(path: string): boolean {
   try { return (JSON.parse(readFileSync(path, "utf8")) as Config).enabled !== false; }
@@ -37,12 +39,12 @@ async function install(args: string[]): Promise<void> {
   if (process.platform === "win32") throw new Error("Herdr CLI observation installation currently supports Linux and macOS");
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index += 2) {
-    if (!["--real", "--directory", "--journal", "--enabled"].includes(args[index] ?? "") || !args[index + 1] || values.has(args[index]!)) throw new Error("Use install --real /absolute/herdr --directory /absolute/shim-directory [--journal /absolute/journal-directory] [--enabled true|false]");
+    if (!["--real", "--directory", "--journal", "--display-state", "--enabled"].includes(args[index] ?? "") || !args[index + 1] || values.has(args[index]!)) throw new Error("Use install --real /absolute/herdr --directory /absolute/shim-directory [--journal /absolute/journal-directory] [--display-state /absolute/ovis-state-directory] [--enabled true|false]");
     values.set(args[index]!, args[index + 1]!);
   }
   const requested = values.get("--real"), directory = values.get("--directory");
   if (values.has("--enabled") && !["true", "false"].includes(values.get("--enabled")!)) throw new Error("--enabled must be true or false");
-  if (!requested || !directory || !isAbsolute(requested) || !isAbsolute(directory) || (values.has("--journal") && !isAbsolute(values.get("--journal")!))) throw new Error("The real binary, shim directory and journal directory must be absolute paths");
+  if (!requested || !directory || !isAbsolute(requested) || !isAbsolute(directory) || (values.has("--journal") && !isAbsolute(values.get("--journal")!)) || (values.has("--display-state") && !isAbsolute(values.get("--display-state")!))) throw new Error("The real binary, shim directory and journal directory must be absolute paths");
   const real = resolve(requested), actual = realpathSync(real), path = resolve(directory);
   if (!lstatSync(actual).isFile() || actual === join(path, "herdr") || isShim(real)) throw new Error("--real must name the installed Herdr executable, not another Ovis shim");
   mkdirSync(path, { mode: 0o700 });
@@ -53,7 +55,7 @@ async function install(args: string[]): Promise<void> {
     if (!built.success) throw new Error(`Cannot bundle the shim: ${built.logs.join("\n")}`);
     await Bun.write(bundle, built.outputs[0]!);
     const config = join(path, "config.json");
-    writeFileSync(config, JSON.stringify({ version: 1, bundle_revision: HERDR_SHIM_REVISION, real, journal: values.get("--journal") ?? herdrCliDirectory(), enabled: values.get("--enabled") !== "false" } satisfies Config) + "\n", { mode: 0o600 });
+    writeFileSync(config, JSON.stringify({ version: 1, bundle_revision: HERDR_SHIM_REVISION, display_state: resolve(values.get("--display-state") ?? defaultStateDir()), real, journal: values.get("--journal") ?? herdrCliDirectory(), enabled: values.get("--enabled") !== "false" } satisfies Config) + "\n", { mode: 0o600 });
     writeFileSync(join(path, "herdr"), herdrCliLauncher(realpathSync(process.execPath), path), { mode: 0o700 });
     console.log(JSON.stringify({ directory: path, real, journal: values.get("--journal") ?? herdrCliDirectory() }));
   } catch (error) { rmSync(path, { recursive: true, force: true }); throw error; }
@@ -81,7 +83,7 @@ async function run(configPath: string, args: string[]): Promise<void> {
   ]);
   const prompt = herdrCliPrompt(args);
   const prepared = prompt && source && target && captureEnabled(configPath)
-    ? preparePeerMessage(args[prompt.body]!, source, target, config.journal) : null;
+    ? preparePeerMessage(args[prompt.body]!, source, target, config.journal, await observePeerDisplayName(sourceSocket, source, typeof config.display_state === "string" && isAbsolute(config.display_state) ? config.display_state : undefined)) : null;
   const forwarded = [...args];
   if (prepared && prompt) forwarded[prompt.body] = prepared.text;
   // A separate session receives terminal signals only through us. Inherited stdin remains

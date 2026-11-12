@@ -36,7 +36,7 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
   const idle = (pane: string, targetSocket = socket) => herdrRpc("pane.report_agent", { pane_id: pane, source: "manual", agent: "codex", state: "idle" }, targetSocket);
   const snapshot = async () => ({ ...await sessionSnapshot(), herdr_lifetime: herdrLifetime(finishHerdrIdentity(socket)!) });
   try {
-    const install = Bun.spawn([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", binary, "--directory", wrapper, "--journal", journal], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+    const install = Bun.spawn([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", binary, "--directory", wrapper, "--journal", journal, "--display-state", root], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
     expect({ code: await install.exited, stderr: await new Response(install.stderr).text() }).toEqual({ code: 0, stderr: "" });
     const environment = { PATH: [bin, wrapper, process.env["PATH"]].filter(Boolean).join(delimiter), CODEX_HOME: home };
     const source = await workspaceCreate({ cwd: root, label: "ovis-test-shim-source", env: environment }); owned.push(source.workspace.workspace_id);
@@ -48,6 +48,7 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     const start = invoke(["agent", "start", name, "--kind", "codex", "--pane", targetPane, "--", program, log, "first"], sourcePane);
     await ready(targetPane, "first"); await idle(targetPane);
     expect(await start).toMatchObject({ code: 0, stderr: "" });
+    writeFileSync(join(root, "tab-labels.json"), JSON.stringify({ tab_labels: { [`${sourcePane}|${source.root_pane.terminal_id}`]: "Graph worktree projection" } }));
     const message = "offline message 'quoted' \"double\" $HOME `literal`\nsecond line Ω";
     expect(await invoke(["agent", "prompt", name, message], sourcePane)).toMatchObject({ code: 0, stderr: "" });
     const waited = await invoke(["agent", "prompt", name, "SHIM_WAIT_TIMEOUT_PROBE", "--wait", "--timeout", "1500"], sourcePane);
@@ -63,11 +64,12 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     expect(envelope).not.toBeNull();
     const firstSender = readPeerMessage(envelope[1]!, journal)!;
     expect(firstSender).not.toBeNull();
+    expect(firstSender.display_name).toBe("Graph worktree projection");
     const receivedTurn = { role: "user" as const, ts: null, parts: [{ kind: "text" as const, text: envelope[0] }] };
     const targetEndpoint = (await herdrCliEndpoint(socket, targetPane, journal))!;
     const attributed = peerMessageTurn(receivedTurn, targetEndpoint, journal);
     expect(attributed.parts).toEqual([{ kind: "text", text: message }]);
-    expect(attributed.sender).toEqual({ id: firstSender.id, name: firstSender.source.name || firstSender.source.agent });
+    expect(attributed.sender).toEqual({ id: firstSender.id, name: "Graph worktree projection", agent: "codex" });
     expect(received.split(message)).toHaveLength(2);
     expect(received.match(/\r/g)).toHaveLength(2);
     expect(await resolvePeerSource(firstSender.source, journal)).toBe(sourcePane);
