@@ -131,20 +131,20 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           <button type="button" className="graph-legend-toggle" aria-expanded={state.legendOpen} aria-controls={legendId} onClick={() => setState((previous) => ({ ...previous, legendOpen: !previous.legendOpen }))}>
             <ChevronDown size={16} aria-hidden="true" />{t("Legend")}
           </button>
-          <div className="graph-kind-legend" id={legendId} hidden={!state.legendOpen}>{kinds.map((kind) => <button type="button" key={kind} aria-pressed={!hiddenKinds.includes(kind)} onClick={() => toggleKind(kind)}><i aria-hidden="true" style={{ background: graphNodeColour(kind) }} />{graphKindLabel(t, kind)}</button>)}</div>
+          <div className="graph-kind-legend" id={legendId} hidden={!state.legendOpen}>{kinds.map((kind) => <button type="button" key={kind} aria-pressed={!hiddenKinds.includes(kind)} onClick={() => toggleKind(kind)}><i aria-hidden="true" style={{ background: graphNodeColour({ kind }) }} />{graphKindLabel(t, kind)}</button>)}</div>
         </div>}
       </div>
       <aside className="graph-details" aria-label={t("Graph details")}>
         {selected && <h2>{selected.label}</h2>}
         {selected ? <>
-          <p className="graph-selected-meta"><span>{graphKindLabel(t, selected.kind)} · {graphNodeStatusLabel(t, selected)}</span>
+          <p className="graph-selected-meta"><span>{graphKindLabel(t, selected.kind)}{selected.kind === "terminal" && ` · ${graphNodeStatusLabel(t, selected)}`}</span>
           {selected.freshness && <span className={selected.freshness === "live" ? undefined : "graph-warning"}>{graphFreshnessLabel(t, selected.freshness)}</span>}</p>
         </> : <p className="graph-selection-hint">{state.selected ? t("The selected node is unavailable.") : t("Select a node to inspect its status and relationships.")}</p>}
         <div className="graph-selection-actions">
-          {selected && <button type="button" className="btn btn-primary" disabled={!selectedCanOpen} onClick={() => onOpenNode(selected.id)}>{t("Open in Workspace")}</button>}
+          {selected?.kind === "terminal" && <button type="button" className="btn btn-primary" disabled={!selectedCanOpen} onClick={() => onOpenNode(selected.id)}>{t("Open in Workspace")}</button>}
           <button type="button" className="btn graph-details-toggle" aria-label={t("Details and help")} aria-expanded={!compact || detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen((open) => !open)}>{t("Details")}<ChevronDown size={16} aria-hidden="true" /></button>
         </div>
-        {selected && !selectedCanOpen && <p className="graph-target-note">{t("No verified live terminal target.")}</p>}
+        {selected?.kind === "terminal" && !selectedCanOpen && <p className="graph-target-note">{t("No verified live terminal target.")}</p>}
         <div className="graph-details-extra" id={detailsId} hidden={compact && !detailsOpen}>
         {selected && <>
           {selected.machineId && <p>{machineNames?.get(selected.machineId) ?? selected.machineId}</p>}
@@ -165,7 +165,7 @@ export default function GraphView({ data, onOpenNode, canOpenNode, error, machin
           </details>}
         </>}
         <p className="graph-help">{t("Drag to pan or move nodes. Pinch or scroll to zoom. Use arrow keys to pan, +/− to zoom and 0 to fit.")}</p>
-        <p className="graph-help">{t("Hierarchy links show workspaces, worktrees and terminals. Communication and delegation links show recorded activity.")}</p>
+        <p className="graph-help">{t("Hierarchy links connect repositories or folders directly to terminals. Communication and delegation links show recorded activity.")}</p>
         <p className="graph-help">{t("Recorded activity uses Herdr operations and supported Codex success receipts. Older servers may have no relationship history.")}</p>
         <p className="graph-help" aria-live="polite">{t("{nodes} nodes · {edges} links", { nodes: view.nodes.length, edges: view.edges.length })}</p>
         </div>

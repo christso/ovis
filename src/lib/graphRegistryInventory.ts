@@ -16,7 +16,7 @@ export function useGraphRegistryInventory(registry: GraphRegistry | null, machin
   }) : [], [registry, machines, sources, revision]);
 }
 
-/** Private evidence is usable only alongside the same connected daemon's current roster. */
+/** Action proofs need the same connected daemon; repository display context may survive disconnects. */
 export function graphSourceMachines(machines: readonly Machine[], sources: readonly Machine[]): Machine[] {
   return machines.map((machine) => {
     const source = sources.find((item) => item.id === machine.id);
@@ -24,6 +24,6 @@ export function graphSourceMachines(machines: readonly Machine[], sources: reado
       && source.snapshot.herdr_lifetime === machine.snapshot?.herdr_lifetime;
     const coordination = matches && graphCoordinationValue(source.snapshot?.flock_coordination) ? source.snapshot.flock_coordination : undefined;
     const cli = matches && graphCliPageValue(source.snapshot?.graph_cli) ? source.snapshot.graph_cli : undefined;
-    return { ...machine, snapshot: machine.snapshot ? { ...machine.snapshot, flock_bindings: matches ? source.snapshot?.flock_bindings : [], flock_coordination: coordination, graph_cli: cli } : null };
+    return { ...machine, snapshot: machine.snapshot ? { ...machine.snapshot, graph_repositories: source?.snapshot?.herdr_lifetime && source.snapshot.herdr_lifetime === machine.snapshot?.herdr_lifetime ? source.snapshot.graph_repositories : machine.snapshot?.graph_repositories, flock_bindings: matches ? source.snapshot?.flock_bindings : [], flock_coordination: coordination, graph_cli: cli } : null };
   });
 }

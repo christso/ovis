@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import type { GraphRegistry, HerdrCoordinationEndpoint } from "../../shared/graph-registry.ts";
 import type { Machine } from "../../shared/machines.ts";
-import { useGraphRegistryInventory } from "./graphRegistryInventory.ts";
+import { graphSourceMachines, useGraphRegistryInventory } from "./graphRegistryInventory.ts";
 
 const actDescriptor = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 let renderer: ReactTestRenderer | null = null;
@@ -61,4 +61,14 @@ it("uses validated optional CLI process proof without creating a native binding 
   machines[0]!.snapshot!.herdr_lifetime = "replacement"; machines = [...machines];
   await act(async () => renderer!.update(createElement(Probe)));
   expect(rows[0]?.herdr_endpoint).toBeNull();
+});
+
+it("carries Git identity only from the same daemon while retaining disconnected display context", () => {
+  const roster = machine(), source = machine();
+  source.snapshot!.graph_repositories = [{ pane_id: "w1:p1", terminal_id: "terminal", cwd: "/fixture/repo", root: "/fixture/repo", common_directory: "/fixture/repo/.git", remote: "https://github.com/team/repo" }];
+  expect(graphSourceMachines([roster], [source])[0]!.snapshot!.graph_repositories).toEqual(source.snapshot!.graph_repositories);
+  roster.state = "disconnected";
+  expect(graphSourceMachines([roster], [source])[0]!.snapshot!.graph_repositories).toEqual(source.snapshot!.graph_repositories);
+  roster.snapshot!.herdr_lifetime = "replacement";
+  expect(graphSourceMachines([roster], [source])[0]!.snapshot!.graph_repositories).toBeUndefined();
 });

@@ -30,15 +30,17 @@ import { RUNTIME_MOVE_KO } from "./i18n/runtime-move.ko.ts";
  * braces keep their English names.
  */
 const BASE: Record<string, string> = {
+  "Folder": "폴더",
+  "Repository": "저장소",
+  "Hierarchy links connect repositories or folders directly to terminals. Communication and delegation links show recorded activity.": "계층 링크는 저장소 또는 폴더를 터미널에 직접 연결합니다. 통신 및 위임 링크는 기록된 활동을 나타냅니다.",
+  "Terminal in repository": "저장소의 터미널",
+
   "Message from {name}": "{name}의 메시지",
   "Open message source": "메시지 출처 열기",
   "Message source is unavailable": "메시지 출처를 사용할 수 없습니다",
 
-  "Terminal in workspace": "작업 공간의 터미널",
-  "Terminal in worktree": "워크트리의 터미널",
   "These records have no verified terminal to open.": "이 기록에 연결된 확인된 터미널이 없습니다.",
   "These sessions have no verified terminal to open.": "이 세션에 연결된 확인된 터미널이 없습니다.",
-  "Hierarchy links show workspaces, worktrees and terminals. Communication and delegation links show recorded activity.": "계층 링크는 워크스페이스, 워크트리, 터미널을 나타냅니다. 통신 및 위임 링크는 기록된 활동을 나타냅니다.",
   "Terminal activity": "터미널 활동",
   "Recorded activity": "기록된 활동",
   "Related items: {count}": "관련 항목: {count}",
@@ -218,11 +220,7 @@ const BASE: Record<string, string> = {
   "Identity unavailable": "식별 정보 없음",
   "Loading work registry…": "작업 목록 불러오는 중…",
   "Machine": "머신",
-  "Worktree in workspace": "작업 공간의 워크트리",
-  "Workspace": "워크스페이스",
-  "Main checkout": "기본 체크아웃",
   "Legend": "범례",
-  "Worktree": "워크트리",
   "Status": "상태",
   "This device can only watch": "이 기기는 보기만 가능합니다",
   "Searching executables…": "실행 파일 검색 중…",

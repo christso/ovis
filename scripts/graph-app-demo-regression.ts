@@ -56,6 +56,8 @@ original.snapshot!.workspaces.push(socialWorkspace);
 original.snapshot!.tabs.push({ ...chosenTab, workspace_id: socialWorkspace.workspace_id, tab_id: "social-tab", label: "1", number: 1 });
 original.snapshot!.panes.push({ ...idlePane, workspace_id: socialWorkspace.workspace_id, tab_id: "social-tab", pane_id: "social-pane", terminal_id: "social-terminal" });
 original.snapshot!.panes.push({ ...idlePane, tab_id: chosen.tab_id, pane_id: "graph-split-shell", terminal_id: "graph-split-terminal", label: "Split test shell" });
+// Fictional verified evidence: one remote repository spans both PCs and checkout paths.
+for (const machine of [original, remote, offline]) machine.snapshot!.graph_repositories = machine.snapshot!.panes.map((pane) => ({ pane_id: pane.pane_id, terminal_id: pane.terminal_id, cwd: pane.cwd!, common_directory: "/fictional/infra/.git", root: pane.workspace_id === socialWorkspace.workspace_id ? "/fictional/social" : "/fictional/infra", remote: "https://github.com/fixture/infra" }));
 const pristine: Machine[] = [original, remote, offline, { ...offline, id: "graph-empty", name: "Graph awaiting inventory", state: "connecting", snapshot: null }];
 let machines = structuredClone(pristine), store = new GraphRegistryStore(join(root, "initial")), future = false, graphReads = 0;
 let browser: Browser | undefined, server: ReturnType<typeof Bun.serve> | undefined;
@@ -147,7 +149,7 @@ try {
       const beforePane = new URL(page.url()).searchParams.get("pane");
       await openGraphFromSidebar(page);
       await node().waitFor();
-      assert.equal(await page.locator(".graph-kind-legend").getByRole("button").count(), 3);
+      assert.equal(await page.locator(".graph-kind-legend").getByRole("button").count(), 2);
       assert.equal(await page.locator(".graph-node-kind-pane, .graph-node-kind-tab").count(), 0);
       if (theme === "dark" && (width === 1280 || (width === 320 && height === 844))) {
         stage = "exact split pane target";
@@ -159,21 +161,18 @@ try {
         await openNativeAgent(page, "local", chosen.pane_id);
         await page.waitForURL((url) => url.searchParams.get("pane") === chosen.pane_id && !url.searchParams.has("page"));
         await openGraphFromSidebar(page); await node().waitFor();
-        stage = "exact main checkout target";
+        stage = "shared repository has no implicit terminal action";
         await options(true);
-        const mainCheckout = await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").evaluateAll((options, machine) => options.find((option) => option.textContent?.startsWith("Main checkout ·") && option.textContent?.endsWith(` · ${machine}`))!.getAttribute("value")!, original.name);
-        await inspect(mainCheckout);
-        await page.getByRole("button", { name: "Open in Workspace", exact: true }).click();
-        await page.waitForURL((url) => url.searchParams.get("pane") === "graph-split-shell" && !url.searchParams.has("page"));
-        await page.locator(".app-header .view-switch, .app-header .lens-toggle").waitFor();
-        await openGraphFromSidebar(page); await node().waitFor();
+        const sharedRepository = `repository:${JSON.stringify(["remote", "https://github.com/fixture/infra"])}`;
+        await inspect(sharedRepository);
+        assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0);
         await inspect(selectedTerminalId);
       }
       await options(true);
       const focus = page.getByRole("combobox", { name: "Focus graph", exact: true });
-      const infraFocus = await focus.locator("option").evaluateAll((options) => options.find((option) => option.textContent?.startsWith("infra ·"))!.getAttribute("value")!);
+      const infraFocus = `repository:${JSON.stringify(["remote", "https://github.com/fixture/infra"])}`;
       await focus.selectOption(infraFocus);
-      assert.equal(await page.locator("[data-graph-node]").count(), 8, "workspace focus includes its main checkout, linked worktree and five individual terminals");
+      assert.equal(await page.locator("[data-graph-node]").count(), 8, "shared repository focus includes seven terminals across machines and checkouts");
       assert.equal(await page.locator('.graph-node-kind-terminal[aria-label^="social ·"]').count(), 1, "a worktree numbered tab uses the sidebar workspace name");
       await focus.selectOption(""); await options(false);
       const researchNode = page.locator('[data-graph-node][aria-label^="research ·"]');
@@ -225,7 +224,7 @@ try {
       await page.getByText(/Inventory is incomplete for:.*Graph awaiting inventory/).waitFor();
       await inspect(selectedTerminalId);
       assert.equal(await page.locator(".graph-edge-delegation, .graph-edge-communication").count(), 0, "unmapped agent activity never adds graph links or nodes");
-      assert.equal(await page.locator(".graph-surface [data-graph-node]").count(), 14, "native workspace and main/linked checkout hubs connect seven individual terminals");
+      assert.equal(await page.locator(".graph-surface [data-graph-node]").count(), 8, "one shared repository connects seven individual terminals");
       await options(true);
       assert.equal(await page.getByRole("combobox", { name: "Inspect node", exact: true }).locator("option").filter({ hasText: "Codex 01a1a426" }).count(), 0, "unmapped sessions cannot be selected as nodes");
       await options(false);
@@ -446,10 +445,10 @@ try {
       await watch.close();
       stage = "empty inventory reload";
       store = new GraphRegistryStore(join(root, `empty-${width}-${height}-${theme}`));
-      await page.evaluate(() => localStorage.removeItem("ovis:graph:v3"));
+      await page.evaluate(() => localStorage.removeItem("ovis:graph:v4"));
       await page.goto(`${base}?page=graph`);
       await page.getByText("No graph nodes match these filters.", { exact: true }).waitFor();
-      await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem("ovis:graph:v3") ?? "null")?.positions ?? {}).length === 0);
+      await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem("ovis:graph:v4") ?? "null")?.positions ?? {}).length === 0);
       await page.reload(); await page.locator(".graph-surface").waitFor();
       machines = structuredClone(pristine);
       await page.evaluate((next) => (window as unknown as { graphFixture: { setMachines(machines: Machine[]): void } }).graphFixture.setMachines(next), machines);

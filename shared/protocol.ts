@@ -100,6 +100,8 @@ export type SessionSnapshot = Omit<HerdrSnapshot, "panes"> & {
   flock_observations?: import("./graph-registry.ts").GraphObservation[];
   /** Private coordination observations from the optional daemon extension. */
   flock_coordination?: import("./graph-registry.ts").HerdrCoordinationPage;
+  /** Sanitized local Git discovery for Graph; absent on older bridges. */
+  graph_repositories?: import("./graph-repository.ts").GraphRepository[];
   /** Private terminal-scoped CLI history and separate ephemeral current process evidence. */
   graph_cli?: import("./graph-registry.ts").GraphCliPage;
   /**

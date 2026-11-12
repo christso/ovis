@@ -23,7 +23,7 @@ export function graphMachineClouds(nodes: readonly GraphNode[], positions: Posit
   const machines = new Map<string, Point[]>();
   for (const node of nodes) {
     const point = positions[node.id];
-    if (!node.machineId || !point) continue;
+    if (node.kind !== "terminal" || !node.machineId || !point) continue;
     const points = machines.get(node.machineId) ?? [];
     const radius = appearance.get(node.id)!.radius + 34;
     for (let index = 0; index < 12; index++) {

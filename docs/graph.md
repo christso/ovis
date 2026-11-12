@@ -1,107 +1,101 @@
 # Graph and its work registry
 
-Graph opens a force-directed graph of native workspaces, checkouts and terminals.
-Git workspaces use workspace → worktree → terminal for both the main checkout and linked worktrees.
-The orange **Main checkout** node describes its location; actual branch names and paths remain native metadata.
-Plain folders and workspaces without verified checkout metadata keep workspace → terminal. Each pane appears exactly once as a green Terminal node; tabs remain navigation
-containers without adding graph nodes. A single-terminal tab uses its native tab name, while
-split terminals use their individual names and statuses. Plain folders need no Git repository to
-have a workspace hub. Empty workspaces remain visible; a worktree whose main workspace is not
-open has its own independent hub. Repository, branch, checkout and session information appears
-in the inspector.
-Ovis's native Agents section remains the single agent list and keeps its existing filters. The
-old Table view and association/work-renaming/Move controls are retired from navigation; the
-registry, existing associations and migration APIs remain intact. Legacy `page=table` links open
-Graph. Open in Workspace resolves the selected node's verified current target without focusing
-Herdr or sending input.
+Graph shows **Repository → Terminal**. One neutral grey repository hub joins checkouts and
+workspaces on different machines only when their owning bridges report the same canonical Git
+remote. Workspace and worktree are navigation context, not graph node levels. Each pane appears
+once as a terminal; a single-terminal tab keeps its native name and split terminals keep their
+individual names. The inspector and complete SVG title retain machine, workspace, branch,
+checkout path and session context. A terminal outside Git has a machine-scoped **Folder** hub.
+Empty workspaces do not add nodes. Ovis's native Agents section remains the single agent list.
+Legacy `page=table` links open Graph; the registry and migration APIs remain intact.
 
-Colours identify node types: blue for workspace, orange for worktree, green for terminal.
-These hues stay consistent across palettes, with darker shades in light mode. The legend sits below the
-canvas and can be collapsed; that preference survives reloads.
-Workspace and worktree halos reflect any working terminal beneath them, including child worktrees,
-regardless of the selected tab. Done and Input badges remain visible alongside that activity;
-the Working filter also includes these active parents.
-Working nodes have a soft rotating halo around their edge instead of a small spinner icon. It
-keeps the node's type hue, with a lighter halo in dark themes and a darker one in light themes.
-The glow overlaps the node, and its thickness stays visible when zoomed out. The disc slowly dims
-and brightens while work runs. When work stops, both effects disappear.
-Reduced motion stops both animations; stale or disconnected working reports also stay static. Other
-statuses keep their distinct icons, and status remains available in each node's accessible name.
-Each legend entry also toggles its node type. Hidden entries stay faded and crossed out, ready
-to restore with another click, tap, Enter or Space. Hiding a container connects visible descendants to
-their nearest visible evidenced ancestor: hiding Worktree while Workspace and Terminal remain visible
-shows workspace → terminal. Hidden terminals project recorded communication and delegation onto their
-visible checkout, or their workspace when checkouts are hidden too. Plain-folder endpoints use their
-workspace; orphan worktrees have no invented workspace ancestor. With only terminals visible, original
-terminal links remain. With every type hidden, no nodes or links remain.
-Projected links preserve receipt counts, latest activity, sources, relation kind and direction.
-Links collapsing to the same node disappear. Search, status and machine exclusions cannot revive a
-terminal's receipts through a matching container; hidden matching terminals still retain visible ancestor
-context. Focusing a collapsed container retains its directly connected projected neighbours.
-The projected graph drives layout and distinct-neighbour sizing while preserving the viewport.
-Type visibility survives reloads and is included in copied graph links.
+Repository hubs always use `--graph-repository`, a neutral grey with light/dark contrast, without
+status icons or activity halos. Terminals use the sidebar's `paneStatus` and semantic theme tokens:
+RUN uses `--status-working`, DONE uses `--status-done` and a tick, INPUT uses `--status-blocked`
+and a question indicator. BG uses the working colour with a static background-wait indicator,
+not INPUT. READY, unknown, stale, disconnected and unavailable sources are muted. Theme variations
+remain the sidebar's. Only a live working terminal has the rotating half-ring and breathing halo;
+reduced motion stops both animations. Status and freshness remain in accessible names.
 
-All three node types start visible. **Open in Workspace** selects the exact verified live
-terminal; a disconnected, restored or replaced occupant cannot inherit an old action. Adding or
-removing another split does not change an existing terminal's identity. Communication and
-delegation retain the actual terminal endpoints underneath every visibility projection, including two terminals inside the same tab.
-Collapsing links never grants a terminal action or turns unresolved historical activity into a drawable link.
+Both node types start visible. The collapsible legend toggles Repository and Terminal. Hidden
+terminal communication/delegation projects to its repository or folder; original terminal endpoint
+eligibility still controls search, status and machine filtering. Projection preserves direction,
+kind, receipt counts, newest activity and provenance. Collapsed self-links disappear. With only
+terminals visible, original relationships remain, including within one repository or tab. With both
+types hidden the graph is empty. Historical endpoints stay in activity details without invented
+nodes or terminal actions. Focus on a hidden terminal retains only its own projected receipts.
 
-Short, strong hierarchy links keep each workspace's worktrees and terminals together, while weaker
-communication links connect clusters. Node radius counts distinct visible connections of every type: hierarchy, communication and
-delegation. More direct terminals and worktrees make their parent hub larger. Folio-style capped
-square-root growth makes a five-connection hub roughly three times the area of a one-connection
-node at the same zoom. Hidden connections shrink their nodes; large hubs have a size cap.
-Names use native
-workspace/tab labels and launcher metadata without reading transcripts or inferring session
-identity. Dragging moves linked neighbours; the simulation stops when settled. Fit/Reset are
-intentional framing actions, and polling does not move an idle graph.
+Hierarchy links keep repositories and their terminals together; weaker relationship links connect
+clusters. Radius counts distinct visible neighbours of every link kind. Parallel receipts, replies
+and event counts never inflate it. The Folio-style capped square-root curve makes a five-link hub
+about three times the area of a one-link terminal. Dragging pulls connected neighbours, and the
+simulation stops when settled. Status polls preserve positions and viewport; Fit/Reset explicitly
+reframe it. **Group by machine** draws labelled clouds and groups terminals only. Shared hubs
+have no machine owner and are excluded from clouds and machine lanes. Machine filtering retains
+the hubs of the included terminals. Fit includes cloud bounds.
 
-**Group by machine** also draws a translucent, named cloud behind each machine's visible nodes.
-The clouds follow the nodes as they move, while node colours identify their types.
-Filtering updates each cloud and removes empty ones; Fit includes the cloud boundaries. Clouds
-do not block selection, dragging or panning. Dragging terminals across a cluster can overlap clouds
-without changing which machine a terminal belongs to.
+## Repository identity evidence
 
-The retained registry gives each logical session its own ID and a current execution ID. An execution records the machine,
-Herdr lifetime, pane, agent kind and native session ID. A later execution can belong to the same
-logical session on another machine; its earlier executions remain in the registry. This records an
-association only. It does not transfer or restore anything.
+`verifyGraphSnapshot` adds optional `graph_repositories` to on-demand graph source snapshots
+(`/api/session?flock=1` and `/api/flock?sources=1`). Each entry binds `pane_id`, `terminal_id` and
+`cwd` to the actual Git `common_directory`, checkout `root` and sanitized canonical `remote`.
+The bridge reads local Git using the existing bounded read-only subprocess runner, four directories
+at a time with a two-second total budget (one second per subprocess), and discards results when the daemon lifetime or pane location changes during the read.
+Budget exhaustion returns only the evidence already read; unavailable directories gain no remote
+identity. It neither contacts a remote nor writes identity evidence to the work registry. Raw URLs and their
+credentials never enter graph responses, IDs, UI, browser storage or logs.
 
-A registered execution is live only when its entire binding matches the connected machine's roster.
-Disconnected, missing and replaced sources remain visible without a terminal target. An unadopted
-pane whose bridge cannot prove its Herdr lifetime or whose agent reports a path instead of an ID
-shows **Identity unavailable**. Native Workspace/Agents controls remain available. Graph opening
-requires either exact current Herdr occupancy or independently verified native ownership.
-Repository and branch metadata appear only when known. Live branch labels reuse the sidebar's
-Git reader. A recorded checkout is physical metadata, not an inferred global repository identity
-or a promise that it still exists on disk. Graph uses exact machine, daemon, workspace, tab and individual pane/terminal occupancy to distinguish terminals. Agent
-occupant identity also guards navigation; metadata names never authorize a target. Old selections
-do not follow a logical session to a different tab after a move.
+Selection policy: read effective Git configuration, including includes; use `origin` when present,
+otherwise require exactly one remote URL. `git remote get-url --all` expands configured fetch URL
+rewrites before canonicalization, without network access. Duplicate
+origin URLs, ambiguous remotes, unsupported local/file remotes and read failures fall back locally.
+SSH SCP syntax and `ssh://` normalize host case, trailing slash and default ports.
+Only documented public-forge namespaces strip `.git`; generic hosts retain it as part of the path.
+Ambiguous repeated `.git` suffixes on public forges fall back locally.
+Only the conventional `git` SSH account is supported. GitHub.com, GitLab.com and Bitbucket.org
+map that account at the default port to their HTTPS repository namespace. On other hosts, SSH
+retains its transport and relative (`~/`) versus absolute path; it never collapses into HTTPS.
+Other SSH accounts and password-bearing SSH URLs fall back locally. HTTPS credentials are stripped
+for those public forges; credential-bearing HTTPS on other hosts falls back locally because an
+account may select a different namespace. Nondefault-port services retain generic-host semantics.
+Nondefault ports retain their transport and port. Repository path case is preserved; host aliases,
+redirects and similarly named repositories are not guessed equivalent. Hosts, owners,
+repository paths and forks remain distinct. Query/fragment URLs are rejected. This identity means
+configured remote equivalence, not proof of server-side redirects or repository ownership.
 
-Workspace focus follows the sidebar’s native worktree grouping, including its nearest preceding
-main-checkout workspace rule. A workspace filter includes its terminals and the terminals in its
-nested worktrees. A worktree’s sole numbered tab uses the sidebar workspace name; several or
-explicitly named worktree tabs include workspace context. Hub opening chooses only a verified
-current terminal belonging to that hub; it never substitutes a terminal from a child worktree. Empty hubs
-have no terminal action. Hub identity includes its machine, daemon, workspace and pane/terminal set,
-so an old selection cannot open a replacement terminal. Main-checkout identity also includes its evidenced checkout path and repository key.
-The added hierarchy preserves existing IDs and v3 storage meanings; older stores remain untouched.
+Without a canonical remote, a verified common Git directory is scoped to its machine. Older bridges
+without discovery can use native `repo_key` only locally and only while cwd remains within its
+checkout path. A local `.git` path is never a global key. Current discovery overrides older workspace
+metadata: a directory found outside Git becomes a Folder hub. Folder identity is always scoped to
+its machine and exact path. Older peers can therefore remain separate until upgraded.
 
-Graph preferences live in the browser's `ovis:graph:v3` localStorage key, owned by
-`graphState.ts` and `useGraphState.ts`: `{ version: 3, layout: "force", selected, filters,
-groupMachine, legendOpen, positions, viewport }`. `filters.hiddenKinds` contains workspace,
-worktree or terminal. Current pages read and write v3 only. On the first read without v3, supported
-v2 (or v1 when v2 is absent) search, status, machine, completion and communication filters,
-grouping and legend disclosure are derived passively. Coordinates and viewport reset once for the
-new topology. Retired tab/pane selections and focus are cleared; workspace focus remains.
+## Navigation and state
 
-Old hidden-tab preferences become hidden terminals; the old optional pane visibility never hides
-terminals. The v1/v2 graph records, `ovis:graph:kinds:v1` and `ovis:graph:panes:v1` are left unchanged.
-Older open pages keep reading/writing those stores, cannot erase v3, and rollback reads its original
-data. Unknown versions, unknown layouts and malformed records are never overwritten. No server
-registry or HTTP/WS contract carries these browser preferences. Copied URLs use `gk=terminal` for
-hidden terminals; old `gk=tab` maps to terminal and `gp` is retired without changing Ovis pane selection.
+**Open in Workspace** exists only on terminals. A shared hub never selects a machine or an
+arbitrary child. The action refreshes inventory and resolves the exact current machine, daemon,
+workspace, tab, pane/terminal and agent occupant binding. Disconnected, restored, replaced, stale,
+unsupported and historical targets cannot inherit an old action. Shell terminals remain openable
+independently of unverified sibling agents. Browser selection neither focuses Herdr nor sends input.
+Renames and sibling changes preserve terminal identity. Legacy workspace focus links retain their
+native worktree-group membership without turning shared hubs into workspace descendants.
+
+The retained registry records logical sessions and executions, including historical executions after
+intentional moves. A registered execution is live only when its entire binding matches the roster.
+Graph opening requires exact current Herdr occupancy or independently verified native ownership;
+a raw native-session hint alone is insufficient. Repository identity never supplies action authority.
+Live branch context continues to reuse the sidebar's reader.
+
+Graph preferences use the isolated `ovis:graph:v4` key:
+`{ version: 4, layout: "force", selected, filters, groupMachine, legendOpen, positions, viewport }`.
+`filters.hiddenKinds` contains `repository` or `terminal`. Current pages read/write v4 only. On the
+first read without v4, the newest available supported v3/v2/v1 store supplies compatible filters,
+grouping, legend disclosure, terminal selection and legacy workspace focus. Layout coordinates and
+viewport reset once for the new topology. Removed workspace/worktree node selections and visibility
+settings are discarded; old hidden tabs map to hidden terminals. Optional old pane visibility is
+ignored. Older/future/malformed stores are never rewritten. Unknown v4 versions/layouts and damaged
+records also block writes to their own key. Old open pages and rollback retain their original bytes.
+Copied links accept old `gk=tab`, ignore removed kinds and retire `gp`, preserving Ovis pane/view
+fields. Browser-local state is not part of the server registry.
 
 Graph was previously named Flock. Its modules, types and navigation now use Graph. The stored
 `flock.json` filename, `/api/flock` route, `flock=1` inventory query, `flock_*` snapshot fields and

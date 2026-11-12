@@ -19,7 +19,7 @@ describe("theme contrast", () => {
   for (const entry of SUPPORTED_ENTRIES) {
     it(`${entry.id}/${entry.mode} meets the WCAG AA floors`, () => {
       const colors = resolveEntry(blocks, entry.id, entry.mode).resolved;
-      const below = [...CONTRAST_PAIRS, ...["graph-workspace", "graph-worktree", "graph-tab", "graph-pane"].flatMap((fg) => ["bg", "bg-panel"].map((bg) => ({ fg, bg, floor: 3 }))), ...(entry.mode === "light" ? LIGHT_ANSI_PAIRS : [])].flatMap(({ fg, bg, floor }) => {
+      const below = [...CONTRAST_PAIRS, ...["graph-repository"].flatMap((fg) => ["bg", "bg-panel"].map((bg) => ({ fg, bg, floor: 3 }))), ...(entry.mode === "light" ? LIGHT_ANSI_PAIRS : [])].flatMap(({ fg, bg, floor }) => {
         const ratio = contrastRatio(colors[`--${fg}`] ?? "", colors[`--${bg}`] ?? "");
         // a colour that is not plain hex (an alpha tint) cannot be measured here: it fails rather than passing unread
         if (ratio === null) return [`${fg} on ${bg}: ${colors[`--${fg}`]} / ${colors[`--${bg}`]} is not #rrggbb`];

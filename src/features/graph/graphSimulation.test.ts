@@ -2,12 +2,10 @@ import { expect, test } from "bun:test";
 import { graphSimulation, simulationPositions } from "./graphSimulation.ts";
 import { projectGraph, type GraphData } from "./graphModel.ts";
 const data: GraphData = { nodes: [
-  { id: "repo", kind: "workspace", label: "Orchard" },
-  { id: "checkout", kind: "worktree", label: "Branches" },
+  { id: "repo", kind: "repository", label: "Orchard" },
   { id: "agent", kind: "terminal", label: "Prune" },
 ], edges: [
-  { id: "a", source: "checkout", target: "repo", kind: "worktree-in-workspace", evidence: "inventory" },
-  { id: "b", source: "agent", target: "checkout", kind: "terminal-in-worktree", evidence: "inventory" },
+  { id: "b", source: "agent", target: "repo", kind: "terminal-in-repository", evidence: "inventory" },
 ] };
 test("a dragged node pulls its linked neighbours and the released graph settles", () => {
   const force = graphSimulation(data, {}).tick(300);
@@ -35,12 +33,10 @@ test("parallel events do not multiply physical springs and reset is reproducible
 test("workspace and worktree links cluster their tabs without repository-colour forces", () => {
   const nodes: GraphData["nodes"][number][] = [], edges: GraphData["edges"][number][] = [];
   for (const group of ["left", "right"]) {
-    nodes.push({ id: group, kind: "workspace", label: group });
-    nodes.push({ id: `${group}-branch`, kind: "worktree", label: "Feature" });
-    edges.push({ id: `${group}-branch`, source: `${group}-branch`, target: group, kind: "worktree-in-workspace", evidence: "Herdr" });
+    nodes.push({ id: group, kind: "repository", label: group });
     for (let i = 0; i < 6; i++) {
       const id = `${group}-${i}`; nodes.push({ id, kind: "terminal", label: id });
-      edges.push({ id, source: id, target: i % 2 ? `${group}-branch` : group, kind: i % 2 ? "terminal-in-worktree" : "terminal-in-workspace", evidence: "Herdr" });
+      edges.push({ id, source: id, target: group, kind: "terminal-in-repository", evidence: "Herdr" });
     }
   }
   edges.push({ id: "message", source: "left-0", target: "right-0", kind: "communication", evidence: "receipt" });
@@ -56,10 +52,11 @@ test("workspace and worktree links cluster their tabs without repository-colour 
 });
 
 
-test("hidden worktrees give workspace-terminal containment the same physical spring", () => {
-  const projected = projectGraph(data, { search: "", status: "", machine: "", focus: "", showCompleted: true, hiddenKinds: ["worktree"] });
-  const expected: GraphData = { nodes: [data.nodes[0]!, data.nodes[2]!], edges: [{ id: "direct", source: "agent", target: "repo", kind: "terminal-in-workspace", evidence: "Herdr" }] };
-  const actual = graphSimulation(projected, {}).tick(300), direct = graphSimulation(expected, {}).tick(300);
-  expect(simulationPositions(actual.nodes())).toEqual(simulationPositions(direct.nodes()));
-  actual.stop(); direct.stop();
+test("hidden repositories leave terminal physics finite without phantom springs", () => {
+  const projected = projectGraph(data, { search: "", status: "", machine: "", focus: "", showCompleted: true, hiddenKinds: ["repository"] });
+  expect(projected.edges).toEqual([]);
+  const force = graphSimulation(projected, {}, true).tick(300);
+  expect(force.nodes()).toHaveLength(1);
+  expect(force.nodes().every((node) => Number.isFinite(node.x) && Number.isFinite(node.y))).toBe(true);
+  force.stop();
 });

@@ -34,6 +34,7 @@
 .graph-status-blocked .graph-status-icon { color: var(--status-blocked); }
 .graph-status-done .graph-status-icon { color: var(--status-done); }
 .graph-stale .graph-node-disc { stroke-dasharray: 4 3; }
+.graph-stale .graph-status-icon { color: var(--text-dim); }
 .graph-working-halo { pointer-events: none; fill: none; stroke: color-mix(in srgb, var(--node-colour) 40%, var(--text-strong)); }
 .graph-working-glow { stroke-width: 10; opacity: 0.4; filter: blur(var(--graph-glow-blur)); }
 .graph-working-arc { stroke-width: 3; stroke-linecap: round; opacity: 0.95; transform-box: view-box; transform-origin: 0 0; }

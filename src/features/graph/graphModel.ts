@@ -1,8 +1,8 @@
 import type { KnownStatus } from "../../lib/status.ts";
 
-export type GraphKind = "workspace" | "worktree" | "terminal";
+export type GraphKind = "repository" | "terminal";
 export type GraphStatus = KnownStatus;
-export type GraphRelation = "worktree-in-workspace" | "terminal-in-workspace" | "terminal-in-worktree" | "delegation" | "communication";
+export type GraphRelation = "terminal-in-repository" | "delegation" | "communication";
 export const DEFAULT_HIDDEN_KINDS: readonly GraphKind[] = [];
 
 export interface GraphNode {
@@ -19,7 +19,7 @@ export interface GraphNode {
   repositoryName?: string;
   activity?: readonly GraphActivity[];
 }
-export const graphNodeIsWorking = (node: GraphNode): boolean => node.status === "working" || node.hasWorkingTerminals === true;
+export const graphNodeIsWorking = (node: GraphNode): boolean => node.kind === "terminal" && (!node.freshness || node.freshness === "live") && node.status === "working";
 export interface GraphEdge {
   id: string;
   source: string;
@@ -45,7 +45,7 @@ export interface GraphGroup { id: string; label: string; machineId: string; node
 export interface GraphData { nodes: readonly GraphNode[]; edges: readonly GraphEdge[]; groups?: readonly GraphGroup[] }
 export interface GraphFilters { search: string; status: string; machine: string; focus: string; showCompleted: boolean; communication?: "recent" | "all" | "none"; hiddenKinds?: readonly GraphKind[] }
 
-const RELATIONS = new Set<GraphRelation>(["worktree-in-workspace", "terminal-in-workspace", "terminal-in-worktree", "delegation", "communication"]);
+const RELATIONS = new Set<GraphRelation>(["terminal-in-repository", "delegation", "communication"]);
 
 /** Type visibility projects established ancestry; other filters still select original endpoints. */
 export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.now()) {
@@ -125,9 +125,7 @@ export function projectGraph(data: GraphData, filters: GraphFilters, now = Date.
       if (!visible.has(edge.source)) continue;
       const target = represent(edge.target);
       if (!target || target === edge.source) continue;
-      const kind = byId.get(edge.source)!.kind === "worktree" ? "worktree-in-workspace"
-        : byId.get(target)!.kind === "worktree" ? "terminal-in-worktree" : "terminal-in-workspace";
-      projected.set(edge.id, { ...edge, target, kind });
+      projected.set(edge.id, { ...edge, target });
       continue;
     }
     if (focused && (!focused.has(edge.source) || !focused.has(edge.target))) continue;
