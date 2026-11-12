@@ -1,0 +1,95 @@
+{
+  "revision": "36ecd68499a3960a825860496004225e6bec5dde",
+  "duration": 23.9,
+  "bytes": 524863,
+  "sha256": "657b81131dfa8bb2fe1638935541ba719b58f0d2c15c1bff6c28b697aa839677",
+  "width": 1920,
+  "height": 1080,
+  "codec": "H.264",
+  "pixel_format": "yuv420p",
+  "fps": 30,
+  "fast_start": true,
+  "audio": false,
+  "fixture": "Fictional agent traffic; real unmodified Ovis client. Peer message prepared, published and verified by production message-sources functions; native transcript, delivery and source resolution use isolated demo fixtures.",
+  "chapters": [
+    {
+      "at": 0,
+      "title": "Keep the sender with the message",
+      "subtitle": "Coordinator is waiting for Worker\u2019s API review.",
+      "mobile": false
+    },
+    {
+      "at": 2.6429998874664307,
+      "title": "See who sent the update",
+      "subtitle": "Worker\u2019s report appears with its name and a link back to its terminal.",
+      "mobile": false
+    },
+    {
+      "at": 7.241999864578247,
+      "title": "Open the source",
+      "subtitle": "One action takes you to the terminal that sent the message.",
+      "mobile": false
+    },
+    {
+      "at": 11.825999975204468,
+      "title": "Back at the source",
+      "subtitle": "Worker\u2019s own conversation is open, ready for review or a follow-up.",
+      "mobile": false
+    },
+    {
+      "at": 16.693666569391887,
+      "title": "Source links work on mobile too",
+      "subtitle": "The same sender label and source action, in a phone-sized browser.",
+      "mobile": true
+    },
+    {
+      "at": 19.384666554133098,
+      "title": "Tap to return to Worker",
+      "subtitle": "One action takes you to the terminal that sent the message.",
+      "mobile": true
+    },
+    {
+      "at": 21.579666725794475,
+      "title": "Back at the source",
+      "subtitle": "Worker\u2019s own conversation is open, ready for review or a follow-up.",
+      "mobile": true
+    }
+  ],
+  "checks": [
+    {
+      "sourcePane": "w1C:p1",
+      "receiverPane": "w1D:p1",
+      "noInputOrHerdrFocus": true,
+      "noOverflow": true,
+      "lookups": [
+        "receipt",
+        "resolve",
+        "resolve"
+      ]
+    },
+    {
+      "sourcePane": "w1C:p1",
+      "receiverPane": "w1D:p1",
+      "noInputOrHerdrFocus": true,
+      "noOverflow": true,
+      "lookups": [
+        "receipt",
+        "resolve",
+        "resolve"
+      ]
+    }
+  ],
+  "errors": [],
+  "playback": {
+    "duration": 23.9,
+    "currentTime": 23.9,
+    "ended": true,
+    "error": null,
+    "width": 1920,
+    "height": 1080,
+    "playbackRate": 1,
+    "errors": [],
+    "review": "Normal-speed Chrome playback completed; chapter screenshots retained for visual review."
+  },
+  "visual_review": "Reviewed exported desktop receipt, source terminal, source chat, mobile receipt, terminal and chat scenes. Captions remain outside the application viewport."
+}
