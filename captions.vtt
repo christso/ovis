@@ -1,36 +1,41 @@
 WEBVTT
 
 1
-00:00:00.000 --> 00:00:02.643
+00:00:00.000 --> 00:00:02.668
 Keep the sender with the message
-Coordinator is waiting for Worker’s API review.
+A coordinator is waiting for the graph agent’s report.
 
 2
-00:00:02.643 --> 00:00:07.242
+00:00:02.668 --> 00:00:07.328
 See who sent the update
-Worker’s report appears with its name and a link back to its terminal.
+Graph worktree projection’s report appears with its name and a link back to its terminal.
 
 3
-00:00:07.242 --> 00:00:11.826
+00:00:07.328 --> 00:00:11.945
 Open the source
 One action takes you to the terminal that sent the message.
 
 4
-00:00:11.826 --> 00:00:15.367
-Back at the source
-Worker’s own conversation is open, ready for review or a follow-up.
+00:00:11.945 --> 00:00:14.945
+Attribution works both ways
+The original request identifies Release coordinator and links back to its terminal.
 
 5
-00:00:16.694 --> 00:00:19.385
+00:00:14.945 --> 00:00:19.300
+Follow the request back
+Click Release coordinator’s source link to return to the coordinating agent.
+
+6
+00:00:20.652 --> 00:00:23.341
 Source links work on mobile too
 The same sender label and source action, in a phone-sized browser.
 
-6
-00:00:19.385 --> 00:00:21.580
-Tap to return to Worker
+7
+00:00:23.341 --> 00:00:25.585
+Tap to return to Graph worktree projection
 One action takes you to the terminal that sent the message.
 
-7
-00:00:21.580 --> 00:00:23.900
-Back at the source
-Worker’s own conversation is open, ready for review or a follow-up.
+8
+00:00:25.585 --> 00:00:27.900
+Attribution works both ways
+The original request identifies Release coordinator and links back to its terminal.

@@ -1,8 +1,8 @@
 {
-  "revision": "36ecd68499a3960a825860496004225e6bec5dde",
-  "duration": 23.9,
-  "bytes": 524863,
-  "sha256": "657b81131dfa8bb2fe1638935541ba719b58f0d2c15c1bff6c28b697aa839677",
+  "revision": "e4517cee6afd1813f9d0b96b3609fdd54fd42a11",
+  "duration": 27.9,
+  "bytes": 815499,
+  "sha256": "cc78105e65b9c498beebe41f77395705407173e9169b7010716387788e6f0a09",
   "width": 1920,
   "height": 1080,
   "codec": "H.264",
@@ -15,43 +15,49 @@
     {
       "at": 0,
       "title": "Keep the sender with the message",
-      "subtitle": "Coordinator is waiting for Worker\u2019s API review.",
+      "subtitle": "A coordinator is waiting for the graph agent\u2019s report.",
       "mobile": false
     },
     {
-      "at": 2.6429998874664307,
+      "at": 2.6679999828338623,
       "title": "See who sent the update",
-      "subtitle": "Worker\u2019s report appears with its name and a link back to its terminal.",
+      "subtitle": "Graph worktree projection\u2019s report appears with its name and a link back to its terminal.",
       "mobile": false
     },
     {
-      "at": 7.241999864578247,
+      "at": 7.328000068664551,
       "title": "Open the source",
       "subtitle": "One action takes you to the terminal that sent the message.",
       "mobile": false
     },
     {
-      "at": 11.825999975204468,
-      "title": "Back at the source",
-      "subtitle": "Worker\u2019s own conversation is open, ready for review or a follow-up.",
+      "at": 11.944999933242798,
+      "title": "Attribution works both ways",
+      "subtitle": "The original request identifies Release coordinator and links back to its terminal.",
       "mobile": false
     },
     {
-      "at": 16.693666569391887,
+      "at": 14.944999933242798,
+      "title": "Follow the request back",
+      "subtitle": "Click Release coordinator\u2019s source link to return to the coordinating agent.",
+      "mobile": false
+    },
+    {
+      "at": 20.651999998092652,
       "title": "Source links work on mobile too",
       "subtitle": "The same sender label and source action, in a phone-sized browser.",
       "mobile": true
     },
     {
-      "at": 19.384666554133098,
-      "title": "Tap to return to Worker",
+      "at": 23.34100012779236,
+      "title": "Tap to return to Graph worktree projection",
       "subtitle": "One action takes you to the terminal that sent the message.",
       "mobile": true
     },
     {
-      "at": 21.579666725794475,
-      "title": "Back at the source",
-      "subtitle": "Worker\u2019s own conversation is open, ready for review or a follow-up.",
+      "at": 25.58500008583069,
+      "title": "Attribution works both ways",
+      "subtitle": "The original request identifies Release coordinator and links back to its terminal.",
       "mobile": true
     }
   ],
@@ -59,30 +65,61 @@
     {
       "sourcePane": "w1C:p1",
       "receiverPane": "w1D:p1",
+      "attributionBothDirections": true,
+      "sourceIcons": [
+        "codex",
+        "omp"
+      ],
+      "displayNames": [
+        "Graph worktree projection",
+        "Release coordinator"
+      ],
+      "reverseClickVerified": true,
       "noInputOrHerdrFocus": true,
       "noOverflow": true,
       "lookups": [
-        "receipt",
-        "resolve",
-        "resolve"
+        "receipt:Graph worktree projection",
+        "resolve:Graph worktree projection",
+        "resolve:Graph worktree projection",
+        "receipt:Release coordinator",
+        "resolve:Release coordinator",
+        "resolve:Release coordinator"
       ]
     },
     {
       "sourcePane": "w1C:p1",
       "receiverPane": "w1D:p1",
+      "attributionBothDirections": true,
+      "sourceIcons": [
+        "codex",
+        "omp"
+      ],
+      "displayNames": [
+        "Graph worktree projection",
+        "Release coordinator"
+      ],
+      "reverseClickVerified": false,
       "noInputOrHerdrFocus": true,
       "noOverflow": true,
       "lookups": [
-        "receipt",
-        "resolve",
-        "resolve"
+        "receipt:Graph worktree projection",
+        "resolve:Graph worktree projection",
+        "resolve:Graph worktree projection"
       ]
     }
   ],
   "errors": [],
+  "captured_revision": "b7deeb208c71d420ddc683c5af2327eb11980d56",
+  "revision_equivalence": {
+    "changed_files": [
+      "server/message-sources.test.ts"
+    ],
+    "production_source_identical": true,
+    "description": "Only a legacy-fixture test expected-value type assertion changed after capture; production source and UI are identical."
+  },
   "playback": {
-    "duration": 23.9,
-    "currentTime": 23.9,
+    "duration": 27.9,
+    "currentTime": 27.9,
     "ended": true,
     "error": null,
     "width": 1920,
@@ -91,5 +128,5 @@
     "errors": [],
     "review": "Normal-speed Chrome playback completed; chapter screenshots retained for visual review."
   },
-  "visual_review": "Reviewed exported desktop receipt, source terminal, source chat, mobile receipt, terminal and chat scenes. Captions remain outside the application viewport."
+  "visual_review": "Reviewed the exported desktop sender marker, reverse request marker, both source terminals, and mobile markers/navigation; captions remain outside the application viewport."
 }
