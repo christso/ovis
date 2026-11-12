@@ -96,11 +96,8 @@
 
 .graph-canvas { position: relative; flex: 1; min-height: 0; }
 .graph-legend { flex-shrink: 0; padding: 0 12px; border-top: 1px solid var(--border); background: var(--bg-panel); }
-.graph-legend-toggle { display: flex; align-items: center; gap: 5px; min-height: 32px; padding: 4px 0; border: 0; color: var(--text-dim); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
-.graph-legend-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
-.graph-kind-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; max-height: 64px; overflow-y: auto; padding-bottom: 8px; font-size: 12px; color: var(--text-dim); }
-.graph-kind-legend[hidden] { display: none; }
-@media (max-width: 700px) { .graph-canvas { min-height: 220px; } .graph-legend-toggle { min-height: 44px; } }
+.graph-kind-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 4px 0; font-size: 12px; color: var(--text-dim); }
+@media (max-width: 700px) { .graph-canvas { min-height: 220px; } }
 .graph-kind-legend button { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; min-height: 32px; padding: 0 4px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
 .graph-kind-legend button:hover { background: var(--bg-hover); }
 .graph-kind-legend button[aria-pressed="false"] { opacity: 0.4; text-decoration: line-through; }

@@ -17,7 +17,8 @@ not INPUT. READY, unknown, stale, disconnected and unavailable sources are muted
 remain the sidebar's. Only a live working terminal has the rotating half-ring and breathing halo;
 reduced motion stops both animations. Status and freshness remain in accessible names.
 
-Both node types start visible. The collapsible legend toggles Repository and Terminal. Hidden
+Both node types start visible. The legend always shows the Repository and Terminal toggles in a
+compact row, without a disclosure control. An older collapsed-legend preference cannot hide them. Hidden
 terminal communication/delegation projects to its repository or folder; original terminal endpoint
 eligibility still controls search, status and machine filtering. Projection preserves direction,
 kind, receipt counts, newest activity and provenance. Collapsed self-links disappear. With only
@@ -92,7 +93,8 @@ first read without v4, the newest available supported v3/v2/v1 store supplies co
 grouping, legend disclosure, terminal selection and legacy workspace focus. Layout coordinates and
 viewport reset once for the new topology. Removed workspace/worktree node selections and visibility
 settings are discarded; old hidden tabs map to hidden terminals. Optional old pane visibility is
-ignored. Older/future/malformed stores are never rewritten. Unknown v4 versions/layouts and damaged
+ignored. `legendOpen` remains serialized for compatibility but no longer controls visibility.
+Older/future/malformed stores are never rewritten. Unknown v4 versions/layouts and damaged
 records also block writes to their own key. Old open pages and rollback retain their original bytes.
 Copied links accept old `gk=tab`, ignore removed kinds and retire `gp`, preserving Ovis pane/view
 fields. Browser-local state is not part of the server registry.

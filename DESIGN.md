@@ -5346,7 +5346,9 @@ motion reference in [Rakazo's BotAvatar](https://github.com/elie222/rakazo/blob/
 The ten-pixel glow, three-pixel arc and two-pixel gap retain their screen size while zooming.
 Reduced motion stops animation, and disconnected or unavailable sources have no active halo.
 
-The legend below the canvas toggles the two types with native pressed buttons. Hiding terminals
+The legend below the canvas always shows the two types as native pressed buttons, without a
+disclosure header. This keeps both filters visible and gives the saved header space to the graph.
+It follows the existing Folio type-filter reference; no external code or pixels are copied. Hiding terminals
 projects their recorded relationships to the repository or Folder hub, retaining counts, latest
 activity, sources, direction and kind. Intra-repository links remain between visible terminals;
 collapsed self-links disappear. Search/status/machine eligibility remains tied to original endpoints.
@@ -5378,6 +5380,7 @@ Graph state moves to the isolated `ovis:graph:v4` store. Supported older stores 
 filters, terminal selection, legacy workspace focus, grouping and legend disclosure forward, while
 coordinates reset once and removed kinds/selections are dropped. Older stores remain byte-for-byte
 unchanged for open older pages and rollback; unknown or malformed current stores are not overwritten.
+The retained `legendOpen` field has no effect on the always-visible legend.
 Copied links retain Ovis pane/view fields. Only settled layouts and completed gestures are persisted;
 simulation frames stay renderer-local. The storage details are in [docs/graph.md](docs/graph.md).
 
