@@ -6,7 +6,7 @@ import type { SeenFinish } from "./seen.ts";
 
 export const LOCAL_MACHINE = "local";
 export const BRIDGE_PROTOCOL = 1;
-export const REMOTE_BUNDLE_VERSION = "43";
+export const REMOTE_BUNDLE_VERSION = "46";
 export interface PaneTarget { machine_id: string; pane_id: string }
 export type MachineState = "connecting" | "connected" | "reconnecting" | "disconnected" | "error";
 export interface SshTarget {
@@ -14,6 +14,11 @@ export interface SshTarget {
   port?: number;
   identity_file?: string;
   session?: string;
+  herdr_socket?: string;
+  /** Socket identity of this account's own Ovis registration; reverified over SSH on every connection. */
+  own_ovis?: string;
+  /** Explicitly chosen on this PC; permits starting its configured session when absent. */
+  start_new_herdr?: boolean;
 }
 export interface Machine {
   /** Read-only identity inherited from the local herdr catalog. */
@@ -40,6 +45,11 @@ export interface Machine {
   error: string | null;
   /** Attention needed; windows_login retries, windows_start_failed waits for a startup decision. */
   action_required?: MachineAction | null;
+  /** herdr daemons found on the PC before this bridge was started */
+  found_herdr_sessions?: FoundHerdrSession[];
+  found_ovis?: FoundOvis[];
+  /** Runtime proved by the server's HerdrIdentity, absent until it answers. */
+  runtime?: "herdr" | "herdr-core";
   /** a bridge update running for this PC right now (in the background, or from its dialog) */
   updating?: MachineUpdate | null;
   /** the PC's latest roster as its server read it, with that read's order_epoch/read_seq copied unchanged */
@@ -256,6 +266,12 @@ export interface HerdrCoreLayout {
  * no name to change, and a helper whose parent is shown cannot go there (server/herdr-core/adapter.ts).
  */
 export const HC_OTHER_WORKSPACE_ID = "hc-other";
+/**
+ * A runtime a server can be asked to serve: herdr's TUI server, herdr-core (the Herdr app's core), or
+ * `alt-runtime`. `alt-runtime` is never picked from what the PC has, only by OVIS_RUNTIME or a choice
+ * saved from Settings, and a saved choice of it that cannot start falls back to herdr.
+ */
+export type RuntimeName = "herdr" | "herdr-core" | "alt-runtime";
 /** where this server's runtime came from: OVIS_RUNTIME, the choice saved from Settings, or what the PC has */
 export type RuntimeSource = "env" | "saved" | "detected";
 /** why Settings cannot switch the runtime: OVIS_RUNTIME decides, the server was not started by Ovis's launcher, or herdr-core is not served on this OS */
@@ -263,16 +279,17 @@ export type RuntimeLock = "env" | "unmanaged" | "platform";
 /**
  * Which runtime this server serves and what Settings may switch it to (GET /api/health, a driving
  * owner only). `switch_to`: the other runtime when this PC has it and nothing locks the choice.
- * `fallback`: the saved choice was herdr-core, but no herdr-core answered, so herdr is served.
+ * `fallback`: the saved choice was herdr-core, but no herdr-core answered (`no_herdr_core`), or it was
+ * alt-runtime, which could not start (`no_alt_runtime`), so herdr is served.
  */
 export interface HerdrRuntimeFacts {
-  serving: "herdr" | "herdr-core";
+  serving: RuntimeName;
   source: RuntimeSource;
   tui: { installed: boolean; running: boolean };
   app_installed: boolean;
-  switch_to: "herdr" | "herdr-core" | null;
+  switch_to: RuntimeName | null;
   locked: RuntimeLock | null;
-  fallback?: "no_herdr_core";
+  fallback?: "no_herdr_core" | "no_alt_runtime";
 }
 /**
  * What this PC has of herdr-core, the Herdr app's runtime, whichever runtime the server serves
@@ -286,7 +303,9 @@ export interface HerdrCoreFacts {
   session: string | null;
   running: boolean;
 }
-export type MachineAction = "connect" | "update_bridge" | "setup" | "bridge_conflict" | "windows_login" | "windows_start_failed";
+export interface FoundHerdrSession { socket_path: string; session?: string; label: string }
+export interface FoundOvis { socket_path: string; runtime: "herdr-core" }
+export type MachineAction = "connect" | "update_bridge" | "setup" | "bridge_conflict" | "windows_login" | "windows_start_failed" | "choose_herdr";
 /** `ovis`: the PC's own Ovis updates itself (Machine.remote_ovis); absent for a bridge this app installs */
 export interface MachineUpdate {
   /** what cancels it: DELETE /api/machines/:id/update (any update), or a setup job's cancel; empty while `queued` */
@@ -313,10 +332,13 @@ export interface MachineSettings {
    */
   set_aside?: string[];
 }
-export interface SetupRequest extends SshTarget { name?: string; machine_id?: string; update_remote?: boolean }
+export interface SetupRequest extends SshTarget { name?: string; machine_id?: string; update_remote?: boolean; start_new_herdr?: boolean }
 export type SetupPhase = "connecting" | "authentication" | "checking" | "approval" | "installing" | "starting" | "connected" | "failed" | "cancelled";
 export interface SetupChallenge { id: string; kind: "host_key" | "secret"; prompt: string }
 export interface SetupJob {
+  found_herdr_sessions?: FoundHerdrSession[];
+  found_ovis?: FoundOvis[];
+  runtime?: "herdr" | "herdr-core";
   id: string;
   machine_id: string;
   phase: SetupPhase;
@@ -385,6 +407,18 @@ export interface RelayPairingRequest {
   expires_at: string;
   /** absent from an older server: `pc` */
   intent?: PairingIntent;
+  /**
+   * Asked while this PC waited to be added to an account (docs/account.md, "Adding a PC"): the device
+   * added from shows no digits, its person types this PC's there. It follows the PC's window, so a
+   * device that came by an ordinary link meanwhile has it too and shows digits to compare.
+   * Absent from an older server, or when false.
+   */
+  local_only?: boolean;
+  /**
+   * How long the request still waits, counted by the PC when it told this list: a window counts down
+   * from when it heard, since its own clock need not match the PC's `expires_at`. Absent from an older server.
+   */
+  left_ms?: number;
 }
 /**
  * The same request as an account member connected through the relay sees it: three candidates
@@ -399,6 +433,12 @@ export interface RemotePairingRequest {
   expires_at: string;
   /** the new device's key (P-256 SPKI, base64url) from PAIR_REQUEST, bound by its commitment and the digits: what the approver signs an `add` for */
   key: string;
+  /**
+   * Another PC of the account vouched for by an admission (`pair-intent-pc-vouched`, docs/account.md "Adding a PC of
+   * your account"): its intent stays `pc`, so nothing is signed for it, and the approver shows who is asking and checks
+   * the admission as for an account join. Absent from an older server, or when false.
+   */
+  vouched?: true;
 }
 
 export type MachineEvent = { type: "machines"; machines: Machine[] } | { type: "machine-message"; machine_id: string; message: ServerMessage }
@@ -421,8 +461,10 @@ export interface RemotePairingsEvent { type: "remote-pairings"; pairings: Remote
  * serves. `accepted`: its launcher took it as its own past the startup check (absent when no launcher
  * runs it). All three absent from older servers.
  */
-export interface BridgeHealth { ok: true; auth: HealthAuth; bridge_protocol: number; security?: SecuritySummary; web_ui?: { boot_id: string }; runtime?: "herdr" | "herdr-core"; accepted?: boolean; /** a driving owner only, as on the whole answer */ herdr_runtime?: HerdrRuntimeFacts }
+export interface BridgeHealth { ok: true; auth: HealthAuth; bridge_protocol: number; security?: SecuritySummary; web_ui?: { boot_id: string }; runtime?: RuntimeName; accepted?: boolean; /** a driving owner only, as on the whole answer */ herdr_runtime?: HerdrRuntimeFacts }
 export interface BridgeIdentity {
+  /** Only on an authenticated /api/bridge?discover=herdr request. */
+  found_herdr_sessions?: FoundHerdrSession[];
   pid: number;
   managed_remote: boolean;
   bridge_protocol: number;

@@ -230,7 +230,7 @@ async function tapAnyway(key: Locator): Promise<void> {
 async function tabTo(page: Page): Promise<string[]> {
   await lineOf(page).focus();
   const stops: string[] = [];
-  for (let step = 0; step < 4; step++) {
+  for (let step = 0; step < 6; step++) {
     const stop = await page.evaluate(() => {
       const active = document.activeElement as HTMLElement | null;
       return { name: active?.getAttribute("aria-label") ?? active?.className ?? "none", control: active?.matches('.pane-frame:not(.is-hidden) .key-bar [data-key="keyboard"]:focus-visible') === true };
@@ -331,8 +331,9 @@ async function currentModeKeyboard(browser: Browser): Promise<Record<string, unk
       cycles.push({ mode, field, draft, before, shown, up, hidden, down, after, framesDuring: after.frames.slice(before.frames.length) });
       console.log(`PASS keyboard control, ${mode} mode: Show focuses ${field} in the tap, measured up/down state, Hide blurs it, grid ${before.grid.rows} rows kept, no input/keys/resize/take-over frame, mode and settings unchanged`);
     }
-    // a hardware keyboard reaches the control by Tab from the input line (past its Enter button) and
-    // presses it with Enter, the native button's own activation: Show focuses the line again
+    // a hardware keyboard reaches the control by Tab from the input line (past its Insert and Enter
+    // buttons, the Input line switch and Paste: the bar's app commands are Tab stops in both modes)
+    // and presses it with Enter, the native button's own activation: Show focuses the line again
     await switchMode(page, "line");
     await blur(page);
     const routeBefore = await control(page);
@@ -410,6 +411,13 @@ async function currentModeKeyboard(browser: Browser): Promise<Record<string, unk
     await page.locator(".pane-frame:not(.is-hidden) .xterm-helper-textarea").focus();
     const gridDown = await control(page);
     assert.deepEqual([gridDown.active, gridDown.keyboard, gridDown.label], ["xterm-helper-textarea", false, "Show keyboard"], "the grid focused with the keyboard measured down");
+    // the focused grid draws no outline around the terminal, as in 0.5.1 (#3550): the pane's head says which pane takes keys
+    const outline = await page.evaluate(() => {
+      const terminal = document.querySelector<HTMLElement>(".pane-frame:not(.is-hidden) .pane-terminal")!;
+      const style = (selector: string) => getComputedStyle(terminal.querySelector(selector) ?? terminal);
+      return [getComputedStyle(terminal).outlineStyle, style(".xterm").boxShadow, style(".xterm-viewport").boxShadow];
+    });
+    assert.deepEqual(outline, ["none", "none", "none"], "the focused terminal has no outline ring (#3550)");
     await switchMode(page, "line");
     await flushTimers(page);
     const lineAgain = await control(page);

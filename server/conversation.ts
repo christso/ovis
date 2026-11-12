@@ -36,7 +36,7 @@
 
 import { createHash, randomUUID, type Hash } from "node:crypto";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readSync, realpathSync, statSync, type Stats } from "node:fs";
-import { open as openHandle, type FileHandle } from "node:fs/promises";
+import { open as openHandle, readdir, readFile, type FileHandle } from "node:fs/promises";
 import { readStatuslineContext } from "./statusline.ts";
 import { transcriptReader, type TranscriptFile } from "./transcript-reader.ts";
 import nodePath, { basename, dirname, relative, sep, type PlatformPath } from "node:path";
@@ -52,7 +52,8 @@ import { awaited, CODEX_IMAGE_REF, CODEX_TOOL_IMAGE_REF, codexOutputPicture, cod
 import { type Held, heldOpenPlatform, openHeldDirectory } from "./held-open.ts";
 import { AmbiguousClaudeStore, claudeAttachSession, claudeProcessSession, claudeTranscriptFile, darwinProcess, defaultClaudeConfigDir, forgetClaudeSessionFile, forgetClaudeSessions, isClaudeProcess, jobClaude, processClaudeConfigDir, windowsShellClaude } from "./claude-store.ts";
 import { coreSocket } from "./herdr-core/discovery.ts";
-import { coreSocketPath, servingCore } from "./herdr-core/runtime.ts";
+import { coreSocketPath } from "./herdr-core/runtime.ts";
+import { capabilities } from "./runtime/capabilities.ts";
 import { forgetGjcPane, forgetGjcState, gjcPidUnderShell, gjcTranscriptFileForPane, isGjcProcess, storeRelative } from "./gjc-runtime.ts";
 import { isOmoProcess, omoProcessIdentity, omoSessionForPane, processEnviron } from "./omo.ts";
 import { processAlive, processStartedAtAsync } from "./process-start.ts";
@@ -63,12 +64,12 @@ import { cmdTranscriptPath } from "./cmd.ts";
 import { defaultDevinDbPath, DevinHistoryUnavailable, devinConversation, forgetDevinState } from "./devin.ts";
 import { forgetGrokState, GROK_IMAGE_REF, grokImage, grokProjection, grokToolOutput, parseGrokTranscript, GrokUnavailable } from "./grok.ts";
 import { resolveGrokStore } from "./grok-store.ts";
-import { AgyUnavailable, agyCatalogOffThread, agyToolOutput, forgetAgyState, parseAgyTranscript, withAgyHistory, type AgyProjection } from "./agy.ts";
-import { resolveAgyStore, sameAgyStore, type AgyStore } from "./agy-store.ts";
+import { AGY_CATALOG_BYTES, AgyUnavailable, agyCatalogOffThread, agyDatabasePath, agyToolOutput, forgetAgyState, parseAgyTranscript, withAgyHistory, type AgyProjection } from "./agy.ts";
+import { agyFreshSession, resolveAgyStore, sameAgyStore, type AgyStore } from "./agy-store.ts";
 import { FileBusyError } from "./file-pool.ts";
 import { museSession, museToolOutput, MuseUnavailable, parseMuseTranscript } from "./muse.ts";
 import { resolveMuseSession } from "./muse-store.ts";
-import { LettaUnavailable, lettaToolOutput, parseLettaTranscript } from "./letta.ts";
+import { LettaUnavailable, lettaToolOutputOffThread, parseLettaTranscript } from "./letta.ts";
 import { programName } from "./agent-identity.ts";
 import { lettaLocalSettings, resolveLettaTranscript } from "./letta-store.ts";
 import { followKimiUndo, kimiToolOutput, kimiTranscriptPathForPane, parseKimiTranscript, type KimiUndo } from "./kimi.ts";
@@ -78,7 +79,7 @@ import { COPILOT_IMAGE_REF, copilotImage, copilotOffsetOutput, copilotOutput, co
 import { copilotApiTranscript, copilotExplicitResume, copilotHandoffSession, copilotProcessSession, copilotTranscriptFile, copilotUnwrittenSession, openCopilotFile, readCopilotProcessSession } from "./copilot-store.ts";
 import { forgetCopilotForeground, readCopilotForeground } from "./copilot-foreground.ts";
 import { claudeSetting, parseConversationMetadata } from "./conversation-metadata.ts";
-import { answerVersion, bindFile, boundSteps, checkBoundFile, ConversationNotStarted, ConversationReadPending, ConversationUnavailable, copilotRecoverable, openBound, readBound, type ConversationPage, HistoryChanged, type RecognizedConversation, type StreamSource, TRANSCRIPT_WINDOW_BYTES } from "./conversation-shared.ts";
+import { answerVersion, bindFile, boundSteps, checkBoundFile, ConversationNotStarted, ConversationReadPending, ConversationUnavailable, copilotRecoverable, type FileIdentity, openBound, readBound, type ConversationPage, HistoryChanged, type RecognizedConversation, type StreamSource, TRANSCRIPT_WINDOW_BYTES } from "./conversation-shared.ts";
 import { forgetHermesTranscriptState, hermesConversationPage, hermesToolOutput, hermesTranscriptForPane } from "./hermes.ts";
 
 import { createOmpTranscriptParser, isContextClear, MAX_TURNS, omoTaskResults, parseOmpTranscript, PI_IMAGE_REF, PI_PROMPT_IMAGE_REF, piImageBlock, piMessage, piNotice, piPromptImages, piResults, type TranscriptParser } from "./transcript-records.ts";
@@ -1286,12 +1287,12 @@ function parseTurns(source: RecognizedConversation["source"], path: string, text
       : parseOmpTranscript(text, Infinity, ompReading(source, path, taskTitles));
 }
 
-/** How the omp record fold reads a source, the same for a one-shot parse and a live one: pi keeps a
- * picture inline and omp in its blob store, and the image endpoint answers both; omo and gjc are read
- * the same way but would carry image refs nothing answers, so they name none. gjc's tool parts carry
- * their call ids, which the chat matches gjc's rewrites by */
+/** How the omp record fold reads a source, the same for a one-shot parse and a live one: pi and omo keep a
+ * picture inline (an omo tool's display() or image read, #3420) and omp in its blob store, and the image
+ * endpoint answers all three; gjc is read the same way but would carry image refs nothing answers, so it
+ * names none. gjc's tool parts carry their call ids, which the chat matches gjc's rewrites by */
 function ompReading(source: RecognizedConversation["source"], path: string, taskTitles?: Map<string, string>) {
-  return { images: source === "pi-transcript" || source === "cmd-transcript" || source === "omp-transcript", blobs: source === "omp-transcript" ? ompBlobStore(path) : null, callIds: source === "gjc-transcript", taskTitles };
+  return { images: source === "pi-transcript" || source === "cmd-transcript" || source === "omp-transcript" || source === "omo-transcript", blobs: source === "omp-transcript" ? ompBlobStore(path) : null, callIds: source === "gjc-transcript", taskTitles };
 }
 
 /** The blob store of the omp transcript a stream reads (ompBlobStore), for its turn scan; null for any other agent. */
@@ -1669,6 +1670,68 @@ export function agentProcesses<T extends { argv?: readonly string[] | null; argv
   return [...native, ...interpreted.filter((entry) => !native.includes(entry))];
 }
 
+/** How far stoppedAgentJob looks below the shell: a launcher (npx, a wrapper script) is a few levels deep at most. */
+const JOB_DEPTH = 6;
+const JOB_PROCESSES = 256;
+
+/**
+ * Whether the shell `shellPid` holds `agent` as a stopped job (Ctrl+Z): a process below the shell in state T. herdr
+ * names only the foreground process group, the shell's own while a job is stopped, as after the agent's exit
+ * (live-checked, herdr 0.9.5), so this reads Linux's /proc: the children of each thread of the shell and of each
+ * process below it (JOB_DEPTH levels, JOB_PROCESSES processes, each once), and each one's state and command line.
+ * Ctrl+Z stops the job's whole process group, so the agent itself is stopped even when a launcher (`npx opencode`,
+ * `sh -c 'opencode; …'`) is the shell's child. `pid`, when known, is the agent process the pane was verified with:
+ * only it counts, not another stopped copy of the agent, and it is followed up its parents to the shell instead, so
+ * a shell with more processes than the walk reads still finds it. Without /proc (macOS), or a process gone
+ * meanwhile, nothing is found.
+ */
+export async function stoppedAgentJob(shellPid: number, agent: string, { pid = null, proc = "/proc" }: { pid?: number | null; proc?: string } = {}): Promise<boolean> {
+  /** `pid (comm) state ppid …`: the command name may itself hold ") ", the fields follow its last one */
+  const stat = async (process: string): Promise<{ name: string; state: string; parent: string } | null> => {
+    const text = await readFile(`${proc}/${process}/stat`, "utf8").catch(() => "");
+    const open = text.indexOf("(");
+    const close = text.lastIndexOf(")");
+    if (open < 0 || close < open) return null;
+    const [state = "", parent = ""] = text.slice(close + 2).split(" ");
+    return { name: text.slice(open + 1, close), state, parent };
+  };
+  const isAgent = async (process: string, name: string): Promise<boolean> => {
+    const argv = (await readFile(`${proc}/${process}/cmdline`, "utf8").catch(() => "")).split("\0").filter(Boolean);
+    // its process name too, which herdr labels the pane by: a script named after the agent runs under its shell
+    return programName(name) === agent || agentProcesses([{ argv, name }], agent).length > 0;
+  };
+  if (pid !== null) {
+    const own = await stat(String(pid));
+    if (own?.state !== "T" || !await isAgent(String(pid), own.name)) return false;
+    let parent = own.parent;
+    for (let depth = 0; depth < JOB_DEPTH; depth++) {
+      if (parent === String(shellPid)) return true;
+      const next = await stat(parent);
+      if (next === null || next.parent === parent) return false;
+      parent = next.parent;
+    }
+    return false;
+  }
+  const seen = new Set([String(shellPid)]);
+  let level = [String(shellPid)];
+  for (let depth = 0; depth < JOB_DEPTH && level.length > 0; depth++) {
+    const next: string[] = [];
+    for (const parent of level) {
+      const threads = await readdir(`${proc}/${parent}/task`).catch(() => []);
+      const lists = await Promise.all(threads.map((thread) => readFile(`${proc}/${parent}/task/${thread}/children`, "utf8").catch(() => "")));
+      for (const child of lists.join(" ").split(/\s+/u).filter(Boolean)) {
+        if (seen.has(child) || seen.size > JOB_PROCESSES) continue;
+        seen.add(child);
+        next.push(child);
+        const found = await stat(child);
+        if (found?.state === "T" && await isAgent(child, found.name)) return true;
+      }
+    }
+    level = next;
+  }
+  return false;
+}
+
 /** Loaded roots and environment belong to the foreground agent, not the web server. */
 export async function paneProcessRoots(paneId: string, agent: string | null | undefined): Promise<{
   /** `held`: the omo process holds a session there (its own holder record), not only an omo-ai path in its argv. */
@@ -1694,7 +1757,7 @@ export async function paneProcessRoots(paneId: string, agent: string | null | un
     ...(typeof candidate.name === "string" ? { name: candidate.name } : {}),
     cwd: typeof candidate.cwd === "string" ? candidate.cwd : "",
   }));
-  const matched = agent && ["claude", "codex", "omp", "gjc", "pi", "opencode", "devin", "grok", "hermes", "agy", "copilot"].includes(agent)
+  const matched = agent && ["claude", "codex", "omp", "gjc", "pi", "opencode", "devin", "grok", "hermes", "agy", "copilot", "letta"].includes(agent)
     ? agentProcesses(foreground, agent)[0] ?? null : null;
   // the omo process that holds a session wins over an omo-looking one listed before it (omo's bundled
   // Claude SDK binary under /omo-ai/, a helper script): typing follows the held one
@@ -1818,7 +1881,7 @@ async function claudeProcesses(paneId: string, known?: KnownProcesses, viewed = 
   const shell = info?.shell_pid;
   if (process.platform === "win32") return typeof shell === "number" ? (await windowsShellClaude(shell).catch(() => null)) ?? [] : [];
   const leader = info?.foreground_processes?.[0];
-  if (!servingCore() || leader === undefined || typeof leader.pid !== "number") return [];
+  if (capabilities().foreground !== "leader" || leader === undefined || typeof leader.pid !== "number") return [];
   const word = viewed ? null : hcAttachWord(leader.argv);
   if (word !== null) return reachesOwnCore(leader.pid) ? claudeProcesses(word, undefined, true) : [];
   return (await jobClaude(leader.pid)) ?? [];
@@ -1982,7 +2045,7 @@ export async function ompTranscriptPath(paneId: string, cwd: string, known?: Kno
     if (route === null) throw new ConversationUnavailable("no_session_path");
   }
   // herdr names no session of this store (or another agent's): the pane's omp process does
-  const held = route === null ? null : ompRouteTranscript(await ompHeldOpen(route, servingCore()), cwd);
+  const held = route === null ? null : ompRouteTranscript(await ompHeldOpen(route, capabilities().agents === "reported"), cwd);
   if (held === null) throw new ConversationUnavailable("no_session_path");
   // the held transcript is the pane's own, in the store its process keeps: authorized there, and read so
   const authorized = authorizedTranscript(held, route!.layout.sessions);
@@ -2222,7 +2285,10 @@ async function resolveTranscript(pane: HerdrPane, cwd: string, codexHome?: strin
       try { transcriptExists = !!statSync(found.path, { throwIfNoEntry: false }); }
       catch { throw new ConversationUnavailable("transcript_missing"); }
       if (!transcriptExists) {
-        if ((await agyCatalogOffThread(found.path)).size !== 0 || !sameAgyStore(found, await resolveAgyStore(pane))) throw new ConversationUnavailable("transcript_missing");
+        if (writtenSessions.has(`agy-transcript\0${found.path}`)) throw new ConversationUnavailable("transcript_missing");
+        const catalog = await agyCatalogOffThread(found.path);
+        const firstTurn = pane.agent_status === "working" && (catalog.size === 0 || (catalog.size === 1 && catalog.has(0)));
+        if ((catalog.size !== 0 && !firstTurn) || !sameAgyStore(found, await resolveAgyStore(pane))) throw new ConversationUnavailable("transcript_missing");
         throw new ConversationNotStarted(found.session, "agy-transcript", found.path);
       }
       return { source: "agy-transcript", path: found.path, agy: found };
@@ -2350,6 +2416,10 @@ export async function paneTranscript(paneId: string, codexHome?: string, snapsho
   return noteBinding(paneId, await resolveTranscript(pane, pane.cwd, codexHome, panes, opencodeDb, hermesHome, grokHome, museData, known));
 }
 
+// Agy commits a step to its catalog and then to its ledger: a catalog read that fails this soon after
+// a write may be racing it, and a later one is not
+const AGY_WRITE_RACE_MS = 5000;
+
 /**
  * The pane's live screen, or "" when nothing proves it: herdr's viewport, read while herdr reports
  * it at the bottom with the same history before and after the read. Scrolled up, on this device or
@@ -2410,7 +2480,7 @@ export async function paneConversation(paneId: string, codexHome?: string, page:
     // Claude writes its file with the first message, so at work with none it has no turn yet: a
     // /clear reports working for a moment (#2550)
     const status = snapshot.panes.find((pane) => pane.pane_id === paneId)?.agent_status;
-    if ((status === "working" && error.source !== "claude-transcript") || status === "blocked") throw error;
+    if ((status === "working" && error.source !== "claude-transcript" && error.source !== "agy-transcript") || status === "blocked") throw error;
     // the chat says there is nothing yet; the session's first prompt writes the file and
     // the next refresh's history_id differs, so the chat takes it whole
     return notBegun(error.source, `unwritten:${error.sessionId}`);
@@ -2451,6 +2521,10 @@ export async function paneConversation(paneId: string, codexHome?: string, page:
           if (fresh !== null) return await notBegun("codex-transcript", fresh, screen);
         }
         if (screen.model !== null) throw new ConversationUnavailable(error.message, screen);
+      }
+      if (pane.agent === "agy" && error.message === "no_session_path" && page.before === undefined && page.since === undefined && page.from === undefined && pane.agent_status !== "working" && pane.agent_status !== "blocked") {
+        const fresh = await agyFreshSession(pane, await bottomViewport(paneId));
+        if (fresh !== null) return await notBegun("agy-transcript", fresh);
       }
       throw error;
     }
@@ -2510,20 +2584,68 @@ export async function paneConversation(paneId: string, codexHome?: string, page:
   // set by the read below, in a closure the checker does not follow
   let history = null as string | null;
   let prefix = null as string | null;
+  // the Agy ledger readSettled authorized (its page handle's file): every read of it below reads only that file
+  let ledger = undefined as { dev: number; ino: number } | undefined;
   let answer: RecognizedConversation;
   try {
     const settled = await readSettled({ path: transcript.path, checkWindow: transcript.source === "muse-transcript", live }, () => {
       rememberPaneRead(paneId, transcript.path);
-      if (transcript.source === "agy-transcript") return null;
+      if (transcript.source === "agy-transcript") {
+        const opened = fstatSync(pageFile!.fd);
+        ledger = { dev: opened.dev, ino: opened.ino };
+        return null;
+      }
       history = transcript.source === "copilot-transcript" ? copilotHistoryIdentity(transcript.path) : null;
       prefix = history !== null && transcript.source === "copilot-transcript" ? copilotPrefix(paneId, `${transcript.binding}\0${history}`, transcript.path) : null;
       return transcriptPage(transcript.source, transcript.path, prefix === null ? page : copilotPage(page, prefix), transcript.codexHome ?? codexHome, transcript.piAgentDir);
     });
     if (settled === null) throw new ConversationUnavailable("no_session_id");
-    answer = settled.value ?? await agyTranscriptPage(resolved.path, page, resolved.codexHome ?? codexHome);
+    const readAgy = () => agyTranscriptPage(resolved.path, page, resolved.codexHome ?? codexHome, ledger);
+    answer = settled.value ?? await readAgy().catch((error) => {
+      if (error instanceof ConversationUnavailable && error.message === "transcript_missing" && live()) return readAgy();
+      throw error;
+    });
   } catch (error) {
     // a growth no digest checked is the same file: it is pending, with no recovery that would digest it here
     const refused = (error instanceof ConversationReadPending && !(error instanceof RevisionUnchecked)) || (error instanceof ConversationUnavailable && error.message === "transcript_missing");
+    const paged = page.before !== undefined || page.since !== undefined || page.from !== undefined;
+    if (resolved.source === "agy-transcript" && refused) {
+      if (page.history_id === undefined && !paged) throw error;
+      // a catalog that keeps failing while Agy writes nothing to it, or that is too large to ever be
+      // read, is no write race: fall back (a timestamp ahead of the clock proves no recent write)
+      const catalog = agyDatabasePath(resolved.path);
+      let bytes = 0;
+      let writing = false;
+      for (const file of [catalog, `${catalog}-wal`]) {
+        try {
+          const stat = statSync(file, { throwIfNoEntry: false });
+          if (stat === undefined) continue;
+          bytes += stat.size;
+          const age = Date.now() - stat.mtimeMs;
+          writing ||= age >= 0 && age < AGY_WRITE_RACE_MS;
+        } catch { /* unreadable: proves no write */ }
+      }
+      if (!writing || bytes > AGY_CATALOG_BYTES) throw error;
+      const fresh = await sessionSnapshot().catch(() => null);
+      const pane = fresh?.panes.find((candidate) => candidate.pane_id === paneId);
+      if (!live() || pane === undefined) throw new ConversationUnavailable("no_session_id");
+      if (!sameAgyStore(resolved.agy!, await resolveAgyStore(pane))) {
+        throw paged ? new HistoryChanged() : new ConversationUnavailable("no_session_path");
+      }
+      let stat: Stats | undefined;
+      try { stat = statSync(resolved.path, { throwIfNoEntry: false }); } catch { /* unreadable */ }
+      if (!stat?.isFile()) throw paged ? new HistoryChanged() : error;
+      const agyPrefix = `${stat.dev.toString(36)}-${stat.ino.toString(36)}-agy-`;
+      if ([page.before, page.since, page.from].some((cursor) => cursor !== undefined && !cursor.startsWith(agyPrefix))) {
+        throw new HistoryChanged();
+      }
+      if (page.history_id !== undefined && !page.history_id.startsWith(agyPrefix)
+        && page.history_id !== `unwritten:${resolved.agy!.session}`
+        && !page.history_id.startsWith(`unwritten:agy:${paneId}:${resolved.agy!.pid}:${resolved.agy!.started}`)) {
+        throw new HistoryChanged();
+      }
+      throw new ConversationReadPending();
+    }
     if (resolved.source !== "copilot-transcript" || !refused) throw error;
     // refused before its read (readSettled: the path names another file than the one authorized, as
     // after a replacement by rename): the history is the one the path names now, as a read beginning
@@ -2533,7 +2655,6 @@ export async function paneConversation(paneId: string, codexHome?: string, page:
       prefix = copilotPrefix(paneId, `${resolved.binding}\0${history}`, resolved.path);
       copilotPage(page, prefix);
     }
-    const paged = page.before !== undefined || page.since !== undefined || page.from !== undefined;
     // Unpaged refreshes otherwise carry no proof of which history is on screen: older
     // clients without it keep their fail-closed fallback, with no recheck to wait on.
     if (page.history_id === undefined && !paged) throw error;
@@ -2846,11 +2967,12 @@ export function transcriptPage(source: Exclude<StreamSource, "agy-transcript">, 
 }
 
 /** One page of an Agy ledger (transcriptPage), whose catalog is read on a file thread (#2706). */
-export async function agyTranscriptPage(path: string, page: ConversationPage = {}, codexHome?: string): Promise<RecognizedConversation> {
-  try { return await withAgyHistory(path, (projection, fd) => ({ ...transcriptPageRead("agy-transcript", path, page, codexHome, projection, fd), activity: projection.activity })); }
+export async function agyTranscriptPage(path: string, page: ConversationPage = {}, codexHome?: string, authorized?: { dev: number; ino: number }): Promise<RecognizedConversation> {
+  try { return await withAgyHistory(path, (projection, fd) => ({ ...transcriptPageRead("agy-transcript", path, page, codexHome, projection, fd), activity: projection.activity }), authorized); }
   catch (error) {
-    // every file thread busy: worth another try soon (http.ts answers 503)
-    if (error instanceof HistoryChanged || error instanceof ConversationUnavailable || error instanceof FileBusyError) throw error;
+    // every file thread busy: worth another try soon (http.ts answers 503); another file than the
+    // authorized one is pending (withAgyHistory)
+    if (error instanceof HistoryChanged || error instanceof ConversationUnavailable || error instanceof FileBusyError || error instanceof ConversationReadPending) throw error;
     throw new ConversationUnavailable("transcript_missing");
   }
 }
@@ -2989,6 +3111,12 @@ export async function conversationImage(paneId: string, ref: string, codexHome?:
     return codexPromptImage(resolved.path, ref, pane.cwd, resolved.codexHome ?? codexHome);
   }
   if (resolved.source === "pi-transcript" || resolved.source === "cmd-transcript") return readAuthorized(resolved.path, () => piTranscriptImage(resolved.path, ref));
+  // omo writes its pictures inline and its page reads the file in one line, as omp's does (#3420): read so, held
+  // to the exact file its resolver proved where it proved one
+  if (resolved.source === "omo-transcript") {
+    const [dev, ino] = resolved.omoFile === undefined ? [] : resolved.omoFile.split(":").map(BigInt);
+    return ompTranscriptImage(resolved.path, ref, null, "omo-transcript", dev === undefined || ino === undefined ? undefined : { dev, ino });
+  }
   // the update log the pane's own Grok holds (resolveGrokStore), read only over its active history
   if (resolved.source === "grok-transcript") return grokImage(resolved.path, ref);
   // the session file the pane's own process holds (copilotTranscriptPath), opened pinned as the page reads it
@@ -3667,7 +3795,9 @@ export async function toolOutput(paneId: string, ref: string, codexHome?: string
       nativeRef = ref.slice(prefix.length);
       if (!nativeRef.includes("@")) return null;
     }
-    return transcript.source === "agy-transcript" ? null : transcriptToolOutput(transcript.source, transcript.path, nativeRef, transcript.codexHome ?? codexHome);
+    // Agy's and Letta's are read below, off this lookup
+    return transcript.source === "agy-transcript" || transcript.source === "letta-transcript" ? null
+      : transcriptToolOutput(transcript.source, transcript.path, nativeRef, transcript.codexHome ?? codexHome);
   };
   let output: string | null;
   // the sources whose lookup digests the transcript (transcriptGeneration) read that off the event loop first
@@ -3683,11 +3813,30 @@ export async function toolOutput(paneId: string, ref: string, codexHome?: string
       let fresh: NativeTranscript;
       try { fresh = await paneTranscript(paneId, codexHome, undefined, undefined, opencodeDb, hermesHome, grokHome, museData); }
       catch (error) { if (error instanceof ConversationUnavailable) return null; throw error; }
-      if (fresh.source !== transcript.source || fresh.path !== transcript.path) return null;
+      // nor one another read saw bound elsewhere while this resolution was under way: begun before the
+      // pane moved, it still names the session the output was read from
+      if (fresh.source !== transcript.source || fresh.path !== transcript.path || rebound(paneId, transcript)) return null;
     }
     output = settled.value;
   } else if (resolved.source === "pi-transcript" || resolved.source === "cmd-transcript" || resolved.source === "codex-transcript") {
     output = readAuthorized(resolved.path, lookup);
+  } else if (resolved.source === "letta-transcript") {
+    // scanned on a file thread, which reads only the file the path names as the lookup begins: one long line
+    // took this thread, which answers every other request and terminal, for seconds (#3326). A ref in
+    // another agent's shape (Copilot's) names no call of Letta's
+    const authorized = TOOL_REF.test(ref) ? authorizedFile(resolved.path) : null;
+    output = authorized === null ? null : await lettaToolOutputOffThread(resolved.path, ref, authorized, TOOL_OUTPUT_MAX);
+    if (output !== null) {
+      // a pane bound to another conversation while its transcript was scanned (`/new`, another letta started
+      // in it) has not this output: one seen bound elsewhere is refused at once, any other resolved again
+      if (rebound(paneId, transcript)) return null;
+      let fresh: NativeTranscript;
+      try { fresh = await paneTranscript(paneId, codexHome, undefined, undefined, opencodeDb, hermesHome, grokHome, museData); }
+      catch (error) { if (error instanceof ConversationUnavailable) return null; throw error; }
+      // nor one another read saw bound elsewhere while this resolution was under way: begun before the
+      // pane moved, it still names the conversation the output was read from
+      if (fresh.source !== transcript.source || fresh.path !== transcript.path || rebound(paneId, transcript)) return null;
+    }
   } else output = resolved.source === "agy-transcript" ? await agyToolOutput(resolved.path, ref) : lookup();
   if (resolved.agy && !sameAgyStore(resolved.agy, await resolveAgyStore(pane))) return null;
   if (resolved.source === "copilot-transcript") {
@@ -3700,8 +3849,11 @@ export async function toolOutput(paneId: string, ref: string, codexHome?: string
   return live() ? output : null;
 }
 
-/** The output a transcript file holds for one tool call id, whole (up to TOOL_OUTPUT_MAX). */
-export function transcriptToolOutput(source: Exclude<StreamSource, "agy-transcript">, path: string, ref: string, codexHome?: string): string | null {
+/**
+ * The output a transcript file holds for one tool call id, whole (up to TOOL_OUTPUT_MAX). Agy's and Letta's
+ * are not read here: toolOutput awaits theirs (agyToolOutput, lettaToolOutputOffThread).
+ */
+export function transcriptToolOutput(source: Exclude<StreamSource, "agy-transcript" | "letta-transcript">, path: string, ref: string, codexHome?: string): string | null {
   if (!TOOL_REF.test(ref) && !(source === "copilot-transcript" && /^[A-Za-z0-9_:.-]{1,128}@[0-9a-z]+@[0-9a-z]+@[0-9a-f]{32}$/.test(ref))) return null;
   if (source === "codex-transcript") {
     let segments: ReturnType<typeof codexHistorySegments>;
@@ -3726,10 +3878,6 @@ export function transcriptToolOutput(source: Exclude<StreamSource, "agy-transcri
   if (source === "grok-transcript") return readAuthorized(path, () => grokToolOutput(path, ref));
   if (source === "muse-transcript") {
     const output = readAuthorized(path, () => museToolOutput(path, ref));
-    return output !== null && output.length > TOOL_OUTPUT_MAX ? `${output.slice(0, TOOL_OUTPUT_MAX)}\n… trimmed` : output;
-  }
-  if (source === "letta-transcript") {
-    const output = readAuthorized(path, () => lettaToolOutput(path, ref));
     return output !== null && output.length > TOOL_OUTPUT_MAX ? `${output.slice(0, TOOL_OUTPUT_MAX)}\n… trimmed` : output;
   }
   if (source === "pi-transcript" || source === "cmd-transcript") return piToolOutput(path, ref);
@@ -3890,12 +4038,15 @@ export function piTranscriptImage(path: string, ref: string): { mediaType: strin
  * Like a Claude picture, it holds a window, a record's shape and the picture at a time, never a record
  * or the transcript whole, and it gives the event loop its turn between windows (finishAsync), so a
  * large transcript never holds the bridge for more than a window's work.
+ * omo writes its pictures inline the same way and its page reads the file the same way, so `source`
+ * omo-transcript reads it so too, with no blob store (#3420); `exact` is the file its resolver proved
+ * (omoFile), which every open is then held to instead of the file the path names as the lookup begins.
  */
-export async function ompTranscriptImage(path: string, ref: string, anchor?: string | null): Promise<{ mediaType: string; bytes: Uint8Array<ArrayBuffer> } | null> {
+export async function ompTranscriptImage(path: string, ref: string, anchor?: string | null, source: "omp-transcript" | "omo-transcript" = "omp-transcript", exact?: FileIdentity): Promise<{ mediaType: string; bytes: Uint8Array<ArrayBuffer> } | null> {
   // every open of the transcript, after each await too, is held to the file the path names as the lookup begins
   const authorized = authorizedFile(path);
   if (authorized === null) return null;
-  try { return await finishAsync(boundSteps([[path, authorized]], ompTranscriptImageSteps(path, ref, anchor))); } catch { return null; }
+  try { return await finishAsync(boundSteps([[path, exact ?? authorized]], ompTranscriptImageSteps(path, ref, anchor, source))); } catch { return null; }
 }
 
 /**
@@ -3909,16 +4060,17 @@ const RECORDS_PER_STEP = 32;
  * authorized (conversationImage: ompBlobAnchor); a blob is read only from that directory. Without one
  * (a caller that authorized nothing first), it is the store as this read starts.
  */
-function* ompTranscriptImageSteps(path: string, ref: string, given?: string | null): Steps<{ mediaType: string; bytes: Uint8Array<ArrayBuffer> } | null> {
+function* ompTranscriptImageSteps(path: string, ref: string, given: string | null | undefined, source: "omp-transcript" | "omo-transcript"): Steps<{ mediaType: string; bytes: Uint8Array<ArrayBuffer> } | null> {
   const tool = PI_IMAGE_REF.exec(ref);
   const match = tool ?? PI_PROMPT_IMAGE_REF.exec(ref);
   if (match === null || match[1] === undefined || match[2] === undefined) return null;
   const [, id, nth] = match;
-  const blobs = ompBlobStore(path);
-  const anchor = given === undefined ? ompBlobAnchor(blobs)?.identity ?? null : given;
+  // omo keeps every picture inline: no store to read a blob from
+  const blobs = source === "omp-transcript" ? ompBlobStore(path) : null;
+  const anchor = blobs === null ? null : given === undefined ? ompBlobAnchor(blobs)?.identity ?? null : given;
   {
-    const stream = transcriptStream("omp-transcript", path, statSync(path), defaultCodexHome());
-    yield* applyHistoryBoundarySteps(path, stream, "omp-transcript", true);
+    const stream = transcriptStream(source, path, statSync(path), defaultCodexHome());
+    yield* applyHistoryBoundarySteps(path, stream, source, true);
     // the records that name the id, and those that can be a clear however JSON writes it
     const ranges = yield* linesWithSteps(stream, id, stream.floor, stream.length);
     const seen = new Set(ranges.map(([start]) => start));
@@ -3936,7 +4088,7 @@ function* ompTranscriptImageSteps(path: string, ref: string, given?: string | nu
       if (shape === UNREAD) return null;
       if (shape === NOT_A_RECORD) continue;
       const entry: unknown = shape.entry;
-      if (isContextClear(entry, "omp-transcript")) { open = false; found = null; continue; }
+      if (isContextClear(entry, source)) { open = false; found = null; continue; }
       if (found !== null) continue;
       // what the parser draws as something other than a message carries no picture of its
       if (skillPromptMessage(entry) !== null || piNotice(entry) !== null || omoTaskResults(entry, new Map()) !== null || (entry as { type?: unknown }).type === "compaction") continue;

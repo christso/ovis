@@ -1,6 +1,7 @@
 import type { ClientMessage, ClientRole, PendingMessage, ServerFeature, ServerMessage } from "../../shared/protocol.ts";
 import { receiptResumeId } from "./receiptResume.ts";
 import { OUTPUT_STALLED_CLOSE_CODE } from "../../shared/terminal-flow.ts";
+import { promptSet } from "../../shared/secret-prompt.ts";
 import { ConnectionTrace } from "./connectionTrace.ts";
 import { abandonNativeReads, getTransport, type WebSocketLike } from "./transport.ts";
 
@@ -1108,8 +1109,9 @@ export class HerdrSocket {
    */
   /** `typed`: from the terminal's input line, typed into the pane like the keyboard (see ClientMessage).
    * `clearDraft`: an immediate send over the draft an input_draft refusal named (ClientMessage `clear_draft`)
-   * `sendAnyway`: an immediate send after a refusal that showed the box (ClientMessage `send_anyway`) */
-  submit(paneId: string, text: string, payload: string, typed = false, delivery: SubmitDelivery = "immediate", clearDraft?: string, sendAnyway = false, resendId?: string, generation?: number, agentOnly = false): Promise<SubmitResult> | null {
+   * `sendAnyway`: an immediate send after a refusal that showed the box (ClientMessage `send_anyway`)
+   * `holdOnly`: a hold that must never go on its own (the composer's Alt+Enter): refused, not queued, where the bridge cannot hold */
+  submit(paneId: string, text: string, payload: string, typed = false, delivery: SubmitDelivery = "immediate", clearDraft?: string, sendAnyway = false, resendId?: string, generation?: number, agentOnly = false, holdOnly = false): Promise<SubmitResult> | null {
     const socket = this.socket;
     if (!this.connected || socket === null || this.mode === "observe") return null;
     if (resendId !== undefined && sendAnyway) return Promise.resolve({ ok: false, code: "invalid_delivery", message: "Use a held-copy resend id only for an immediate chat message" });
@@ -1122,7 +1124,10 @@ export class HerdrSocket {
       // message as raw typed input, past every check it makes before typing (#1591), so nothing is sent
       if (!this.featuresKnown) return CAPABILITIES_UNKNOWN;
       // hold is decided once the bridge said what it supports: one too old to hold queues it as before
-      if (delivery === "hold" && !this.canHoldMessages()) delivery = "queue";
+      if (delivery === "hold" && !this.canHoldMessages()) {
+        if (holdOnly) return { ok: false, code: "pending_hold_unsupported", message: "Update this PC to hold messages. Nothing was sent." };
+        delivery = "queue";
+      }
       if (delivery === "queue" && !this.canQueueMessages()) return { ok: false, code: "pending_input_unsupported", message: "Update this PC to queue messages." };
       // an older bridge ignores agent_only and would type the message into whatever is in front, a shell too
       if (agentOnly && !this.features.has("agent-only")) return { ok: false, code: "agent_only_unsupported", message: "Update this PC to send comments on a reply. Nothing was sent." };
@@ -1215,15 +1220,61 @@ export class HerdrSocket {
     return result;
   }
 
-  /** Send once on this connection. Only a result callback is retained, never the value. */
-  sendSecret(paneId: string, prompt: string, secret: string): Promise<SubmitResult> | null {
+  /**
+   * Whether a secret for `prompt` is typed to this bridge instead of sent as a `secret` (sendSecret): the bridge has
+   * said what it takes, and it does not take that prompt. Nothing on such a bridge checks that the prompt is still there.
+   */
+  typesSecret(prompt: string): boolean {
+    // not a bridge from before `submit`, which is told to update instead (sendSecret)
+    return this.featuresKnown && this.features.has("submit") && !this.takesPrompt(prompt);
+  }
+
+  /**
+   * Whether this bridge takes a `secret` at `prompt`: one every bridge with masked input reads, or one of a set of
+   * prompts it lists. `secret-prompts-2` is #3566's set, `secret-prompts-3` everything shared/secret-prompt.ts reads now.
+   */
+  private takesPrompt(prompt: string): boolean {
+    const set = promptSet(prompt);
+    return set === 1 || this.features.has("secret-prompts-3") || (set === 2 && this.features.has("secret-prompts-2"));
+  }
+
+  /**
+   * Send once on this connection. Only a result callback is retained, never the value. A prompt this bridge does
+   * not take a `secret` at (takesPrompt) goes to it as typing at a masked prompt does:
+   * the value, then Enter, as `input`, never kept. That bridge would answer `invalid_secret`, and the masked field has
+   * taken the input line's place, so nothing else could answer the prompt. No bridge checks its screen for typing, so
+   * it goes only into the attachment the field was sent for, behind no send of this connection that the pane has yet to
+   * answer (the bridge would type that into the prompt first), and only while the page still shows the prompt: `shown`,
+   * asked last. What stays open against such a bridge is what the page cannot see: a prompt that left on the PC while
+   * its output or these frames were on their way, and another connection's send queued for the pane.
+   */
+  sendSecret(paneId: string, prompt: string, secret: string, shown: () => boolean): Promise<SubmitResult> | null {
     const socket = this.socket;
     if (!this.connected || socket === null || this.mode === "observe") return null;
+    // the pane's input as it was when the field was sent, as insert reads it
+    const lease = this.inputLease(paneId);
     return (async (): Promise<SubmitResult> => {
       // right after a reconnect the terminal's output can arrive before the frame that says
       // whether the server takes masked input: wait for it, as a submit does
       await Promise.race([this.featuresSeen, new Promise((resolve) => window.setTimeout(resolve, FEATURES_WAIT_MS))]);
       if (!(await this.probeSettled(socket))) { secret = ""; return DISCONNECTED; }
+      if (promptSet(prompt) !== 1) {
+        // the wait ended before the bridge said what it takes: one that takes the prompt checks its own screen, so
+        // nothing is typed past it
+        if (!this.featuresKnown) { secret = ""; return CAPABILITIES_UNKNOWN; }
+        if (!this.takesPrompt(prompt)) {
+          // a bridge from before `submit`: a message sent to it leaves no request here (submit answers unconfirmed), so
+          // the check below would not see one still on its way to the pane
+          if (!this.features.has("submit")) { secret = ""; return { ok: false, code: "unsupported", message: "Update this PC to use masked input." }; }
+          if ([...this.requests.values()].some((request) => request.paneId === paneId)) { secret = ""; return { ok: false, code: "pane_busy", message: "Check the terminal before trying again." }; }
+          if (this.inputLease(paneId) !== lease || !shown()) { secret = ""; return { ok: false, code: "prompt_changed", message: "Check the terminal before trying again." }; }
+          // Enter in a frame of its own, as the input line's Enter is sent: a mirrored pane's shell may not take a `\r`
+          // inside the text for it. No passphrase (validSecret) is Enter alone
+          const typed = (secret === "" || this.sendInput(paneId, secret, false, false, true)) && this.sendInput(paneId, "\r", false, false, true);
+          secret = "";
+          return typed ? { ok: true } : { ok: false, code: "input_unavailable", message: "Check the terminal before trying again." };
+        }
+      }
       if (!this.features.has("secret-input")) { secret = ""; return { ok: false, code: "unsupported", message: "Update this PC to use masked input." }; }
       const id = this.nextSubmit++;
       this.requests.set(id, { type: "secret", paneId });

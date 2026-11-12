@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HerdrPane, InteractivePrompt } from "../shared/protocol.ts";
 
-import { answerKeys, hermesInputDraft, claudeClearableDraft, claudeInputBoxText, claudeInputDraft, claudeInputEmpty, historyEndShowsLive, viewportShowsLive, removedInvisible, noteSubmitted, codexQuestionsCollapsed, codexQueuedPrompt, handlePromptRequest, openOmoAsks, parseClaudeSuggestion, parseFallbackPrompt, parseInteractivePrompt, pendingOmoAsk, promptWaitEnded, claudeRestoredDraft, lastChatSubmitted, piListsTemplate, piRunsCommand, OpenCodePromptState, shownPromptText } from "./prompt.ts";
+import { answerKeys, hermesInputDraft, isHermesForeground, claudeClearableDraft, claudeInputBoxText, claudeInputDraft, claudeInputEmpty, historyEndShowsLive, viewportShowsLive, removedInvisible, noteSubmitted, codexQuestionsCollapsed, codexQueuedPrompt, handlePromptRequest, openOmoAsks, parseClaudeSuggestion, parseFallbackPrompt, parseInteractivePrompt, pendingOmoAsk, promptWaitEnded, claudeRestoredDraft, lastChatSubmitted, piListsTemplate, piRunsCommand, OpenCodePromptState, shownPromptText } from "./prompt.ts";
 import { rememberPaneCommands } from "./commands.ts";
 import { registry } from "./dialogs/registry.ts";
 import { gjcCustomEditorMatches } from "./dialogs/fallback.ts";
@@ -3113,6 +3113,130 @@ describe("Claude's suggestion on a prompt poll", () => {
   }, 4_000);
 });
 
+describe("gjc's and omp's suggestion on a prompt poll", () => {
+  const dim = (text: string) => `\u001b[0m\u001b[38;2;111;71;67m${text}\u001b[0m`;
+  // gjc 0.20.0's box (red-claw's dim) and omp 18.18.3's band composer (its dark theme's dim), each holding its grey suggestion
+  const SCREENS: Record<string, string> = {
+    gjc: ["Done.", "", `╭${"─".repeat(40)}╮`, `│ > ${dim("open the PR")}${" ".repeat(25)} │`, `╰${"─".repeat(40)}╯`, ""].join("\r\n"),
+    omp: ["Done.", "", " π > GPT-6.1 Sol > ▶─2%────", `╰─ \u001b[0m\u001b[38;2;95;102;115mopen the PR\u001b[0m`, ""].join("\r\n"),
+  };
+
+  /**
+   * a herdr with one pane of `agent`, scrolled `offset` rows into its history, whose screen shows the suggestion.
+   * `after`: where the viewport is when the pane is asked about again, after its screen was read ("fail": herdr
+   * refuses that look; "stall": it never answers it); as in the snapshot unless told. `screen`: what the pane
+   * shows instead.
+   */
+  async function suggestingHerdr(agent: string, status: string, offset: number | null, run: (reads: string[]) => Promise<void>, after: number | null | "fail" | "stall" = offset, screen = SCREENS[agent]!): Promise<void> {
+    const root = mkdtempSync(join(tmpdir(), "herdr-prompt-suggestion-"));
+    const path = join(root, "herdr.sock");
+    const reads: string[] = [];
+    const sockets = new Set<Socket>();
+    const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+      socket.on("error", () => undefined);
+      let input = "";
+      socket.on("data", (chunk) => {
+        input += chunk.toString();
+        if (!input.includes("\n")) return;
+        const request = JSON.parse(input.split("\n")[0]!) as { id: string; method: string; params: { format?: string } };
+        const answer = (result: unknown) => socket.end(`${JSON.stringify({ id: request.id, result })}\n`);
+        // a herdr that reports no scroll (null) is read as at the bottom
+        const scrollAt = (rows: number | null) => rows === null ? null : { offset_from_bottom: rows, max_offset_from_bottom: 100, viewport_rows: 40 };
+        if (request.method === "session.snapshot") {
+          return answer({ snapshot: { panes: [{ pane_id: "p_1", agent, agent_status: status, scroll: scrollAt(offset) }], layouts: [] } });
+        }
+        if (request.method === "pane.get") {
+          reads.push("scroll");
+          if (after === "stall") return;
+          if (after === "fail") return socket.end(`${JSON.stringify({ id: request.id, error: { code: "herdr_unavailable", message: "no answer" } })}\n`);
+          return answer({ pane: { pane_id: "p_1", agent, agent_status: status, scroll: scrollAt(after) } });
+        }
+        if (request.method !== "pane.read") throw new Error(`unexpected fixture RPC: ${request.method}`);
+        reads.push(request.params.format ?? "");
+        const text = request.params.format === "ansi" ? screen : screen.replace(ANSI_RE, "");
+        answer({ read: { text } });
+      });
+    });
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(path, resolve); });
+    const previous = process.env["HERDR_SOCKET"];
+    process.env["HERDR_SOCKET"] = path;
+    try { await run(reads); } finally {
+      if (previous === undefined) delete process.env["HERDR_SOCKET"];
+      else process.env["HERDR_SOCKET"] = previous;
+      for (const socket of sockets) socket.destroy();
+      server.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  async function poll(): Promise<unknown> {
+    const url = new URL("http://127.0.0.1/api/pane/prompt?pane_id=p_1");
+    return (await (await handlePromptRequest(new Request(url), url))!.json());
+  }
+
+  test("asks where the viewport is only for a suggestion it would offer: an empty box costs the poll nothing more", async () => {
+    const empty = ["Done.", "", `╭${"─".repeat(40)}╮`, `│ > ${" ".repeat(36)} │`, `╰${"─".repeat(40)}╯`, ""].join("\r\n");
+    await suggestingHerdr("gjc", "done", 0, async (reads) => {
+      expect(await poll()).toEqual({ prompt: null, suggestion: null, restored: null });
+      expect(reads.at(-1)).toBe("ansi");
+      expect(reads).not.toContain("scroll");
+    }, 0, empty);
+  });
+
+  test("answers without a suggestion once the look at the viewport is late, rather than waiting on herdr", async () => {
+    await suggestingHerdr("omp", "done", 0, async (reads) => {
+      const started = Date.now();
+      expect(await poll()).toEqual({ prompt: null, suggestion: null, restored: null });
+      expect(reads.slice(-2)).toEqual(["ansi", "scroll"]);
+      // the look has the suggestion read's own short deadline (SUGGESTION_READ_MS), not herdr's ten seconds
+      expect(Date.now() - started).toBeLessThan(2_500);
+    }, "stall");
+  }, 6_000);
+
+  test("gjc with no status (herdr-core does not know it): its suggestion still; omp with none: not read", async () => {
+    await suggestingHerdr("gjc", "unknown", 0, async () => {
+      expect(await poll()).toEqual({ prompt: null, suggestion: "open the PR", restored: null });
+    });
+    await suggestingHerdr("omp", "unknown", 0, async (reads) => {
+      expect(await poll()).toEqual({ prompt: null, suggestion: null, restored: null });
+      expect(reads).not.toContain("ansi");
+    });
+  });
+
+  for (const agent of ["gjc", "omp"]) {
+    test(`${agent}: the grey words in its empty box, and never a restored send`, async () => {
+      for (const offset of [0, null]) {
+        await suggestingHerdr(agent, "done", offset, async (reads) => {
+          expect(await poll()).toEqual({ prompt: null, suggestion: "open the PR", restored: null });
+          // its screen is read, and then where its viewport is by then
+          expect(reads.slice(-2)).toEqual(["ansi", "scroll"]);
+        });
+      }
+    });
+
+    test(`${agent}: none when the viewport was scrolled into the history while its screen was read, or herdr does not say where it is`, async () => {
+      // another device scrolls the pane after the snapshot: the rows read may end in an older frame of the box
+      for (const after of [3, "fail"] as const) {
+        await suggestingHerdr(agent, "done", 0, async (reads) => {
+          expect(await poll()).toEqual({ prompt: null, suggestion: null, restored: null });
+          expect(reads.slice(-2)).toEqual(["ansi", "scroll"]);
+        }, after);
+      }
+    });
+
+    test(`${agent}: not read while it works, or while the viewport is scrolled into the history`, async () => {
+      for (const [status, offset] of [["working", 0], ["idle", 3]] as const) {
+        await suggestingHerdr(agent, status, offset, async (reads) => {
+          expect(await poll()).toEqual({ prompt: null, suggestion: null, restored: null });
+          expect(reads).not.toContain("ansi");
+        });
+      }
+    });
+  }
+});
+
 describe("Claude's plan card on a prompt poll", () => {
   const SCREEN = `
 Ready to code?
@@ -4364,6 +4488,8 @@ describe("an answer and the menu it was made for", () => {
     ompStopped?: boolean;
     /** a pi pane's pi has ended: herdr still names the pane pi, its foreground is the shell */
     piGone?: boolean;
+    /** a Hermes pane's Hermes is suspended behind its shell (Ctrl+Z): herdr still names the pane hermes, its foreground is the shell */
+    hermesStopped?: boolean;
   }
 
   async function withPane(agent: string, status: string, screen: string, run: (pane: Pane) => Promise<void>): Promise<void> {
@@ -4405,6 +4531,7 @@ describe("an answer and the menu it was made for", () => {
         if (request.method === "pane.process_info") return answer({ process_info: { foreground_processes: pane.omo?.live ? [{ pid: pane.omo.pid, argv: ["omo"] }]
           : pane.agent === "omp" ? [pane.ompStopped ? { pid: 4100, argv: ["/bin/bash"] } : { pid: 4242, argv: ["omp"] }]
           : pane.agent === "pi" ? [pane.piGone ? { pid: 4100, argv: ["/bin/bash"] } : { pid: 4343, argv: ["node", "/usr/local/bin/pi"] }]
+          : pane.agent === "hermes" ? [pane.hermesStopped ? { pid: 4100, argv: ["/bin/zsh"] } : { pid: 4444, argv: ["/usr/local/bin/hermes"] }]
           // a Codex pane runs Codex: its rollout is read only while one does
           : pane.agent === "codex" ? [{ pid: 2147483647, argv: ["/usr/bin/codex"] }] : [] } });
         // a pane whose scroll herdr does not report: a colored read counts when its text is the live screen's
@@ -6903,6 +7030,70 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
       expect(pane.sent).toEqual([]);
       expect((await card())!.id).not.toBe(first.id);
     });
+  });
+
+  // #857: Hermes's dangerous-command approval (dialogs/hermes-approval.test.ts), answered with its own arrows and Enter
+  test("answers Hermes's approval by moving to the row picked, seen there before the Enter", async () => {
+    const hermes = (name: string) => readFileSync(new URL(`./fixtures/hermes-approval/${name}.txt`, import.meta.url), "utf8");
+    const labels = ["Allow once", "Allow for this session", "Add to permanent allowlist", "Deny"];
+    const at = (row: number) => hermes("once-120").split("\n").map((line) => {
+      const index = labels.findIndex((label) => line.includes(`. ${label} `));
+      return index < 0 ? line : `│ ${index === row ? "❯" : " "}${line.slice(3)}`;
+    }).join("\n");
+    await withPane("hermes", "blocked", at(0), async (pane) => {
+      let cursor = 0;
+      pane.onSent = (sent) => { if (sent === "down") pane.screen = at(++cursor); };
+      const prompt = (await card())!;
+      expect(prompt.kind).toBe("approval");
+      expect(await answer(prompt.id, { option_index: 3 })).toEqual({ status: 200, code: undefined });
+      expect(pane.sent).toEqual(["down", "down", "down", "enter"]);
+    });
+    // the cursor moved away under the arrows (a key pressed in the terminal meanwhile): the read before Enter sees
+    // it off the row picked, and no Enter is pressed
+    await withPane("hermes", "blocked", at(0), async (pane) => {
+      let cursor = 0;
+      pane.onSent = (sent) => { if (sent === "down") { cursor += 1; pane.screen = at(cursor === 3 ? 1 : cursor); } };
+      const prompt = (await card())!;
+      expect(await answer(prompt.id, { option_index: 3 })).toEqual({ status: 409, code: "prompt_changed" });
+      expect(pane.sent).toEqual(["down", "down", "down"]);
+    });
+    // another command asked meanwhile: nothing is pressed
+    await withPane("hermes", "blocked", at(0), async (pane) => {
+      const prompt = (await card())!;
+      pane.screen = at(0).replace("│ rm -rf ./scratch  ", "│ rm -rf ./other    ");
+      expect(await answer(prompt.id, { option_index: 0 })).toEqual({ status: 409, code: "prompt_changed" });
+      expect(pane.sent).toEqual([]);
+    });
+    // a panel that cut its command is left to the terminal, with no generic card of raw keys either
+    await withPane("hermes", "blocked", hermes("cut-38"), async (pane) => {
+      expect(await card()).toBeNull();
+      expect(pane.sent).toEqual([]);
+    });
+    // the panel's text in a shell that Hermes was suspended behind (Ctrl+Z), herdr still naming the pane hermes: no card
+    await withPane("hermes", "idle", at(0), async (pane) => {
+      pane.hermesStopped = true;
+      expect(await card()).toBeNull();
+    });
+    // and Hermes suspended between the card and the answer: nothing is pressed
+    await withPane("hermes", "blocked", at(0), async (pane) => {
+      const prompt = (await card())!;
+      pane.hermesStopped = true;
+      expect(await answer(prompt.id, { option_index: 0 })).toEqual({ status: 409, code: "prompt_changed" });
+      expect(pane.sent).toEqual([]);
+    });
+  });
+
+  test("takes only Hermes itself as the foreground that may take an approval's keys", () => {
+    for (const argv of [["/usr/local/bin/hermes"], ["hermes"], ["/usr/bin/python3", "/home/u/.local/bin/hermes", "chat"], ["python3.14", "-u", "/opt/hermes/bin/hermes"],
+      ["python3", "-X", "utf8", "/opt/hermes/bin/hermes"], ["python3", "-IsX", "utf8", "/opt/hermes/bin/hermes"]]) {
+      expect([argv, isHermesForeground({ argv })]).toEqual([argv, true]);
+    }
+    // "hermes" as an argument of something else, or Python running other code
+    for (const argv of [["python3", "-c", "print(1)", "/tmp/hermes"], ["python3", "-m", "http.server", "hermes"], ["python3", "/tmp/forge.py", "/tmp/hermes"], ["/bin/zsh"], ["node", "/tmp/hermes"],
+      // combined flags: /tmp/hermes is -X's value, and -c's code runs
+      ["python3", "-uX", "/tmp/hermes", "-c", "print(1)"], ["python3", "-uc", "print(1)", "/tmp/hermes"], ["python3", "--check-hash-based-pycs", "always", "/tmp/hermes"]]) {
+      expect([argv, isHermesForeground({ argv })]).toEqual([argv, false]);
+    }
   });
 
   test("logs prompt answer requests with pane_id, prompt_matched and outcome", async () => {

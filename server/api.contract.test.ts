@@ -44,6 +44,7 @@ import { OmoStatus } from "./omo-status.ts";
 import { omoJobTasks } from "./omo-jobs.ts";
 import { ClaudeSubagentStatus } from "./claude-subagents.ts";
 import { setFilePoolOptions } from "./file-pool.ts";
+import { SLEEP } from "../scripts/fixtures/sleep.ts";
 
 /**
  * Contract test for Ovis's HTTP + WS surface.
@@ -105,7 +106,7 @@ describe("Grok conversation API", () => {
     // A native stand-in owns the fd evidence and only sleeps; no model or user's store.
     const executable = join(root, "grok");
     const nativeExecutable = join(root, "grok-1.0.52-linux-x86_64");
-    copyFileSync("/bin/sleep", nativeExecutable); symlinkSync("grok-1.0.52-linux-x86_64", executable); chmodSync(executable, 0o755);
+    copyFileSync(SLEEP, nativeExecutable); symlinkSync("grok-1.0.52-linux-x86_64", executable); chmodSync(executable, 0o755);
     const created = await workspaceCreate({ cwd: root, label: "ovis-test-grok-api" });
     let app: ReturnType<typeof createServer> | undefined;
     try {
@@ -180,7 +181,7 @@ describe("Agy conversation API", () => {
     // Another unheld lock in the same store must never select a conversation.
     writeFileSync(join(root, "presence", "00000000-0000-4000-8000-000000000032.lock"), "");
     const executable = join(root, "agy");
-    copyFileSync("/bin/sleep", executable); chmodSync(executable, 0o755);
+    copyFileSync(SLEEP, executable); chmodSync(executable, 0o755);
     const created = await workspaceCreate({ cwd: root, label: "ovis-test-agy-api" });
     let app: ReturnType<typeof createServer> | undefined, db: Database | undefined;
     let monitor: ConversationMonitor | undefined;
@@ -261,7 +262,7 @@ describe("Muse conversation API", () => {
     mkdirSync(first, { recursive: true }); mkdirSync(second);
     // a link, not a copy: macOS kills a copied system binary, and argv keeps the name it was run by
     const executable = join(root, "muse");
-    symlinkSync("/bin/sleep", executable);
+    symlinkSync(SLEEP, executable);
     const created = await workspaceCreate({ cwd: root, label: "ovis-test-muse-api" });
     let app: ReturnType<typeof createServer> | undefined;
     try {
@@ -427,7 +428,7 @@ describe("native tool call id and state on GET /api/pane/conversation", () => {
       // Codex is found by the rollout its process holds open: a native stand-in that only sleeps
       const codexExe = join(cwd, "bin", "codex");
       mkdirSync(join(cwd, "bin"));
-      copyFileSync("/bin/sleep", codexExe); chmodSync(codexExe, 0o755);
+      copyFileSync(SLEEP, codexExe); chmodSync(codexExe, 0o755);
       const codexCreated = await workspaceCreate({ cwd, label: "herdr-web-ui-test-call-state-codex" });
       workspaces.push(codexCreated.workspace.workspace_id);
       const codex = codexCreated.root_pane.pane_id;
@@ -439,7 +440,7 @@ describe("native tool call id and state on GET /api/pane/conversation", () => {
       }
       // omp's session report is taken for a pane herdr sees running omp: the same kind of stand-in
       const ompExe = join(cwd, "bin", "omp");
-      copyFileSync("/bin/sleep", ompExe); chmodSync(ompExe, 0o755);
+      copyFileSync(SLEEP, ompExe); chmodSync(ompExe, 0o755);
       const ompCreated = await workspaceCreate({ cwd, label: "herdr-web-ui-test-call-state-omp" });
       workspaces.push(ompCreated.workspace.workspace_id);
       const omp = ompCreated.root_pane.pane_id;
@@ -4969,7 +4970,12 @@ describe("repository diff of a pane's folder", () => {
 describe("GET /api/sessions/history", () => {
   const line = (value: unknown) => `${JSON.stringify(value)}\n`;
 
-  /** Own all setup and cleanup, including failures before a server or workspace is returned. */
+  /**
+   * Own all setup and cleanup, including failures before a server or workspace is returned.
+   * The server's state is kept out of `root`: stop() does not wait for a read of the panes that is still in
+   * flight, and that read saves completions.json when it lands, which would bring back a `root` removed here.
+   * It goes under this file's state folder, which afterAll removes.
+   */
   async function withPiHistoryFixture(root: string, run: (fixture: { file: string; initial: string; url: string }) => Promise<void>, piSessionDeadlineMs?: number): Promise<void> {
     const previous = process.env["PI_CODING_AGENT_SESSION_DIR"];
     let created: Awaited<ReturnType<typeof workspaceCreate>> | undefined;
@@ -4990,7 +4996,7 @@ describe("GET /api/sessions/history", () => {
       writeFileSync(file, initial);
       process.env["PI_CODING_AGENT_SESSION_DIR"] = store;
       created = await workspaceCreate({ cwd, label: "ovis-test-pi-history" });
-      app = createServer({ port: 0, hostname: "127.0.0.1", stateDir: join(root, "state"), piSessionDeadlineMs });
+      app = createServer({ port: 0, hostname: "127.0.0.1", stateDir: join(stateDir, basename(root)), piSessionDeadlineMs });
       const url = `http://127.0.0.1:${app.port}/api/sessions/history?workspace_id=${encodeURIComponent(created.workspace.workspace_id)}&agent=pi`;
       await run({ file, initial, url });
     } finally {

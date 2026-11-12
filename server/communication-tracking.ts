@@ -11,7 +11,7 @@ import { defaultStateDir } from "./update-state.ts";
 import { herdrCliDirectory } from "./herdr/cli-observations.ts";
 import { herdrCliLauncher } from "./herdr/cli-launcher.ts";
 import { paneProcessInfo, sessionSnapshot } from "./herdr/client.ts";
-import { servingCore } from "./herdr-core/runtime.ts";
+import { capabilities } from "./runtime/capabilities.ts";
 import { herdrConfigPath, readHerdrConfig } from "./herdr-sidebar.ts";
 import { shellQuote } from "./machine-security.ts";
 import { acquireOwnerDirectory } from "./owner-guard.ts";
@@ -180,7 +180,7 @@ export class CommunicationTracking implements CommunicationTrackingService {
   private save(setup: Setup): void { replaceFile(this.record, null, JSON.stringify(setup) + "\n"); }
 
   private async context(): Promise<ShellContext | null> {
-    if (!["linux", "darwin"].includes(this.platform) || servingCore()) return null;
+    if (!["linux", "darwin"].includes(this.platform) || !capabilities().cliCoordination) return null;
     const inherited = this.options.env ?? await paneEnvironment(this.platform);
     if (!inherited || resolve(inherited["HOME"] ?? this.home) !== resolve(this.home)) return null;
     const env: Record<string, string | undefined> = { ...process.env };

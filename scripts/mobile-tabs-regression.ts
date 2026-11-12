@@ -6,6 +6,7 @@ import type { Browser, Locator, Page } from "playwright-core";
 import { appFaces } from "./app-faces.ts";
 import { herdrRpc, paneSplit, tabCreate, workspaceClose, workspaceCreate } from "../server/herdr/client.ts";
 import { chromePath } from "./chrome-path.ts";
+import { openLens } from "./header-lens.ts";
 
 type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 type KeyboardQA = Window & { keyboardQA: (height: number | null) => void };
@@ -120,7 +121,7 @@ export async function checkMobileTabs(browser: Browser, origin: string): Promise
     await page.goto(`${origin}/?pane=${encodeURIComponent(first)}`);
     await page.locator(".conn-live").waitFor();
     await page.locator(".app-header .context-tabs").waitFor();
-    await page.getByTitle("Chat transcript (⌘⇧J)", { exact: true }).click();
+    await openLens(page, "chat");
     const firstFrame = page.locator(`[data-layout-pane=${JSON.stringify(first)}]`);
     const composer = firstFrame.getByRole("textbox", { name: "Message", exact: true });
     await composer.waitFor();
@@ -136,7 +137,7 @@ export async function checkMobileTabs(browser: Browser, origin: string): Promise
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); (window as unknown as KeyboardQA).keyboardQA(null); });
     await page.waitForFunction(() => !document.documentElement.hasAttribute("data-keyboard"));
 
-    await page.getByTitle("Live terminal (⌘⇧J)", { exact: true }).click();
+    await openLens(page, "terminal");
     await firstFrame.locator(".key-bar").waitFor();
     assert.equal(await page.locator(".pane-frame:visible").count(), 1, "a phone shows the split tab's open pane alone");
     assert.equal(await page.locator(".pane-frame").count(), 2, "and keeps its sibling mounted");
@@ -166,11 +167,15 @@ export async function checkMobileTabs(browser: Browser, origin: string): Promise
     const more = page.getByRole("dialog", { name: "More", exact: true });
     await more.waitFor();
     const ids = await more.locator(".row-sheet-item").evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset["item"] ?? ""));
-    const rename = ids.indexOf("rename");
-    assert.ok(rename >= 2 && ids[rename - 1]!.startsWith("pane:") && ids[rename - 2]!.startsWith("pane:"), `a split tab's two panes come before its pane's actions (${ids.join(", ")})`);
-    assert.ok(ids.includes("close"), "the open pane's actions are in More on a phone");
-    assert.deepEqual(ids.slice(-2), ["rename-tab", "close-tab"], "the open tab is renamed and closed from More, with no second way to a new tab");
-    await cancelSheet(page, more);
+    // the pane's and tab's actions fold into More's last item, Pane and tab…, which opens them in a sheet of their own (G-143)
+    assert.deepEqual(ids.slice(-3).map((id) => id.startsWith("pane:") ? "pane" : id), ["pane", "pane", "pane-group"], `a split tab's two panes come before its pane's actions (${ids.join(", ")})`);
+    await more.locator('.row-sheet-item[data-item="pane-group"]').tap();
+    const actions = page.getByRole("dialog", { name: "Pane and tab…", exact: true });
+    await actions.waitFor();
+    const actionIds = await actions.locator(".row-sheet-item").evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset["item"] ?? ""));
+    assert.ok(actionIds.includes("rename") && actionIds.includes("close"), `the open pane's actions are in More on a phone (${actionIds.join(", ")})`);
+    assert.deepEqual(actionIds.slice(-2), ["rename-tab", "close-tab"], "the open tab is renamed and closed from More, with no second way to a new tab");
+    await cancelSheet(page, actions);
 
     await page.goto(`${origin}/?pane=${encodeURIComponent(last)}`);
     await page.locator(".conn-live").waitFor();

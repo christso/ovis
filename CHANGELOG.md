@@ -7,6 +7,1288 @@ between releases do not reach them. Remote-PC runtime bundles are versioned sepa
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-12
+
+These notes are long: Settings in an install of 0.5.2 or earlier shows only their start. Read
+them all in [CHANGELOG.md](https://github.com/devswha/ovis/blob/main/CHANGELOG.md#053---2026-11-12).
+
+### Added
+- **Delete account**: in the phone apps and app.ovis.sh (Devices → Account) and in the desktop app
+  (Settings → Devices and PCs → Account), **Delete account** erases your
+  Ovis account and everything the account service keeps for it, at once and for good. The button
+  asks once and says what goes and what stays first: devices stay paired with your PCs until you
+  revoke them there, and a subscription that still renews has to be cancelled before the account
+  can go. A PC's page opened in a browser says where to delete instead.
+  ([#3635](https://github.com/devswha/ovis/pull/3635))
+- The chat's message box offers the prompt GJC or omp suggests next (GJC's `promptSuggestions`,
+  omp's `composer.predictions`) as grey text, as it does for Claude Code: Tab, or the Suggestion
+  chip on a touch screen, puts it into the box. A suggestion the agent cut short at its input box's
+  edge is not offered.
+  ([#3540](https://github.com/devswha/ovis/pull/3540) by @najy97)
+- The installer puts an `ovis` command in `~/.local/bin` (Linux and macOS): `ovis add` adds the PC to
+  your Ovis account from its terminal, `ovis pair` shows a pairing code and `ovis status` says whether
+  the app runs. It finds the installed Ovis each time it runs, so updates need no new command, and
+  on a plugin first installed before `ovis add` existed it runs the release that Settings → Updates
+  installed for that plugin and port, found with the plugin's own `env` and `.env` settings. An `ovis`
+  of your own in `~/.local/bin` is never replaced, and none is written where it would take the name of
+  another `ovis` on your PATH; one that comes first there keeps the name until `~/.local/bin` is put
+  before it.
+  ([#3542](https://github.com/devswha/ovis/pull/3542))
+- `curl -fsSL https://ovis.sh/install.sh | sh -s -- --add` (or `OVIS_ADD=1`) ends the install by adding
+  the PC to your account at the terminal; without a terminal to answer at, or while the app is not
+  running yet, the installer prints the command to run. Its last lines now name `ovis add`, and say to set `OVIS_TOKEN` first on a PC other
+  people log in to.
+  ([#3542](https://github.com/devswha/ovis/pull/3542))
+- A PC whose relay pass allows no new device sessions (account limits) now tells the relay of a new
+  device that pairs with it, so the relay closes that device `4403` while passes are enforced: no
+  device is made, the pairing code is not spent, and no failed pairing is counted. Devices the PC
+  already knows sign in as before, one of them that pairs again with the key it saved is not
+  refused, and a client that has not paired learns nothing of the limit. The relay's `sync` now
+  also says its pass mode (`relay_pass.mode`), and `GET /api/relay` says whether the relay enforces
+  passes now (`pass.enforced`).
+  ([#3516](https://github.com/devswha/ovis/pull/3516))
+- The PC shows "This account has reached its relay data limit for new connections" whenever it
+  refuses new devices, also on a relay that enforces passes without naming a date.
+  ([#3516](https://github.com/devswha/ovis/pull/3516))
+- Add a connection → Ovis relay lists your account's other PCs, as the SSH tab lists its PCs: Connect
+  opens one already in this app, and Add pairs this PC with another through the relay once a device of
+  your account approves it by picking the digits this PC shows. That PC adds this one as a plain paired
+  device, not an account member, and nothing is signed for the account. An older or offline PC says so.
+  ([#3642](https://github.com/devswha/ovis/pull/3642))
+- Settings → Devices and PCs → Add a connection → Ovis relay now has "Add with a QR code" on a PC
+  that is in no account, whether or not the page is signed in: press Show the QR code and scan it
+  with a device that is signed in to your Ovis account, and the PC joins that account with no
+  number to type and no approval on the PC. The code is made only on that press, is shown as a QR
+  code alone with no code to type, and is ended when the dialog closes, another tab opens, the
+  page is reloaded or closed, the page was hidden for a minute, or after 30 minutes. The dialog
+  then says which account the PC joined, whether it is the one this browser is signed in to, and
+  which device of that account added it, with "Not me: revoke every device", which comes first
+  unless the account is this browser's own; any other device that paired meanwhile is named and
+  asked about, with "Not me: remove it" first, and the notice cannot be closed while one is
+  unanswered. A notice that was not answered comes back the next time Devices and PCs is opened.
+  ([#3551](https://github.com/devswha/ovis/pull/3551))
+- A PC that is already in an account shows no QR code there and makes no code for one: the tab
+  says which account the PC is in and to sign in to that account on the device and open the PC
+  there (a device the PC does not know yet is approved once, by picking its number on a device
+  that is already a member of the PC). A QR code that is up when the PC joins an account is taken
+  back and leaves the screen.
+  ([#3551](https://github.com/devswha/ovis/pull/3551))
+- Settings → Devices and PCs on a PC's own page says where a browser opens the account's other PCs
+  (one link to app.ovis.sh under them), and a PC the account has not heard from for two days has
+  Remove from list, behind a confirm that says it revokes nothing and that the PC is listed again
+  if it is used again. An account with no PC says so, and that each way of signing in is a separate
+  Ovis account until they are linked.
+  ([#3546](https://github.com/devswha/ovis/pull/3546))
+- Settings → Appearance → Theme file imports a theme from a file of colors: a Base16 scheme as its
+  projects publish it (YAML or JSON), or one JSON file with a dark and a light side. Only colors
+  are read from a file, never code or CSS. Ovis derives every color it draws from the sixteen and
+  holds them to the contrast floors of its own themes, so text stays readable and a selected row
+  stays visible whatever the file says. An imported theme is a card beside the built-in ones, is
+  shared with the other devices of the PC, and is drawn from the first frame. Importing a file
+  again replaces the held theme of the same name and sides, so an edited file does not pile up
+  copies. Dark or light is told by the colors the file writes, not by what it calls them, and a
+  JSON file that does not parse is said to be invalid JSON. [docs/themes.md](docs/themes.md)
+  describes the file.
+  ([#3547](https://github.com/devswha/ovis/pull/3547))
+
+### Changed
+- Signing in on a PC with **Sign in and add this PC** (Settings → Devices and PCs → Account, the
+  first-run welcome) now adds that PC to the account in the same step: it lists itself and waits
+  for one of your devices to add it, with no second "Add this PC to my account" press. Only a
+  button that says it adds the PC does: a plain "Sign in", a provider's own button and the desktop
+  app's sign-in add nothing and keep the "Add this PC to my account" button, as does a sign-in
+  that was already there. With the relay off, one button, "Turn on the relay and add this PC",
+  does both; the relay is never turned on without a press. The PC is listed only under the
+  account that just signed in; a listing that gets no answer within a minute, or whose screen is
+  closed, is dropped, its pairing window is closed, and the button comes back.
+  ([#3584](https://github.com/devswha/ovis/pull/3584))
+- Stop waiting on the add-this-PC screen now closes the PC's pairing window at once instead of
+  letting it run out. The PC has one pairing window, so this also ends a phone pairing in
+  progress through "Copy a link without a code".
+  ([#3584](https://github.com/devswha/ovis/pull/3584))
+- A device that only watches a PC is no longer shown the "Add this PC to my account" button, which
+  it could not use.
+  ([#3584](https://github.com/devswha/ovis/pull/3584))
+- An agent's row in the sidebar no longer spends its title on the agent's name: one whose title was
+  only "Claude Code" (or another agent's name) is titled by its workspace instead, and the line does
+  not repeat the name beside the agent's mark. A label you gave the pane is kept as it is, the
+  tooltip still says the agent's own title, and a screen reader still hears which agent it is.
+  With Group agents by state, Within a state: Name orders the rows by the title each one shows.
+  ([#3525](https://github.com/devswha/ovis/pull/3525))
+- `ovis add --approve` (also `login` and `link`) and `pair --approve` no longer ask y/N about a
+  device that wants in. The question shows the device's six digits and asks for them: typing all six
+  (with or without the space) or the last three approves that request, and Enter by itself declines
+  it. An answer so names the request it is for: a line begun for another request, or typed ahead,
+  approves nothing.
+  ([#3581](https://github.com/devswha/ovis/pull/3581))
+- `bun scripts/plugin.ts add` and `login` now run `link`, the terminal command that signs a PC with
+  no screen in and adds it to your account. While it waits it reopens its approval window every 30
+  seconds and waits for an Ovis server that restarts instead of ending the sign-in, so a restart no
+  longer leaves the window closed for up to nine minutes. It stops by itself after 30 minutes, also
+  with a request left unanswered, and asks again about a request whose answer did not reach the
+  server.
+  ([#3539](https://github.com/devswha/ovis/pull/3539))
+- `ovis add` (also `login` and `link`) now ends in one QR code: after the sign-in, scan it with a
+  device that is signed in to the same Ovis account (or type its code at app.ovis.sh) and the PC
+  joins the account, with no Add to press, no digits to compare and nothing to answer in the
+  terminal. The code is a key to the PC, so it is drawn only on a terminal (`--print` writes it
+  anyway), on the terminal's other screen, which the command leaves when a device paired, when
+  the run stops and on Ctrl+C (a terminal without such a screen, or a recording of the session,
+  keeps the drawing of a code that no longer works). It is taken back when the run ends, however
+  it does short of the process being killed, and comes three codes at most (about 30 minutes).
+  The command then says which account the PC joined and which of that account's devices added
+  it. A device that got in with the code without being in that account is asked about, and only
+  the word keep keeps it: anything else, no answer, Ctrl+C, the terminal closing or an error
+  removes it (a line that comes within a second and a half of the question, and the first line
+  after the question changed, answer nothing and it is asked again). When the PC ended in another
+  account than the one that signed in, every device that came since the code was shown is removed
+  without a question, and the command fails. When the PC's devices cannot be read as the run
+  ends, the command says that one may still be paired and where to revoke it. `ovis add
+  --approve` keeps the earlier way: the adding device's request is approved in the terminal by
+  typing its six digits.
+  ([#3586](https://github.com/devswha/ovis/pull/3586))
+- The desktop app now tells you when an update is ready instead of waiting for you to open the
+  tray menu: one system notification per version ("Ovis X.Y.Z is ready"), whose click opens the
+  window, and a line in the window with the same Restart to Update as the tray. The line can be
+  closed for that version, and the connection screen shows it too, so an app whose server cannot
+  start still offers its update.
+  ([#3549](https://github.com/devswha/ovis/pull/3549))
+- The desktop app checks for an update every hour instead of every 6 hours, and no longer
+  downloads again a version it already holds.
+  ([#3549](https://github.com/devswha/ovis/pull/3549))
+- The move to herdr-core says before it starts that each pane opens a new shell from your login
+  profile, so variables set by hand in a pane stay behind.
+  ([#3652](https://github.com/devswha/ovis/pull/3652))
+- An HTML file opened in the file viewer is drawn without its scripts until you press **Run
+  scripts** above it; its HTML and CSS still show. A page's script could reach other hosts over
+  WebRTC and take the keyboard from the app, so it now runs only when you ask. Beside the pane, a
+  page whose script takes the keyboard anyway has its scripts turned off again.
+  ([#3607](https://github.com/devswha/ovis/pull/3607))
+- A split pane's header ends with Close pane in its top-right corner, Zoom pane just left of it.
+  It closes as the pane menu's Close pane does, asking first for a working or blocked agent or
+  the workspace's last pane.
+  ([#3641](https://github.com/devswha/ovis/pull/3641))
+- The selected PC's CPU, memory and fullest disk now show in the status bar by default. Turn them
+  off for a device in Settings → Devices and PCs → More settings → PC load in the status bar.
+  ([#3532](https://github.com/devswha/ovis/pull/3532))
+- On a phone the header is calmer: it no longer counts the running and finished sessions beside More
+  (the workspace list still shows each one, and More keeps its dot for a session waiting for you), and
+  Chat / Terminal is one button that switches to the other view instead of a two-option switch.
+  ([#3674](https://github.com/devswha/ovis/pull/3674))
+- A message the PC held for a reason of its own (a lost connection, a turn that never started, a
+  send it refused) keeps **Send now** only while the PC can still confirm that nothing was typed:
+  on its own live connection, or once the same browser reconnects, reloads or shows it in another
+  tab within ten minutes of losing the connection. Past those ten minutes, after this server or
+  the PC's server restarts or updates, and on a remote PC that runs an older version, it now shows
+  "Not confirmed. Check the terminal before sending again." with Copy and Discard, where it used
+  to keep Send now. A message you held yourself (Alt+Enter, or any follow-up with automatic
+  sending off) is not affected: it stays held until its Send now.
+  ([#3173](https://github.com/devswha/ovis/pull/3173))
+- Settings → Devices and PCs shows the Account group at the top of the page instead of inside More
+  settings, so the sign-in the relay depends on is in view.
+  ([#3546](https://github.com/devswha/ovis/pull/3546))
+- Terminal mode no longer draws an accent outline around the terminal while it has the keyboard
+  focus, as before 0.5.2; the current pane's title still marks where keys go.
+  ([#3664](https://github.com/devswha/ovis/pull/3664))
+
+### Fixed
+- A PC waiting to be added to your account keeps its pairing window open: it reopens every 30
+  seconds and when you return to the tab, so an Ovis restart no longer refuses the other device
+  for up to nine minutes. The screen resumes waiting after a reload, says "This PC is in your
+  account" by itself once a device added it (and that your other devices can open it only once
+  that device has let them in), stops after 30 minutes with a Keep waiting button, and names any
+  signed-in device (not only a phone) and the six digits it will show.
+  ([#3544](https://github.com/devswha/ovis/pull/3544))
+- A device you just approved on one PC no longer waits up to five minutes for your account's other
+  PCs: a PC now reads its account mailbox when a sign-in fails, at most once a minute, and lets the
+  device in when its approval is there. A device that asks before its approval arrived may still be
+  told to try again for up to a minute.
+  ([#3537](https://github.com/devswha/ovis/pull/3537))
+- An agy or grok pane waiting on a background task or timer no longer reads DONE and alerts, then
+  reads BG again, when one lookup of its session fails: the wait is dropped only when the next
+  lookup, ten seconds later, fails too. A pane whose session cannot be found is no longer looked up
+  on every refresh: only every ten seconds, and when its status changes.
+  ([#3572](https://github.com/devswha/ovis/pull/3572))
+- An Antigravity pane no longer counts another process's background tasks, or shows the greeting
+  of a new conversation, when its agent exits and that process number is reused while Ovis looks
+  its conversation up: the pane's process is asked of herdr a second time before its locks are
+  read, and the answer stands only when it is still the same process once they are.
+  ([#3573](https://github.com/devswha/ovis/pull/3573))
+- An Agy reply that a background task, timer or subagent wakes after it finished is a turn of its
+  own, with its own times, instead of joining the reply before it.
+  ([#3472](https://github.com/devswha/ovis/pull/3472) by @jimbb)
+- In the Android app, a link to another server on the PC's own host (a dev server on another
+  port, such as `https://pc.example.ts.net:7231`) now opens in the phone's browser instead of
+  replacing Ovis inside the app, where there was no way back.
+  ([#3626](https://github.com/devswha/ovis/pull/3626) by @mdobro)
+- Opening a tool's row, or pressing "Show all" on a long output, at the end of a chat no longer
+  scrolls you past what you opened now and then. It happened when the click came within a tenth of
+  a second of the chat moving to its end (Jump to latest, or an answer still being written): the
+  list was still keeping the end in view, so the lines you had just opened were scrolled past to
+  the new end.
+  ([#3622](https://github.com/devswha/ovis/pull/3622))
+- Going to the end of a long chat (dragging the scrollbar there, or End) no longer jumps back now and
+  then to where you were reading. It happened when a row was still being measured in that moment,
+  such as a long output you had just unfolded drawing its lines: the chat's list moved the view back
+  to where it had last seen it.
+  ([#3650](https://github.com/devswha/ovis/pull/3650))
+- Claude chat: a background subagent's report shows in its "Background task ended" card again,
+  rendered as Markdown. Claude Code now sends it back as a separate message, which the chat showed
+  as raw text while the card only said where the report went.
+  ([#3660](https://github.com/devswha/ovis/pull/3660))
+- `ovis add --approve` (also `login` and `link`) no longer takes a line typed ahead as the answer to
+  a device that asks to join: only a line typed after a request's question and its six digits showed
+  answers it. A line typed during the sign-in, while nothing was asked, twice at one question, or
+  within a second and a half of a question showing (a key pressed twice) is dropped with a line
+  saying so. So is the first line that comes after a request left the screen unanswered, whenever it
+  comes: the terminal may still hold what was typed for that request, and the question is asked
+  again.
+  ([#3581](https://github.com/devswha/ovis/pull/3581))
+- `ovis add --approve` run without a terminal (`yes | ovis add --approve`, a pipe, a file, `ssh`
+  without `-t`) approves nothing, whenever its lines come: it says so, names the way out and declines every request. It
+  also says so when the terminal's input ends (Ctrl+D), and stops at once when reading the
+  terminal fails.
+  ([#3581](https://github.com/devswha/ovis/pull/3581))
+- `ovis add` opens its last approval window and lists the PC anew in time when the PC's server
+  answers slowly near the end of the run, and puts the PC back in the account's list while the
+  account's other devices are still being brought in.
+  ([#3581](https://github.com/devswha/ovis/pull/3581))
+- `link` no longer reports "This PC is in your account" before that is true: it waits until the
+  account's other devices are brought in, names the account, and fails with what to do when the PC
+  ended in another account than the one that signed in. Run again while those devices are still
+  coming in, it waits for them rather than reporting the PC as done.
+  ([#3539](https://github.com/devswha/ovis/pull/3539))
+- A chat message is no longer typed into one of Codex's own screens: the `/model`, `/permissions`,
+  `/review`, `/theme`, `/resume` and `/experimental` lists, `/rename`'s field, the `/statusline`
+  and `/keymap` editors, the agents view, the `/diff` pager, Find and the search through earlier
+  prompts. herdr reports Codex at rest while one is open, so the message was pasted into it and its
+  Enter took the row under the cursor: it could change the permission mode, trust a folder, or
+  save a model for every new session. The message now stays in the box until the screen is closed
+  in the terminal, and a queued one is held with that reason until you send it.
+  ([#3103](https://github.com/devswha/ovis/pull/3103), reported by @nocstah)
+  ([#3612](https://github.com/devswha/ovis/pull/3612))
+- Codex at Ultra reasoning effort marks its composer `»`: a new pane's chat now opens empty instead
+  of "Conversation unavailable", its first answer shows, and the notice that a command's screen is
+  still open in the terminal works there. ([#3103](https://github.com/devswha/ovis/pull/3103),
+  reported by @nocstah)
+  ([#3612](https://github.com/devswha/ovis/pull/3612))
+- A Codex pane herdr reports no thread for no longer stays on "Conversation unavailable" in three
+  cases: its last answer is longer than the screen or holds a code block, its last answer is a
+  short word such as "ok", or a second Codex has just started in its folder and was asked nothing
+  yet. Chat shows the conversation while that finished turn is on screen, and the terminal again
+  while the pane works on its next turn. It still shows the terminal whenever the screen could be
+  another conversation's: a prompt or a tool's output that quotes one, two conversations that
+  ended on the same text or were asked the same prompt, or, for a long answer, another Codex
+  conversation with a turn under way. All three cases need the list of conversations Codex has
+  loaded, which cannot be read on Windows: there they stay on the terminal.
+  ([#3558](https://github.com/devswha/ovis/pull/3558),
+  [#3559](https://github.com/devswha/ovis/pull/3559),
+  [#3560](https://github.com/devswha/ovis/pull/3560) by @vibewriter-hand)
+  ([#3582](https://github.com/devswha/ovis/pull/3582))
+- A Codex visualization reference in a chat answer is drawn as a card with the file's name and
+  **Open preview**, which opens the file in the file viewer, instead of raw reference text.
+  ([#3450](https://github.com/devswha/ovis/pull/3450) by @cheol-95)
+- The desktop app on the beta update channel is offered beta builds on Linux and Mac. Each commit
+  on main whose checks passed was built for it, but the builds were never uploaded, so the app
+  found no beta feed and stayed on the release it had.
+  ([#3554](https://github.com/devswha/ovis/pull/3554))
+- Restart to Update in the desktop app no longer leaves Ovis with its server stopped and nothing
+  installed. A downloaded update whose file is gone (a newer download that failed removed it) is
+  no longer offered and is downloaded again at the next check; on a Mac the update is offered
+  only once the system's updater holds it; an AppImage in a folder it cannot write does not
+  offer updates it could not install; and an install that fails at once starts Ovis again.
+  ([#3549](https://github.com/devswha/ovis/pull/3549))
+- A file docked beside the pane takes clicks on Preview, Source and Page over 24px of height
+  instead of the 18px they are drawn at, so a mouse no longer has to aim at the thin label.
+  ([#3527](https://github.com/devswha/ovis/pull/3527))
+- A focused text field or select no longer draws two accent lines, one inside the other: it shows
+  the focus ring alone and its border keeps its resting colour. This is what a dialog's first field
+  looked like as it opened (Add PC's SSH field, the palette's search), and it covers the terminal's
+  input line, a reply comment's field, the prompt card's custom answer and the welcome's two
+  choices too. A rename field in the sidebar draws its ring inside the field, where the list no
+  longer cuts its top edge.
+  ([#3556](https://github.com/devswha/ovis/pull/3556))
+- On a phone, text fields and selects (the sidebar filter, Settings' choices) follow the interface font
+  size like the labels beside them instead of staying at 16px. On an iPhone or iPad a field that is
+  pressed or takes the focus grows to at least 16px and keeps it while it has the focus, so Safari does
+  not zoom the page into it.
+  ([#3339](https://github.com/devswha/ovis/pull/3339) by @Noobear)
+  ([#3583](https://github.com/devswha/ovis/pull/3583))
+- A grok pane keeps its background-task count, and the hold of a turn that ended on a task, when
+  herdr names no session for it for a moment: the pane was looked up as another session, not
+  found, and read as holding nothing for about ten seconds.
+  ([#3598](https://github.com/devswha/ovis/pull/3598))
+- A grok session herdr has just named is looked up at once: it waited up to ten seconds when a
+  lookup of the pane's session before it, or of the pane before herdr named any session, had failed.
+  ([#3598](https://github.com/devswha/ovis/pull/3598))
+- With herdr-core, a workspace's menu offers New worktree and Open worktree… on a PC whose git is
+  older than 2.36, such as Ubuntu 22.04's git 2.34: listing the repository's checkouts failed
+  there, so neither was offered
+  ([#3478](https://github.com/devswha/ovis/issues/3478), reported by @datacas).
+  ([#3571](https://github.com/devswha/ovis/pull/3571))
+- On herdr-core, terminals Ovis opens (the move from herdr's included) start in your login shell's
+  environment, in colour, whatever process started the core: a core a coding agent's shell or a
+  service started no longer turns colour off in every pane (Claude Code drew without highlights)
+  or leaves out the sign-in tokens your profile exports. Your profile's PATH comes first, followed
+  by the core's own folders. Ovis reads that environment once when it starts, so a token your
+  profile changes reaches new panes after Ovis restarts; what the core itself carries is checked
+  for each new terminal, so a restarted core is followed. Where the core carries a `NO_COLOR` your
+  login profile does not set (from whatever started it, environment.d or `launchctl setenv`
+  included), it is set empty in these panes, which turns colour back on for most tools; tools that
+  only check whether `NO_COLOR` exists (consola, used by Vite and Nuxt; colorette; kleur) stay
+  without colour there until herdr-core lets a variable be removed. Set it in the profile to keep
+  it. A server whose core already runs no longer waits for the login shell when it starts.
+  ([#3652](https://github.com/devswha/ovis/pull/3652))
+- Back and Forward go to the pane of the entry they land on when the app was about to draw a change
+  at that moment (a pane's status arriving, the New workspace dialog writing its fields to the
+  address). Before, the press could do nothing, and the entry it landed on was overwritten with the
+  place just left. Forward off a file that a tab switch had left under it (Reopen files on return)
+  and a jump back from Settings past the pane it opened over (the browser's Back menu) failed that
+  way every time.
+  ([#3614](https://github.com/devswha/ovis/pull/3614))
+- On Windows, `scripts/plugin.ps1` passes a command's flags on (`plugin.ps1 link --code`) instead of
+  dropping them.
+  ([#3542](https://github.com/devswha/ovis/pull/3542))
+- An iPad home-screen app typed into with a hardware keyboard (iPadOS 26) no longer flashes on every key:
+  a visual viewport that shrinks for a single frame is not taken for an on-screen keyboard.
+  ([#3341](https://github.com/devswha/ovis/pull/3341) by @Noobear)
+  ([#3583](https://github.com/devswha/ovis/pull/3583))
+- An iPad home-screen app in landscape no longer slides the whole screen up and back when a field takes
+  the focus: the shell fits the area below the status bar, also at Safari's page zoom.
+  ([#3340](https://github.com/devswha/ovis/pull/3340) by @Noobear)
+  ([#3583](https://github.com/devswha/ovis/pull/3583))
+- On an iPad running iPadOS 26 or later, a home-screen app in a window no longer has the header's first
+  button under the window's close, minimize and full-screen controls; the header leaves their room,
+  also at Safari's page zoom. A full-screen app keeps the header as it was.
+  ([#3338](https://github.com/devswha/ovis/pull/3338) by @Noobear)
+  ([#3583](https://github.com/devswha/ovis/pull/3583))
+- Tapping a key on the key bar on Android no longer hides the soft keyboard while it is up.
+  ([#3597](https://github.com/devswha/ovis/pull/3597) by @mdobro)
+- Opening the whole output of a Letta Code tool call no longer stalls every other request and
+  terminal while its transcript is searched: one very long line held the server for seconds. The
+  search runs on a file thread, one transcript at a time, and reads a long line once instead of
+  copying it again at every read. While no file thread is free the output answers "try again" (503)
+  rather than "not found", and a pane that moved to another conversation meanwhile gets no output.
+  ([#3575](https://github.com/devswha/ovis/pull/3575))
+- Opening the whole output of a Letta Code tool call answers "try again" (503), not "not found",
+  when the search of its transcript ran out of time before the end, where the call may still be.
+  And a pane seen on another conversation while the request made its last check gets no output.
+  ([#3598](https://github.com/devswha/ovis/pull/3598))
+- A Mac's PC load in the status bar includes memory: memory in use is read from `vm_stat` as
+  Activity Monitor's Memory Used (App Memory, wired and compressed), so the file cache is not counted.
+  ([#3281](https://github.com/devswha/ovis/pull/3281) by @vibewriter-hand)
+- A phone's tab list and the pane pickers fill the open tab's and the selected pane's row, as the
+  sidebar fills the selected workspace and agent, and keep its name in bold.
+  ([#3289](https://github.com/devswha/ovis/pull/3289) by @hrudek)
+- New folder requests the mobile keyboard's Done action instead of advancing to the workspace label,
+  so the existing Enter action can create the folder without an extra control.
+  ([#3678](https://github.com/devswha/ovis/pull/3678) by @hongho55)
+- Opening the whole output of an OmO tool call gives no output when the pane was seen on another
+  session while the request made its last check: the session before's output was answered.
+  ([#3598](https://github.com/devswha/ovis/pull/3598))
+- A message the queue sends to an omp that is still starting (a new workspace's first message, a
+  queued message, **Send now**) waits until omp takes input, as a message sent at once already did,
+  for an omp that runs herdr's omp integration. Typed earlier, on a slow start, it stayed in omp's
+  input box and never ran while its row said sent. Its row says **Waiting for omp to start…**
+  meanwhile; a message sent from the chat in that time goes behind it, and once anything is typed in
+  the terminal (also with its input line) the waiting messages, and the ones sent until omp has
+  started, are held for you to send, rather than sent together with it.
+  ([#3624](https://github.com/devswha/ovis/pull/3624))
+- A new workspace's first message whose pane closed while it was being sent goes with that pane,
+  instead of turning up, held, in the next pane that got its id.
+  ([#3624](https://github.com/devswha/ovis/pull/3624))
+- Stop waiting on Add this PC now also closes a pairing window that a listing given up for getting
+  no answer opens late, a listing stopped on its way opens no window and reads nothing more, and a
+  wait begun right after it asks for its window only once that close was answered, so a late close
+  no longer shuts the new wait's window.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- A wait to add a PC that is taken up again (after a reload, or every time it reopens its window)
+  first reads which PC answers, from a request that opens nothing: an address that now answers for
+  another PC no longer gets a pairing window opened on it, and is no longer said to be the PC
+  that was added.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- The PC's approval prompt is entered on the prompt itself by Shift+Tab too, not on its buttons, and
+  a key cannot press Approve for a second after the focus came into the prompt. Its guards now count
+  to when a key or a click was made, so one already on its way when the prompt arrived or moved
+  approves nothing on a busy page.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- A pairing confirmed for one sign-in no longer adds the PC to another account when the hosted app
+  reloads itself for a newer build before the PC opens and another sign-in is stored by then: the
+  PC then opens with the key this device holds and joins no account. That holds over a second
+  reload too (a reloaded page that is itself reloaded or closed while it connects), also for a
+  pairing confirmed with a key of the device's own.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- A wait to add a PC whose address starts answering for another PC just as it reopens its window
+  closes the window that request opened on the other PC, instead of leaving it open for up to ten
+  minutes with no screen waiting.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- `install.sh --add` discards what was typed in the terminal while the installer worked before its
+  add step starts, so a line typed ahead no longer answers a device's approval there; where it
+  cannot be discarded, the installer prints the command to run instead. It starts the add step
+  only on a release whose add tells a line typed ahead from an answer: on an older one (up to
+  0.5.2, which asks y/N) it says to update first and prints the command.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- `ovis add --approve` (also `login` and `link`) and `pair --approve` ask about a device more
+  carefully. A line that is neither the request's digits nor empty (a `y` out of habit, a mistyped
+  digit) no longer declines the request for good: it answers nothing, one line says what approves
+  and what declines, and the question is asked again; Enter by itself still declines. Three or six
+  digits that are not the request's are said to be just that, with the hint that the request may be
+  another device's and that Enter declines it. Full-width digits typed with an input method approve
+  as the digits they are. A request whose last three digits another request shares (one asked about
+  earlier in the run, or waiting now) asks for all six, and only all six approve it; one already
+  asked about with three is asked about again with all six when such a request comes to wait beside
+  it.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- `ovis add --approve` and `pair --approve` no longer take what was typed before a question as part
+  of its answer: the terminal's input is discarded as a request's question first shows, and the
+  first line after an answer that did not reach the PC's server answers nothing. Where the input
+  cannot be discarded (Windows), the first line after each question answers nothing instead and the
+  question is asked again. Digits typed before a question showed are discarded with the rest, so
+  Enter pressed at it then declines: type them once the question shows.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- `pair --approve` asks as `ovis add` does: a second line sent right behind an answer no longer
+  answers the next request, a line counts only a second and a half after its question showed,
+  and input that is not a terminal (`printf '456\n' | ovis pair --approve`, `ssh` without `-t`)
+  answers nothing: the command says so and fails, and declines no request, so each keeps
+  waiting. It reads the waiting requests once more before it sends an approval typed as three
+  digits, and asks for all six when another request that ends in them has come since. An answer
+  the PC's server does not take is asked for again instead of ending the command with an error.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- The question `ovis add` asks about a device its QR code let in discards what was typed before
+  it showed, and reads the word keep typed full-width as the same word.
+  ([#3609](https://github.com/devswha/ovis/pull/3609))
+- A pairing code that someone on the LAN started while nothing was paired no longer pairs a device
+  after the first one is paired: it ends when the pairing gate closes.
+  ([#3613](https://github.com/devswha/ovis/pull/3613))
+- A connection that another machine on the LAN opened while nothing was paired no longer stays able
+  to type into panes and read them once the first device is paired or the relay is turned on. It is
+  closed when the pairing gate closes, as that machine's new requests already were refused.
+  ([#3610](https://github.com/devswha/ovis/pull/3610))
+- Ovis lets go of OpenCode's event stream within seconds of OpenCode leaving its last pane, even
+  when herdr says nothing of it (seen on a busy host): herdr may change the pane's agent without an
+  event, or keep calling it OpenCode with only the shell left in front. A pane that holds the stream
+  is now read again each time its check is due, and the shell alone in front releases it. On Linux,
+  the pane's own OpenCode stopped with Ctrl+Z keeps it, also when started through a launcher such as
+  `npx`, so a message sent before is still followed after `fg`; another OpenCode stopped in the same
+  shell does not. On macOS, a stopped OpenCode still releases it.
+  ([#3645](https://github.com/devswha/ovis/pull/3645))
+- On a 320 px phone in Japanese at the largest interface text size, the alerts notice's Dismiss
+  button no longer ends up past the right edge of the screen: the button's label wraps onto two
+  lines instead.
+  ([#3531](https://github.com/devswha/ovis/pull/3531))
+- A message queued for a Claude Code pane no longer goes into the turn a `/loop` wakeup or another
+  scheduled task just resumed: for up to a minute after the wakeup it waits for that turn to end,
+  whatever herdr reads the pane as meanwhile; after that minute the queue goes by herdr's reading
+  of the pane again. When such a turn is interrupted before it finishes, the pane's queue can stay
+  held for up to about a minute after the pane shows as idle; Send now still sends a waiting
+  message at once. A wakeup that fires while a message is being typed, in the few tenths of a
+  second between its paste and its Enter, leaves the text in Claude's input line, with the message
+  marked as not confirmed, instead of sending it into that turn.
+  ([#3574](https://github.com/devswha/ovis/pull/3574))
+- A message queued for a Claude Code pane no longer goes into the turn Claude just began by itself
+  because a background task ended (a subagent, a background command, a monitor or a workflow), once
+  Claude has written that turn's prompt: for up to a minute after that it waits for the turn to end,
+  whatever herdr reads the pane as meanwhile, as after a `/loop` wakeup. A message already waiting
+  when the turn begins can still go into it if herdr reads the pane as idle before Claude writes
+  that prompt, as before this change. When such a turn is interrupted, or ends in a session
+  whose Claude Code writes no end-of-turn entry, the pane's queue can stay held for up to about a
+  minute after the turn began though the pane shows as idle, and for as long as such turns keep
+  beginning less than a minute apart; Send now still sends a waiting message at once. A turn that
+  begins this way while a message is being typed, in the few tenths of a second between its paste
+  and its Enter, leaves the text in Claude's input line, with the message marked as not confirmed,
+  instead of sending it into that turn. That can happen to a message that waited behind a turn
+  during which the task ended, as that turn's end both sends the message and begins the new turn.
+  ([#3629](https://github.com/devswha/ovis/pull/3629))
+- A queued follow-up held when the connection drops or reloads before anything is typed now
+  recovers as **Held message — review and send** with **Send now** enabled once the browser
+  reconnects, instead of staying stuck as "Not confirmed. Check the terminal before sending
+  again."
+  ([#3173](https://github.com/devswha/ovis/pull/3173) by @jimbb)
+- A held message is typed once when herdr moves its pane while one tab's **Send now** is on its
+  way: the other tab's copy under the pane's new ID is refused until that send ends, and then
+  reads as sent.
+  ([#3608](https://github.com/devswha/ovis/pull/3608))
+- A held message that a **Send now** may have typed stays "not confirmed" in another tab for its
+  whole ten minutes, also after its first connection's record is gone.
+  ([#3608](https://github.com/devswha/ovis/pull/3608))
+- A pane that takes the ID of one that ended is no longer offered the ended pane's held message
+  with **Send now**.
+  ([#3608](https://github.com/devswha/ovis/pull/3608))
+- A held message's **Send now** in another tab ends with the PC's receipt also when this device's
+  clock is set back.
+  ([#3608](https://github.com/devswha/ovis/pull/3608))
+- A PC waiting to be added to an account keeps its pairing window when its server restarts (an update),
+  for the rest of the window's ten minutes, instead of refusing the device that then asks. The window
+  closes on Revoke all, Reset relay identity and turning the relay off, and `POST /api/relay/link/close`
+  closes it on request.
+  ([#3535](https://github.com/devswha/ovis/pull/3535))
+- The PC's prompt for a device that adds it to your account now says what to do: type the PC's
+  number on that device, then press Approve. It used to ask you to compare digits the other device
+  never shows. Every approval prompt on the PC also shows the seconds left, can be answered by
+  keyboard while Settings is open (it takes the focus there, on the prompt and not on Approve, and
+  never from a terminal or a field you are typing in; from a field in Settings, Tab reaches it
+  after Settings' own controls), and is announced as devices waiting, not phones. Approve ignores
+  a key or a click that comes right after its prompt arrived, moved up or was given the focus, and
+  the second click of a double-click, so approving one device never approves the next by accident.
+  ([#3570](https://github.com/devswha/ovis/pull/3570))
+- A new phone or browser that the relay turns away because the PC's account is past its relay
+  limit now says so, and that devices already added still connect, instead of showing a failed
+  connection.
+  ([#3520](https://github.com/devswha/ovis/pull/3520))
+- A PC the Ovis relay already refused for its account now says so over the pane even when the
+  browser's clock is before the date the relay announced, instead of only the sign-in reminder or
+  nothing.
+  ([#3579](https://github.com/devswha/ovis/pull/3579))
+- A relay pass that follows another within a minute now reaches the relay: the PC sends it once the
+  relay takes renewals again, instead of at once, when the relay dropped it and kept the older pass
+  for half a day. A pass that arrived while the PC was still connecting is sent as soon as it has.
+  ([#3516](https://github.com/devswha/ovis/pull/3516))
+- Comments waiting on a pane's replies are no longer deleted when its herdr is replaced (a restart, a
+  runtime switch): Recover unsent text offers them as the message they would have gone with, each
+  quote followed by its comment.
+  ([#3680](https://github.com/devswha/ovis/pull/3680))
+- A Windows PC no longer reads a path on another host's network share for a link or an address that
+  names one: a Markdown link (`[x](//host/share/a.md)`, also written with backslashes,
+  percent-encoded or after `~/`), a tool call's file row, or an Ovis address with `?file=`, `?read=`
+  or a new workspace's `cwd=`. Opening one asked that host for the file with your sign-in. A share
+  one of your panes works in or your home folder is on, and WSL's own files (`\\wsl$\…`,
+  `\\wsl.localhost\…`), open as before.
+  ([#3621](https://github.com/devswha/ovis/pull/3621))
+- A connection, a watch-only device included, can no longer make the PC run more than 64 of the
+  processes that draw a watched pane: a watch names its pane by a pane's id, a pane has one such
+  process at a time, and one connection watches at most 64 panes.
+  ([#3621](https://github.com/devswha/ovis/pull/3621))
+- A message of tens of thousands of line breaks followed by a letter no longer stalls the PC's
+  server, and every terminal with it, while it is refused.
+  ([#3621](https://github.com/devswha/ovis/pull/3621))
+- Revoking a device now also ends a pairing code that device started or was handed, and the code
+  to type bound to it. Before, on a PC in no account, a device could start a code, be revoked, and
+  the code still paired another device for up to ten minutes.
+  ([#3616](https://github.com/devswha/ovis/pull/3616))
+- Searching a conversation that holds a very long line of `[` that never close (a pasted log,
+  minified text) no longer stalls the server. Such a line was read in time that grew with the
+  square of its length, 36 seconds for 200,000 characters, and every terminal and request waited
+  until the search was done.
+  ([#3565](https://github.com/devswha/ovis/pull/3565))
+- A password asked by `git` over HTTPS (`Password for 'https://you@host':`), a key passphrase asked
+  by `ssh-add` or `ssh-keygen` (`Enter passphrase for /home/you/.ssh/id_ed25519:`) and the password
+  of an SSH host given as an IPv6 address are masked prompts now, as `sudo`'s and `ssh`'s already
+  were: the **Password or PIN** field takes the input line's place, what is typed is kept out of
+  drafts, and a queued or inserted message is no longer typed into the prompt. A key whose path has
+  `y/n` or a colon in it (`/home/andy/notes/key`, `/keys/id:work`) is recognized too. With a PC not
+  yet updated the field still answers the prompt: its text is typed into the terminal directly.
+  ([#3566](https://github.com/devswha/ovis/pull/3566))
+- More password requests are masked prompts: an interactive ssh sign-in (`(you@host) Password:`),
+  `doas`, `sudo` in any language and sudo-rs, `passwd`, `mysql`, gpg's `Passphrase:` and openssl's
+  `Enter PEM pass phrase:`.
+  ([#3591](https://github.com/devswha/ovis/pull/3591))
+- The **Password or PIN** field leaves once the program has read its answer, even while its prompt is
+  still the last text on the screen (git signing in, `sudo` running a quiet command): a second Send
+  there could wait in the terminal and reach the shell. With a PC not yet updated the field says that
+  what you type goes to the terminal unchecked.
+  ([#3591](https://github.com/devswha/ovis/pull/3591))
+- Settings → Devices and PCs no longer says "Needs approval" for every other PC of your account: a
+  PC's own Settings cannot tell that, so a listed PC now reads "In your account".
+  ([#3524](https://github.com/devswha/ovis/pull/3524))
+- Settings: a terminal or chat font size typed in full-width digits (`１６`, as a Japanese, Korean or
+  Chinese keyboard can enter them) is taken as the number instead of being refused.
+  ([#3530](https://github.com/devswha/ovis/pull/3530))
+- When adding a PC to your account fails in the hosted app, the sheet now says what happened and
+  what to do, with Try again: a new PC that is no longer waiting says to keep its Account screen
+  open on it, and a join that nobody approved says to open that PC on a device that already uses
+  it, or to pair with a QR or code. The join sheet says so before you ask, and a listed PC past
+  its ten minutes reads "Join · a device of your account connected to it approves" instead of
+  "Add window closed · an account member must approve".
+  ([#3545](https://github.com/devswha/ovis/pull/3545))
+- A signed-in dashboard with no PC now says how to add one: install Ovis on the PC (the macOS or
+  Linux line and the Windows line each have a Copy button), sign in there with the same provider
+  account, and choose Add this PC to my account. It also says that GitHub and Google are separate
+  Ovis accounts until linked (an account signed in with Apple is told a PC signs in with GitHub or
+  Google only), and Check again re-reads the account's PCs at once instead of waiting for the
+  next refresh, also when a read was already under way. When the account's PCs could not be read,
+  the steps are not shown under that notice.
+  ([#3543](https://github.com/devswha/ovis/pull/3543))
+- app.ovis.sh opens a PC as soon as it is paired, instead of stopping at a Ready screen with an
+  Open PC button; that screen now appears only when adding the PC to your account failed, where
+  it offers Try again. While you are signed in, the PC opens once this device has joined it
+  under your account (a moment later, or after 15 seconds when the PC is slow to answer), so
+  that step no longer disconnects a terminal you just opened. A PC paired with a QR or a code
+  no longer says "Adding it to your account…" for a minute.
+  ([#3555](https://github.com/devswha/ovis/pull/3555))
+- When you are signed in and open a pairing link for a PC your account does not list, the
+  question now reads "Add {name} to your account?", says that every device of your account will
+  be able to open it, and shows the PC's ID.
+  ([#3555](https://github.com/devswha/ovis/pull/3555))
+- A pairing link's question is asked again when what it said stopped being true before you
+  pressed its button (you signed in or out in another tab, signed in as another account, or the
+  PC left your account), so a pairing never does more to your account than the screen said.
+  The question waits for your sign-in and your account's list of PCs instead of guessing, for at
+  most 8 seconds when either does not answer, and says "Checking your account…" meanwhile. Not
+  now stops a pairing whose button was already pressed.
+  ([#3555](https://github.com/devswha/ovis/pull/3555))
+- A pairing whose question said this device gets a key of its own no longer adds the PC to an
+  account you signed in to meanwhile when the page reloads for a newer version before the PC
+  opens. Opening the PC later while signed in adds it to your account, as before.
+  ([#3555](https://github.com/devswha/ovis/pull/3555))
+- A split half showing a pane that herdr's own window moved to another workspace follows it to its
+  new ID even when the roster shows the move before the server's notice of it, instead of closing.
+  ([#3669](https://github.com/devswha/ovis/pull/3669))
+- A PC added over SSH with "Use Default session" starts herdr's default session by itself after that
+  PC restarts also when another herdr session is already running there. Before, it stopped and asked
+  which session to use.
+  ([#3576](https://github.com/devswha/ovis/pull/3576))
+- A PC saved in herdr (`herdr machine`) for which "Use Default session" was chosen keeps that choice:
+  the next refresh of herdr's saved machines, or a restart of this app, no longer ties it to the
+  default session's socket again, which stopped it at "the herdr session chosen for this PC is no
+  longer running" after that PC restarted.
+  ([#3576](https://github.com/devswha/ovis/pull/3576))
+- Adding a PC over SSH that runs its own Ovis on herdr-core asks which to use in two more cases, both
+  on a PC where this app's bridge runtime is not installed yet: when that Ovis is an older one that
+  does not list herdr sessions and the dialog names no session (herdr's default session there is
+  offered beside it), and when herdr's socket there is only what a stopped herdr left. Before, the
+  PC was set up as a herdr PC without asking, and in the second case a new herdr was started beside
+  its Ovis.
+  ([#3576](https://github.com/devswha/ovis/pull/3576))
+- Adding a PC over SSH that runs both its own Ovis and herdr sessions no longer says "Connection
+  failed": the dialog, the PC's card and the line under the header ask which to use, with that
+  PC's own Ovis first as the main choice, the herdr sessions running beside it after it, and
+  starting a new herdr last.
+  ([#3636](https://github.com/devswha/ovis/pull/3636))
+- On Windows with Git for Windows' ssh (the one Ovis uses when Git is installed), a program that
+  happens to hold the local tunnel port when Ovis connects to an SSH PC no longer receives that PC's
+  bridge access token: the connection waits for ssh to report that its own forward is open, and fails
+  with ssh's own error when the port is taken. With Windows' own OpenSSH, which reports nothing of this
+  to Ovis, the connection works as before. A program that takes the port on purpose can still share it
+  with ssh on Windows; that case is not closed yet.
+  ([#3666](https://github.com/devswha/ovis/pull/3666))
+- Add a connection → SSH no longer looks empty in an open LAN window, which the PC keeps its list of
+  known PCs from: one line now says where that list can be seen (on the PC itself, or from a device
+  paired with it directly).
+  ([#3517](https://github.com/devswha/ovis/pull/3517))
+- Korean, and other text typed through an input method, keeps up with fast typing in the terminal
+  again: the box that shows the syllable being composed measures its glyph once per glyph and font
+  instead of on every change, which made the browser recalculate the whole page's style several
+  times per key.
+  ([#3596](https://github.com/devswha/ovis/pull/3596) by @Kuhave)
+- A Codex visualization reference with a display mode Ovis does not know is drawn as its card
+  instead of raw reference text. Each card's **Open preview** button names its file to a screen
+  reader, and copying a selection of a card gives the file's name and the title on two lines,
+  without the button's words.
+  ([#3589](https://github.com/devswha/ovis/pull/3589))
+- On a device that only watches, the rows of the composer's background tasks list answer again: a
+  running task's detail and the fold of ended tasks open however often the pane draws, and so do
+  the rows of an OMP pane's side conversations list. Since 0.5.2 they stopped answering as soon as
+  the pane drew again with the list open, and stayed that way.
+  ([#3618](https://github.com/devswha/ovis/pull/3618))
+- A Windows PC whose Ovis state folder was migrated connects over SSH again: the bridge's launcher and
+  the bridge itself no longer go through the migration junction (`.config\herdr-web-ui`), which a
+  process an SSH session starts may not traverse, so adding it no longer waits minutes and ends
+  "Bridge did not start". The bridge's part takes effect with the next remote bundle.
+  ([#3673](https://github.com/devswha/ovis/pull/3673))
+- Windows PCs reconnect over SSH after the Ovis state-directory migration, without failing to
+  write the bridge launcher, start herdr in the desktop session or read startup status through an
+  untrusted mount point. Registry paths with brackets are treated literally, and the bridge keeps
+  starting from the user's home directory.
+  ([#3633](https://github.com/devswha/ovis/pull/3633) by @yeongjo)
+- After herdr restarts, the sidebar's row menu and the command palette no longer offer New worktree
+  and Open worktree… for a moment on the earlier herdr's answer, which may be about another folder
+  under the same workspace ID: the items come back once the new herdr's folder is checked.
+  ([#3578](https://github.com/devswha/ovis/pull/3578))
+- A workspace folder whose check for a git repository failed is no longer checked again each time
+  workspaces change places or its PC is selected, only when the PC's workspaces change, the PC
+  reconnects or herdr restarts.
+  ([#3578](https://github.com/devswha/ovis/pull/3578))
+- A link that opens New workspace with a WSL folder (`\\wsl$\…`, `\\wsl.localhost\…`) fills in that
+  folder again, instead of leaving it out and showing another one.
+  ([#3671](https://github.com/devswha/ovis/pull/3671))
+- On macOS, the first terminal Ovis opens on a herdr-core core that a coding agent started with
+  `herdr-core server start` is in colour too: it no longer keeps the agent's `NO_COLOR=1` (Claude
+  Code drew there without colour) while later terminals were already fixed.
+  ([#3688](https://github.com/devswha/ovis/pull/3688))
+- Ctrl+Backspace in the terminal deletes the word before the cursor instead of one character: it
+  sends Ctrl+W, in every program (in vim or nano Ctrl+W keeps its own meaning there). Input held
+  after a disconnect drops that word too. A pane drawn as a mirror (a Windows PC's) keeps Ctrl+H,
+  which Windows shells already read as the word erase.
+  ([#3686](https://github.com/devswha/ovis/pull/3686))
+- On Windows, Ovis no longer runs an `hc` it finds outside your profile folder while it looks for
+  herdr-core: not one on the PATH in a folder such as `C:\tools`, which every account on the PC
+  can write, nor one in Program Files, nor a bare `OVIS_HC_BIN=hc` found there. Set
+  `OVIS_HC_BIN` to the full path of an `hc` kept elsewhere.
+  ([#3687](https://github.com/devswha/ovis/pull/3687))
+
+### Maintenance
+- The self-hosted runner's client-build cache keeps each build under the CI run whose job built it,
+  and a job restores only its own run's. Before, a pull request's run could hand in a build under
+  the key of a new commit of main ahead of main's own run, and main's Integration and Browser
+  jobs, and a release validated by that run, would have tested that build. The launcher installed
+  on every runner host that uses the cache must be updated (copy `scripts/self-hosted-runner`
+  again with `rsync -a`; no restart, which would cancel the jobs in flight); until then no build
+  is restored there and every job builds.
+  ([#3585](https://github.com/devswha/ovis/pull/3585))
+- The runner's build cache takes a build in only from the container whose job handed it in, for a
+  job that started once that container had: a claim naming the run of the slot's next job, or of a
+  killed container's job that GitHub still lists as running, is refused, and so is a build an
+  earlier job left in an outbox that could not be emptied. An old entry that cannot be removed is
+  moved out of the names jobs read instead of being tried and logged every second.
+  ([#3585](https://github.com/devswha/ovis/pull/3585))
+- The Release run no longer runs the whole CI a second time when main's own CI run already passed
+  the same commit: it takes that run, waiting up to 40 minutes for one still going, and still runs
+  Fast checks itself, beside that wait and on GitHub's runner, where the unit tests the self-hosted
+  runner skips run.
+  It runs the whole CI itself whenever main's run is missing, failed, was rerun more than once or
+  cannot be read. Its new `revalidate` input runs the whole CI in the Release run as before, and
+  **Actions → Release validation** is a dry run of the decision that publishes nothing.
+  ([#3567](https://github.com/devswha/ovis/pull/3567))
+- Self-hosted CI runner: each runner slot has a docker network of its own. The runners of a PC
+  shared one loopback so that `scripts/check.ts`'s slots, which are loopback ports, bounded the
+  herdr-backed lanes of all of them, and a job on one slot could reach a server another job's tests
+  kept there with no token, type into a pane behind it, and so run commands in that job's
+  container. The slots are now lock files in a volume every runner mounts (`CHECK_SLOTS_DIR`), held
+  with `flock`, with the same limit, queue and holder names. On such a launcher a herdr-backed lane
+  of a commit from before stops at once and says to take main in. The launcher must be copied and
+  restarted on each runner PC.
+  ([#3628](https://github.com/devswha/ovis/pull/3628))
+- Self-hosted CI runner: the launcher waits two seconds before every container of a slot, the first
+  after its own start included, so the build cache never takes a job of a container that was killed
+  with the launcher for the job of the container after it.
+  ([#3628](https://github.com/devswha/ovis/pull/3628))
+
+## [0.5.2] - 2026-11-10
+
+### Added
+- Settings → Devices and PCs → Account shows the account's server-provided plan name, PC slots,
+  and relay data allowance under the signed-in row. A dismissible notice over the pane prompts to
+  sign in, or names an account relay limit, once the Ovis relay announces a date from when it needs
+  a sign-in or refuses this PC; until then nothing new shows.
+  ([#3492](https://github.com/devswha/ovis/pull/3492))
+- Alt+Enter (Option+Enter on a Mac) in the chat composer holds the message in the queued list: it
+  never goes on its own, even when the agent is idle or queued messages send automatically, and goes
+  only when you press its Send now. On a phone, a touch screen or a window 640 px wide or less, Alt+Enter
+  stays a line break.
+  ([#3463](https://github.com/devswha/ovis/pull/3463))
+- Chat answers Hermes's dangerous-command approval (its CLI in English, in the default modern layout of
+  Hermes 0.23 and the classic one) with an approval
+  card: the command as Hermes draws it, its warning and its own choices, answered with its arrow keys
+  and Enter. A panel that cuts the command or drops the warning gets no card, not even the generic
+  one, and stays for the terminal to answer.
+  ([#2888](https://github.com/devswha/ovis/pull/2888))
+- Typing `/` in a Letta Code pane's Chat lists Letta's own commands with their descriptions, and the
+  skills in `~/.letta/skills` and the project's `.agents/skills`. Commands that open one of
+  Letta's own screens are marked Terminal.
+  ([#3424](https://github.com/devswha/ovis/pull/3424) by @homebodify)
+- Letta Code's `/model` opens as a card in Chat: pick one of the models its picker shows, show
+  the tab beside it, or search every model of the tab, then confirm the reasoning level it offers.
+  Cancel closes the picker. Other reasoning levels stay in the Terminal.
+  ([#3298](https://github.com/devswha/ovis/pull/3298) by @homebodify)
+- Settings > Experimental > OMP on macOS herdr-core: chat from the session it holds open. On, the chat of
+  an omp started with `omp -c` (or any resume) shows once omp writes its first turn, instead of falling
+  back to the terminal. Off by default.
+  ([#3376](https://github.com/devswha/ovis/pull/3376))
+- The connection server can put right a PC reached over SSH whose Ovis cannot update itself (started
+  by hand, or too old to take an update asked for from another PC): `POST /api/machines/install`
+  installs Ovis there with its official installer at this app's release, or restarts it through its
+  own launcher, then updates and connects it again. It can also give a PC with no Ovis yet one the
+  same way. SSH uses keys only, and a refusal says what to do. The PC's card offers it in a later
+  release.
+  ([#3313](https://github.com/devswha/ovis/pull/3313))
+- Experimental, off by default (Settings → Experimental → PCs → Start a replaced server again): an
+  install over SSH that replaces a server started by hand, and then fails or is cancelled before
+  anything was installed or launched in its place, starts that server again as it was (the same
+  program, arguments, folder and environment, its token included) on Linux. It is not started again
+  once a replacement may be on its way, when another server holds its address or the session's
+  socket, or where no faithful copy of it can be made (macOS among them); the job then says so. When
+  off, a failed replacement leaves that server stopped, as before.
+  ([#3378](https://github.com/devswha/ovis/pull/3378))
+- The server can update every PC added here, through the relay or over SSH, from this PC: each PC on
+  the list tells whether it has an Ovis update it can take, and this PC's owner can start it for one PC
+  or all of them, with each PC's steps and, when one fails, why. The buttons for it come with a later
+  update of the app's screens.
+  ([#3309](https://github.com/devswha/ovis/pull/3309))
+- The Overview counts your PCs as Ready or Needs you (with how many are offline), lists at most
+  three that need you with what each needs, and shows your PCs in a dense table you can filter.
+  ([#3284](https://github.com/devswha/ovis/pull/3284))
+- Each paired PC shows how this device reaches it right now (same network, Tailscale or relay)
+  with its measured round trip, and the Overview summarizes how many PCs are reachable now.
+  ([#3284](https://github.com/devswha/ovis/pull/3284))
+- A PC's details open beside the table without connecting to it, and a never-seen PC says so
+  instead of showing a made-up time.
+  ([#3284](https://github.com/devswha/ovis/pull/3284))
+- The connection map moved to Relay: a diagram for up to eight PCs on a wide screen, a list of
+  relays and PCs otherwise. A wire moves only while this device checks the PC.
+  ([#3284](https://github.com/devswha/ovis/pull/3284))
+- Adding or joining a PC is a sheet that starts pairing on the first confirmation, says which of
+  four steps it is on, waits for the approval with its time limit, stops at Ready until you open
+  the PC, and renews the connection before reading account introductions.
+  ([#3284](https://github.com/devswha/ovis/pull/3284))
+- `GET /api/relay` reports why the relay is not online as a fixed `error_code` (such as
+  `relay_unreachable` or `pass_required`), beside the `error` sentence, so an app can say it in its
+  own words and tell whether the PC tries again by itself.
+  ([#3304](https://github.com/devswha/ovis/pull/3304))
+- The relay can refuse new device sessions to a PC whose relay pass allows none (account limits, such as
+  a relay data limit): while passes are enforced, a client the PC identifies as a device new to it closes
+  `4403`. The PC's own devices, reconnecting or not, and the sessions already open stay.
+  ([#3484](https://github.com/devswha/ovis/pull/3484))
+- Relays and PCs accept a second relay pass form that can say whether new client sessions to the
+  PC are allowed; the relay does not act on it yet. A PC now tells the account service which pass
+  forms it reads, and shows `new_sessions: false` in the pass part of `GET /api/relay` while the
+  relay says its pass holds and the pass says so.
+  ([#3345](https://github.com/devswha/ovis/pull/3345))
+- A PC connected over SSH or through the relay can be moved to herdr-core from the PC in front of you:
+  its move routes are forwarded under the PC, every PC's move can start at once
+  (`POST /api/machines/runtime/move-all`), and the PC list carries whether each PC has moved yet
+  (`runtime_move`). Only the owner may, from any device the owner signed in or paired to drive this
+  PC (the owner's phone or other PCs through the relay too); never an open LAN visitor, a Portal visitor
+  or a device that only watches. An Ovis too old for it says to update Ovis on that PC first.
+  ([#3312](https://github.com/devswha/ovis/pull/3312))
+
+### Changed
+- The context ring beside the model only shows; its number is in the tooltip.
+  ([#3431](https://github.com/devswha/ovis/pull/3431))
+- A long tool output in the chat now shows only its beginning instead of scrolling inside a small
+  box: past 30 lines, its first lines with "Show all N lines" below, as a code block does; a very
+  long line, its first 1,000 characters with "Show all N characters".
+  ([#3482](https://github.com/devswha/ovis/pull/3482))
+- Conversation search no longer keeps an empty strip under the list before you search.
+  ([#3482](https://github.com/devswha/ovis/pull/3482))
+- The recovered-text notice after a herdr restart is shorter and still says nothing is sent. For a
+  pane without a message box it now says to copy the text and paste it where you need it.
+  ([#3482](https://github.com/devswha/ovis/pull/3482))
+- A file that cannot be opened says why: signed out, not allowed, missing, too many requests, a
+  server error or no connection.
+  ([#3433](https://github.com/devswha/ovis/pull/3433))
+- Settings → Devices and PCs: Check now sits at the end of this PC's own row, sized to it, instead of on
+  a line of its own where it was unclear what it belonged to.
+  ([#3440](https://github.com/devswha/ovis/pull/3440))
+- The header and tab row are one compact line, with New workspace as the `+` beside the logo, and
+  the sidebar's search icon is gone: Ctrl/⌘+K still filters. Shortcut hints follow the platform
+  (Ctrl on Linux and Windows).
+  ([#3430](https://github.com/devswha/ovis/pull/3430))
+- On a phone the header counts the sessions working (a blue dot) and the ones finished unseen (a
+  green check) beside More, whose dot counts the waiting ones; pressing the counts opens the drawer.
+  ([#3430](https://github.com/devswha/ovis/pull/3430))
+- On a phone the workspace drawer takes about four fifths of the screen, leaving the page beside it
+  to tap it closed; its PCs have no `+` of their own (the drawer's header has one), and their fold
+  lines up with the rows' `…` menu.
+  ([#3430](https://github.com/devswha/ovis/pull/3430))
+- Closing a tab names the pane it closes, or how many.
+  ([#3430](https://github.com/devswha/ovis/pull/3430))
+- The command palette offers New worktree, Open worktree… and Earlier sessions… for the selected
+  pane's workspace, the same actions its sidebar row menu has.
+  ([#3481](https://github.com/devswha/ovis/pull/3481))
+- The rename pane and rename tab dialogs put the name's caption above the field, as the other
+  dialogs do.
+  ([#3481](https://github.com/devswha/ovis/pull/3481))
+- A pull request error on this PC names the PC too when several PCs are shown, as it already does for
+  another PC.
+  ([#3481](https://github.com/devswha/ovis/pull/3481))
+- Only one setup at a time connects to a PC over SSH, whatever herdr session each names: a second
+  one, for another session or another PC saved at that address, waits until the first ends. An
+  alias of a host, or its default port given, is the same PC (as `ssh -G` resolves it).
+  ([#3313](https://github.com/devswha/ovis/pull/3313))
+- Connecting to a PC whose own Ovis has just started waits for its first check for releases,
+  rather than reading that it offers no update.
+  ([#3313](https://github.com/devswha/ovis/pull/3313))
+- An install over SSH whose installer fails after its download, once it replaced a server started by
+  hand, says another Ovis may have been installed in its place, rather than that none runs there.
+  ([#3378](https://github.com/devswha/ovis/pull/3378))
+- Changing what runs on another PC from here is the owner's, from any device he signed in or paired
+  himself (this PC, its token or Tailscale login, his phone or other PCs paired directly or over the
+  relay): updating a PC's bridge or its Ovis, approving what a PC's setup installs, turning a PC on
+  (which may update it) and turning automatic PC updates on. A visitor of an open install with nothing
+  paired, a Portal visitor and a device that only watches can no longer do these.
+  ([#3309](https://github.com/devswha/ovis/pull/3309))
+- The update-available line can be closed: it stays closed on this device for that release and
+  comes back for the next one, as the update-done line already did. Settings still offers the update.
+  ([#3485](https://github.com/devswha/ovis/pull/3485))
+- The alerts repair line on a phone keeps to one line, with Close at its right end; why a repair
+  failed is still shown in full.
+  ([#3485](https://github.com/devswha/ovis/pull/3485))
+- A phone's More menu folds its find items into Find… and the open pane's and tab's actions into
+  Pane and tab…, each opening a sheet of its own; nothing was removed.
+  ([#3485](https://github.com/devswha/ovis/pull/3485))
+- The setup guide's agents screen is tighter on a phone, so Start comes into view sooner.
+  ([#3485](https://github.com/devswha/ovis/pull/3485))
+- A connection that drops and is back within 4 seconds, as when the PC's Ovis restarts for an update, no
+  longer flashes "Reconnecting…" in the terminal, the header and the status bar. A longer drop is shown as
+  before, and at once when typed input is held for it, the pane was held by another app, or you press a key,
+  click or type (dictation and input methods included) anywhere in Ovis meanwhile.
+  ([#3317](https://github.com/devswha/ovis/pull/3317))
+- app.ovis.sh now opens on a sign-in screen, with pairing by QR code or code and PCs paired
+  without an account one link away.
+  ([#3284](https://github.com/devswha/ovis/pull/3284))
+- The hosted relay app is now a compact console: a sidebar (a bottom tab bar on a phone) with
+  Overview, PCs, Devices, Relay and Settings, each a link of its own that Back returns from.
+  ([#3284](https://github.com/devswha/ovis/pull/3284))
+- Settings rows say what they do (Play sounds, Show pictures in the terminal), and a search result
+  lands on its group.
+  ([#3432](https://github.com/devswha/ovis/pull/3432))
+- Settings reads more clearly: each page but About has one line under its title saying what it
+  holds, the external alerts note is one short line, About's note on the Herdr app's terminals says
+  what it switches with a link to the steps, and the shortcuts search has the same magnifier as
+  the settings search.
+  ([#3480](https://github.com/devswha/ovis/pull/3480))
+- The terminal and chat font sizes can be typed in the stepper's place; a size out of range is
+  refused.
+  ([#3480](https://github.com/devswha/ovis/pull/3480))
+- The move to herdr-core says what does not move above the plan's list, before Move everything.
+  ([#3480](https://github.com/devswha/ovis/pull/3480))
+- Release notes' short summary scrolls with Settings; only the full changelog keeps its own box.
+  ([#3480](https://github.com/devswha/ovis/pull/3480))
+- The sidebar is denser, after herdr-app's list: one-line workspace rows, a branch shown while the
+  pointer is on its row, and worktree names without herdr's `worktree-` prefix and hash. Settings →
+  Sidebar rows → Two lines keeps the previous look.
+  ([#3276](https://github.com/devswha/ovis/pull/3276))
+- A waiting agent shows the same small `?` on its row and on its workspace's row; working is a dot
+  and an unread finish a check, in the same place. A status change no longer moves the row under
+  the pointer, or under a finger for a second after it lifts.
+  ([#3276](https://github.com/devswha/ovis/pull/3276))
+- Settings → Agents order has a new default, Waiting first: herdr's order with the agents that need
+  you on top, each saying how long it has waited once the app saw the wait begin, and the resting
+  ones folded into one `+N resting` line. A saved Workspaces or Activity order is kept, and the
+  workspace list keeps herdr's order.
+  ([#3276](https://github.com/devswha/ovis/pull/3276))
+- Each PC's load (CPU and memory) stays off until it is chosen in Settings.
+  ([#3276](https://github.com/devswha/ovis/pull/3276))
+
+### Removed
+- The composer's Compact context button.
+  ([#3431](https://github.com/devswha/ovis/pull/3431))
+
+### Fixed
+- A sign-in made with Ovis 0.5.1 or earlier no longer makes Settings read the account twice, or a
+  PC's enrollment fail once, the first time its access is renewed.
+  ([#3513](https://github.com/devswha/ovis/pull/3513))
+- When another tab signs in to a different account, the Account section and the hosted app's PC
+  list no longer show that account's PCs or sign-in methods under the first account's heading, and
+  a PC being added is no longer written to the other account's list. They are read again as the
+  account now signed in.
+  ([#3511](https://github.com/devswha/ovis/pull/3511))
+- Removing a device from the account now also cuts it off on a PC where another device's row was
+  moved onto that key by a link after the removal was signed. Such a row was taken for a new
+  pairing of the key on that PC, so the removed key stayed admitted there.
+  ([#3510](https://github.com/devswha/ovis/pull/3510))
+- Signing out of a sign-in made with Ovis 0.5.1 or earlier now ends it even when another tab of
+  this version renewed its access at the same moment. The page showed signed out, and a reload
+  signed back in.
+  ([#3519](https://github.com/devswha/ovis/pull/3519))
+- The hosted app's PC list no longer draws one account's PCs after another tab signed in to a
+  different account, while the list was on its way or when the new account's list cannot be read.
+  ([#3519](https://github.com/devswha/ovis/pull/3519))
+- Agy's Chat view no longer drops to the terminal on a fresh start screen, during its first turn
+  before the transcript is written, or while a turn writes its history.
+  ([#3457](https://github.com/devswha/ovis/pull/3457) by @jimbb)
+- An agy or grok pane whose turn ended on a background task (a deploy, a CI watch, a test run) or
+  an agy `schedule` timer reads BG, not DONE, and alerts its finish once the turn that task's end
+  starts is over; a timer due within a day is held until it is due,
+  while its agy process lasts.
+  ([#3436](https://github.com/devswha/ovis/pull/3436) by @jimbb)
+- One held message shows its count beside it, as two or more do.
+  ([#3431](https://github.com/devswha/ovis/pull/3431))
+- Screen readers hear which PC an approval card belongs to.
+  ([#3431](https://github.com/devswha/ovis/pull/3431))
+- On a phone or tablet, a file name a tool card links to can be selected and copied again: the copy
+  took an empty string. A tap still opens the file.
+  ([#3296](https://github.com/devswha/ovis/pull/3296) by @Yoonwoo-Ha)
+- A Claude Code pane waiting on a long CI run, deploy or test suite over several turns no longer
+  reads DONE and alerts "work finished" once its first rest is 30 minutes old: each rest is held
+  on its own, and a `Monitor` or `/loop` wakeup the turn started holds it too.
+  ([#3435](https://github.com/devswha/ovis/pull/3435) by @jimbb)
+- A Claude pane at rest no longer flips back to working, with a Stop button, when its last
+  background subagent, command or Workflow ends before herdr reports again.
+  ([#3360](https://github.com/devswha/ovis/pull/3360))
+- A Claude session's background task count no longer includes another session's subagents when
+  its `subagents` folder is a link, and a huge `subagents` folder is no longer listed in full.
+  ([#3360](https://github.com/devswha/ovis/pull/3360))
+- A Claude pane whose turn ended while a Workflow runs in the background rests and shows it is
+  waiting on that work, instead of reading as working with a Stop button.
+  ([#3269](https://github.com/devswha/ovis/pull/3269) by @Noobear)
+- With "Enter sends" off, AltGr+Enter on Windows and Cmd+Option+Enter on a Mac no longer send the
+  message: only Ctrl+Enter or Cmd+Enter without Alt sends. Neither key picks from an open
+  completion menu any more.
+  ([#3468](https://github.com/devswha/ovis/pull/3468))
+- With the interface in Korean, Korean typed in the message box keeps its words whole when a line
+  wraps, as the rest of the app does, instead of breaking mid-word. A word longer than a line still
+  breaks.
+  ([#3474](https://github.com/devswha/ovis/pull/3474))
+- Copilot Chat stays on its session when Copilot refreshes its log's timestamps after a log
+  rotation, and an Ovis started after a rotation finds the session in the log's copies when none
+  was pruned.
+  ([#3086](https://github.com/devswha/ovis/pull/3086) by @YuuuXie)
+- Screen readers hear one heading per view.
+  ([#3433](https://github.com/devswha/ovis/pull/3433))
+- On macOS, closing the desktop app's window while it is full screen (Cmd+W or the red button) no
+  longer leaves a black screen behind: the window leaves full screen first, then goes to the tray.
+  ([#3315](https://github.com/devswha/ovis/pull/3315))
+- With File viewer set to panel and a file docked, a file link or web link clicked or tapped in a
+  pane that is not the selected one opens again. Before, the click selected the pane and closed
+  the docked file, and the link never opened.
+  ([#3467](https://github.com/devswha/ovis/pull/3467))
+- An SSH-added PC no longer starts a second herdr when a session is already running there.
+  ([#3409](https://github.com/devswha/ovis/pull/3409))
+- A PC already using the empty herdr that the bridge started earlier keeps it until that herdr stops
+  or the PC is reconnected with a session choice.
+  ([#3409](https://github.com/devswha/ovis/pull/3409))
+- On herdr-core, a core that Ovis happens to start no longer hands Ovis's own environment (`PORT`,
+  `HOST`, `OVIS_*`, `HERDR_WEB_*`, `HERDR_PLUGIN_*`, and the herdr pane Ovis was started from) to
+  every pane, so a dev server in a pane no longer takes Ovis's port.
+  ([#3342](https://github.com/devswha/ovis/pull/3342))
+- Looking for herdr-core no longer runs an `hc` or `herdr-core` from a folder another account can
+  change on Linux and macOS, nor lets one it runs find its helpers in such a folder, and the usual
+  install places now come before the PATH (on Windows too). A path set in `OVIS_HC_BIN` is still
+  run as named. A sticky folder further up (like `/tmp`) is allowed, and on macOS so is Homebrew's
+  `admin`-writable `/opt/homebrew` and `/usr/local`, where another administrator could change it.
+  When no herdr-core is found, the error names each one passed over and why. Where accounts come
+  from a directory service (as with sss on Fedora and RHEL) a group-writable `~/.local/bin` is not
+  trusted: run `chmod g-w ~/.local/bin` or set `OVIS_HC_BIN`.
+  ([#3477](https://github.com/devswha/ovis/pull/3477))
+- A Portal visitor that drives a PC can no longer switch its runtime between herdr and herdr-core,
+  nor read its herdr-core session and runtime switch facts.
+  ([#3477](https://github.com/devswha/ovis/pull/3477))
+- Screen readers hear which PC the header belongs to, and the phone drawer is a modal dialog while
+  it is open.
+  ([#3430](https://github.com/devswha/ovis/pull/3430))
+- A header tab's agent logo sits on the middle of its tab, level with its name, instead of a few
+  pixels above it.
+  ([#3316](https://github.com/devswha/ovis/pull/3316) by @Yoonwoo-Ha)
+- On herdr-core, a pane running an agent that does not report itself (Letta Code, Devin) is named
+  after that agent from the process in front of it, instead of showing as a plain terminal. Grok
+  Build shows as Grok instead of `grok-build`.
+  ([#3308](https://github.com/devswha/ovis/pull/3308))
+- On herdr-core, a pane on another machine is named after its agent the way that machine's own
+  platform names programs: a Windows machine's `letta.cmd` shows as Letta when Ovis runs on Linux,
+  and a Linux machine's Command Code (`cmd`) is no longer hidden as the Windows command prompt when
+  Ovis runs on Windows. Where the machine's platform cannot be told, such a pane names no agent
+  rather than a wrong one. A terminal started directly as an agent is named from that start only
+  while the process it started is still the one in front, so a pane started as `claude` that now
+  runs Codex is Codex.
+  ([#3347](https://github.com/devswha/ovis/pull/3347))
+- With herdr-core, splitting a pane whose folder was deleted (a removed worktree) opens the new
+  shell in the home folder. herdr-core refused to start it.
+  ([#3509](https://github.com/devswha/ovis/pull/3509) by @Danipulok)
+- A Hub account hidden from usage stays unread after Ovis restarts, even when its credential has moved
+  to another file on the Hub.
+  ([#3428](https://github.com/devswha/ovis/pull/3428))
+- A hidden Hub account listed under many files stays unread whichever of its files changes email, and
+  when what Ovis learned of hidden accounts is too large to save, the next start reads no Hub account
+  instead of trusting an older list that knows less of them (unless the disk refuses that write too,
+  which leaves the older list in place).
+  ([#3456](https://github.com/devswha/ovis/pull/3456))
+- A hidden Hub account stays unread when it moves under the same file name and then changes its email,
+  when it is listed under many files at once, and another account at its old auth index (one without
+  an email, or one hidden by its workspace alone) is no longer kept unread as if it were the hidden one.
+  ([#3451](https://github.com/devswha/ovis/pull/3451))
+- A Hub account hidden right after a Hub sign-in stays unread when its credential then moves to another
+  file: the account it was shown as is no longer forgotten at the sign-in.
+  ([#3445](https://github.com/devswha/ovis/pull/3445))
+- Letta Code's chat opens on herdr-core, and on herdr without its Letta integration: with no session
+  report, the conversation Letta's own project record names is used, under the same checks as before.
+  ([#3324](https://github.com/devswha/ovis/pull/3324))
+- The check of another Letta pane's project record no longer blocks the server on a slow mount, and
+  no longer counts a record swapped for a link or a decoy, or one gone from its path, as that folder's own.
+  A record gone only for a moment, rewritten while it is read (even at the same size and time), cut short
+  or unreadable as Letta's, or one that fails once opened, still counts as a claim.
+  ([#3351](https://github.com/devswha/ovis/pull/3351))
+- Letta Code panes on herdr-core show working and done, from Letta's own local messages, or for a
+  cloud conversation from the spinner Letta puts in its terminal title, where no report gives a status.
+  ([#3331](https://github.com/devswha/ovis/pull/3331))
+- Two Ovis servers that find a dead holder of a herdr session's move lock can no longer both move it: the
+  lock is now flock on a file in the session's folder, which the kernel alone arbitrates and nothing removes
+  to take. A refused move no longer advises deleting the lock socket.
+  ([#3379](https://github.com/devswha/ovis/pull/3379))
+- An image an omo tool shows, such as a picture it displays or an image file it reads, now appears
+  in the chat view: it was dropped from the conversation.
+  ([#3421](https://github.com/devswha/ovis/pull/3421))
+- A question omp asks that Ovis shows as a "Waiting for input" card stays collapsed after you collapse
+  it: it reopened each time omp's status row ticked its elapsed time
+  ([#3412](https://github.com/devswha/ovis/issues/3412), reported by @zerodice0).
+  ([#3413](https://github.com/devswha/ovis/pull/3413))
+- A collapsed "Waiting for input" card for an omp question also stays collapsed with omp's other
+  status-line presets (ascii, Nerd Font, the box shape): it reopened each time their status row ticked.
+  ([#3417](https://github.com/devswha/ovis/pull/3417))
+- Cancelling an update of another PC asks that PC's own Ovis to stop that update only (by the id its
+  install request was given), while it still checks or builds,
+  and says it stopped only once that PC confirms it; otherwise (an older Ovis, or one already restarting)
+  it says the update may still finish there, never that it ended.
+  ([#3384](https://github.com/devswha/ovis/pull/3384))
+- An install over SSH that finds an older Ovis there updates it only to the release and build shown
+  (this app's own), and cancelling that install stops its update there too.
+  ([#3384](https://github.com/devswha/ovis/pull/3384))
+- One install or setup per PC holds even when ssh cannot resolve an address, and resolving addresses no
+  longer holds the server up.
+  ([#3384](https://github.com/devswha/ovis/pull/3384))
+- Cancel now stops an automatic bridge update that is already running, not only one waiting its
+  turn, and a bridge update no longer starts while the PC's own Ovis updates itself.
+  ([#3313](https://github.com/devswha/ovis/pull/3313))
+- Starting a replaced server again (experimental) counts a server on the herdr session only while it is
+  still the very process its registration names, waits for the one it started itself, and probes the
+  port that server listened on; it does not start anything while this app is stopping.
+  ([#3403](https://github.com/devswha/ovis/pull/3403))
+- An install from the desktop app updates the PC's older Ovis to this app's own build, as the other
+  runtimes do, when that build was made from a clean tree.
+  ([#3403](https://github.com/devswha/ovis/pull/3403))
+- On Linux and macOS, Pi's model picker and other dialog cards appear in fresh sessions with an
+  extension's footer status line, even when the usage line starts with `$0.000` before any tokens
+  have been used. On Windows, an extension's footer status line can still hide these cards.
+  ([#3300](https://github.com/devswha/ovis/pull/3300) by @hrudek)
+- Portal's sign-in now starts only on Portal v2.7.3 or later. An older Portal let a session cookie
+  from the short address pass for another identity that took the same name while Portal was down;
+  Start now refuses it and says to update Portal or start without a sign-in. First reported and
+  fixed by @rabbitson87 in [#3288](https://github.com/devswha/ovis/pull/3288).
+  ([#3418](https://github.com/devswha/ovis/pull/3418))
+- Sign in to Ovis on the relay tab of Add a connection opens the Ovis sign-in page in a new tab,
+  with the code filled in, and comes back signed in, instead of sending you to Settings.
+  Keyboard focus follows the sign-in steps, completion stays available to screen readers, and
+  cancelling before the sign-in page opens closes the blank tab. Once opened, the page stays
+  open, but its cancelled code cannot sign this window in. If the link page is unavailable,
+  sign-in uses a device provider offered by the account service.
+  ([#3314](https://github.com/devswha/ovis/pull/3314))
+- At 200% zoom the theme cards in Settings → Appearance no longer slide under the scroll arrows.
+  ([#3432](https://github.com/devswha/ovis/pull/3432))
+- A failed update is announced to screen readers as an alert.
+  ([#3432](https://github.com/devswha/ovis/pull/3432))
+- With large text on a phone, About's update row wraps its version, state and button instead of
+  stacking the version one letter per line and pushing the button off screen.
+  ([#3480](https://github.com/devswha/ovis/pull/3480))
+- Settings chips sit further apart on touch screens, and the composer buttons row no longer shows
+  a decorative sparkle.
+  ([#3480](https://github.com/devswha/ovis/pull/3480))
+- On a phone, a vertical swipe begun on a code block in a sheet (a Markdown file's preview) scrolls
+  the document again; it scrolled nothing before.
+  ([#3471](https://github.com/devswha/ovis/pull/3471))
+- On a phone, a vertical swipe begun on a Mermaid diagram or on an image that is loading or failed
+  to load, in a sheet (a Markdown file's preview), scrolls the document again; it scrolled nothing
+  before.
+  ([#3486](https://github.com/devswha/ovis/pull/3486))
+- Screen readers hear which PC an agent row belongs to.
+  ([#3276](https://github.com/devswha/ovis/pull/3276))
+- Sidebar rows no longer leave wide gaps: a workspace's branch follows its name and gives way before
+  the name does, the state sits at the row's end, and under a mouse the ⋯ shows just before the
+  state, over the faded end of the row's words, instead of pushing the name aside. The Agents list's
+  one-line rows do the same.
+  ([#3446](https://github.com/devswha/ovis/pull/3446))
+- A PC added over SSH with "Use Default session" (offered when it runs both herdr and its own Ovis)
+  starts herdr by itself again after that PC restarts, instead of stopping at "the herdr session
+  chosen for this PC is no longer running".
+  ([#3521](https://github.com/devswha/ovis/pull/3521))
+- Installing Ovis on a PC that is not added yet no longer ends in a choice between that PC's Ovis
+  and its herdr, which the install could not show: it connects to the herdr running there.
+  ([#3521](https://github.com/devswha/ovis/pull/3521))
+- Adding a PC over SSH now asks which to use when that PC runs both herdr and its own Ovis on
+  herdr-core: before, a herdr running there was taken without a word, so the PC's herdr-core
+  terminals could not be reached over SSH until that herdr was stopped. A PC already saved
+  reconnects as before.
+  ([#3515](https://github.com/devswha/ovis/pull/3515))
+- Add a connection → SSH matches a config host to the Tailscale PC its name actually resolves to
+  (hosts file, DNS or MagicDNS, waiting 1.5 s at most), so a host that only shares a PC's name no
+  longer hides that PC, and two spellings of the same IPv6 address now match. A host also takes
+  the HostName ssh would use, including one set under a later `Host *` block.
+  ([#3343](https://github.com/devswha/ovis/pull/3343))
+- The SSH list weighs Match blocks as ssh does (`host`, `originalhost`, `user`, `localuser`, `all`),
+  and a host whose HostName depends on a condition it cannot weigh offline, such as `exec`, no
+  longer claims a Tailscale PC. Neither does a host reached through ProxyJump or ProxyCommand.
+  The list also follows the final pass a `Match final` line asks for, claims nothing once
+  CanonicalizeHostname may change the name, and shows the User ssh would take first.
+  ([#3362](https://github.com/devswha/ovis/pull/3362))
+- The SSH list leaves out a host named in an included file when the Include sits in a block that
+  does not apply to that host, as ssh does. A host from an Include under a condition it cannot weigh
+  offline is listed without claiming a PC, and so is any host an included file left unread (too
+  deep, too many files, or outside the home folder) could change.
+  ([#3362](https://github.com/devswha/ovis/pull/3362))
+- A changed hosts file or DNS answer counts the next time the SSH list opens, and the list's name
+  lookups never pile up past 16 while a resolver hangs.
+  ([#3362](https://github.com/devswha/ovis/pull/3362))
+- An Include with a wildcard now reads a linked file (a dotfiles repo) as ssh does, when the file it
+  links to is in the home folder. A link that leads outside it leaves the hosts it could change
+  without a claimed PC.
+  ([#3362](https://github.com/devswha/ovis/pull/3362))
+- The SSH list reads ProxyCommand and ProxyJump, quoted `Match exec` commands and `Match final`
+  as ssh does. It claims no PC for a host that an Include with a `%` token or `${VAR}`, a
+  CanonicalizeHostname, or an Include wildcard matching more files than it reads could change.
+  ([#3362](https://github.com/devswha/ovis/pull/3362))
+- A long Host pattern in the ssh config, or one Host alias repeated thousands of times, no longer
+  stalls the server while the SSH list is read.
+  ([#3362](https://github.com/devswha/ovis/pull/3362))
+- On Linux with glibc, an Include wildcard in the ssh config (`Include conf.d/*/*`) is never read
+  from outside the home folder, not even through a folder swapped for a link after it was checked,
+  and what it matched is opened through the folder it listed; the hosts such a folder could change
+  claim no PC, nor does any host after an Include a matched file of which could not be opened.
+  Elsewhere (macOS, Windows, Linux without glibc) a wildcard Include's folders are listed by path,
+  which gives names only: a name from outside home can be listed and a file missed, so any host the
+  files found that way name or set an option for, and any host after that Include, is listed
+  without claiming a Tailscale PC. A wildcard looks at 1024 folder entries at most across the
+  config: with glibc it stops reading a folder after at most one more 32 KiB read past them, and
+  elsewhere the folder is read whole first.
+  ([#3387](https://github.com/devswha/ovis/pull/3387))
+- The SSH list keeps the files a wildcard matches in ssh's order, and claims nothing for a host that
+  an Include of another user's home (`~user`) or a pattern it cannot match exactly (`[[:digit:]]`)
+  could change.
+  ([#3387](https://github.com/devswha/ovis/pull/3387))
+- The SSH list keeps a row for each Tailscale PC it lists within its 200-row limit, so many config
+  hosts (such as ones a skipped Include leaves undetermined) no longer push a PC off the list.
+  ([#3387](https://github.com/devswha/ovis/pull/3387))
+- Connect SSH PCs running herdr-core through their own verified Ovis server, with a choice beside
+  running herdr sessions and a runtime label on the PC. A PC whose chosen Ovis has stopped waits for
+  it to come back (after a reboot, say) and starts nothing in its place; setting it up again offers to
+  start a new herdr instead. PCs with no chosen runtime and no running sessions start herdr as before.
+  An Ovis there that runs but cannot answer right now stays a choice instead of a new herdr being
+  started, running herdr sessions are offered beside an older Ovis that does not list them, the
+  bridge token never appears in a command on that PC, and the owner can list sessions on an Ovis
+  without an access token from a paired device or their Tailscale login. Installing Ovis over an
+  older herdr-core Ovis finds that server on its own socket, so it is never treated as gone while it
+  still runs.
+  ([#3422](https://github.com/devswha/ovis/pull/3422))
+- Add a connection → SSH no longer hides a PC of your Tailscale login behind an ssh config host that only shares its
+  name: a config host stands for a Tailscale PC only when its HostName reaches that PC (its machine name, MagicDNS
+  name or Tailscale address), so an alias kept from before a rename no longer takes the place of the PC it once named.
+  ([#3318](https://github.com/devswha/ovis/pull/3318))
+- Saved preferences, seen finishes and the removed-accounts list are written through a fresh,
+  exclusively created temporary file, flushed to disk before it replaces the old one, so a link left in
+  the state folder can no longer receive them and a crash cannot leave them empty.
+  ([#3438](https://github.com/devswha/ovis/pull/3438))
+- In the Terminal view, a drag selection is shown over text that has a background colour of its
+  own, as it is over plain text: those cells were copied but never highlighted.
+  ([#3461](https://github.com/devswha/ovis/pull/3461))
+- A chat whose transcript is rewritten in place while it keeps growing no longer shows the old
+  history: the read waits for one refresh, and a transcript still being written then reloads its
+  history once and keeps it while the writes go on.
+  ([#3383](https://github.com/devswha/ovis/pull/3383))
+- A chat whose transcript file is a symbolic link is read in one pass instead of three. Such a
+  transcript is never digested, so any change to it (a change of its times alone, or an append)
+  reloads its history.
+  ([#3383](https://github.com/devswha/ovis/pull/3383))
+- An open Claude Code chat of up to 16 MB no longer has its history reloaded about once an hour: a
+  transcript whose times change while its bytes stay the same is no longer taken for a rewrite.
+  ([#3227](https://github.com/devswha/ovis/pull/3227) by @bonecool999)
+- The "Ovis vX is available." line no longer blinks out during the background update check every
+  five minutes, which made the terminal under it jump: an update on offer stays offered until the
+  check finds it gone.
+  ([#3354](https://github.com/devswha/ovis/pull/3354))
+- Plan limits stop reading a provider's sign-ins (for GitHub Copilot, `gh auth token` for each
+  account) once every account of it is hidden in Settings or removed from Ovis. Before, hiding only
+  changed what was shown. Each provider is still looked up once when the server starts or after a
+  sign-in, so a new account is found; show one of its accounts again to find accounts added since.
+  ([#3355](https://github.com/devswha/ovis/pull/3355))
+- Usage no longer keeps a reading for every hidden account that has signed out: a hidden account
+  missing for two searches is dropped, so the kept readings stop growing with every account ever
+  hidden.
+  ([#3423](https://github.com/devswha/ovis/pull/3423))
+- Showing a hidden Hub account again in Plan limits reads only that account; the Hub's other
+  accounts keep their current numbers instead of all being read again at once. A sign-in to a
+  provider no longer reads that provider's hidden accounts again while their sign-ins are unchanged.
+  ([#3364](https://github.com/devswha/ovis/pull/3364))
+- On Windows, **Settings → About → Terminals** switches between herdr and the Herdr app's terminals
+  (herdr-core), and the choice is kept across restarts; Windows still starts on herdr until you
+  switch. Ovis also finds herdr where it is installed on Windows, so it no longer reports herdr as
+  missing there.
+  ([#3469](https://github.com/devswha/ovis/pull/3469))
+
+### Maintenance
+- A staging copy of the Ovis relay (`[env.staging]` in `relay/wrangler.toml`, deployed by hand) and
+  `OVIS_RELAY_STAGING=1`, for testing relay passes end to end against Ovis's staging account service
+  only. A relay pass now goes only to the relays of the account service that signed it; a pass saved
+  before this change is asked for again once.
+  ([#3302](https://github.com/devswha/ovis/pull/3302))
+
 ## [0.5.1] - 2026-11-08
 
 ### Added
@@ -9416,7 +10698,9 @@ First public version.
 - Installable PWA, a mobile key bar, web push alerts and optional token auth.
 - Distribution as a herdr plugin.
 
-[Unreleased]: https://github.com/devswha/ovis/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/devswha/ovis/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/devswha/ovis/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/devswha/ovis/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/devswha/ovis/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/devswha/ovis/compare/v0.4.22...v0.5.0
 [0.4.22]: https://github.com/devswha/ovis/compare/v0.4.21...v0.4.22
