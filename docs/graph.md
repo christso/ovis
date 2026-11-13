@@ -377,8 +377,8 @@ and registration labels. `display_name` is a separate immutable send-time displa
 authenticated by `proof`; it never changes endpoint identity. Receipts without it retain their
 original authentication and registration-name fallback. `proof` authenticates metadata only. No prompt text, native arguments,
 terminal output or body hash is persisted there. The body authenticator travels only in the
-native prompt/transcript. The wrapper stages a private signed `<send UUID>.pending` intent before
-launching the CLI, containing receipt metadata, the caller's socket and the wrapper configuration
+native prompt/transcript. After installing cancellation handlers, the wrapper stages a private signed
+`<send UUID>.pending` intent while the CLI runs, containing receipt metadata, the caller's socket and the wrapper configuration
 path, without prompt content. Pending intent alone supplies no attribution or navigation. When
 an owned native transcript contains its exact authenticated envelope, the conversation reader can
 publish the receipt after rechecking both original agent instances and enabled tracking. Scrollback,

@@ -1,6 +1,6 @@
 import { peerMessageTurn, peerNativeTurns, readPeerMessage, resolvePeerSource } from "./message-sources.ts";
 import { expect, it } from "bun:test";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve, sep } from "node:path";
 import type { Machine } from "../shared/machines.ts";
@@ -124,6 +124,22 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
       expect(readFileSync(log, "utf8").split(longMessage)).toHaveLength(2);
       expect(readdirSync(join(journal, "messages")).filter((name) => name.endsWith(".json"))).toHaveLength(2);
     }
+    expect(readdirSync(join(journal, "messages")).filter((name) => name.endsWith(".pending"))).toHaveLength(0);
+    let earlyChild: ReturnType<typeof Bun.spawn> | undefined;
+    let earlySignalSent = false;
+    const intentWatch = watch(join(journal, "messages"), (_event, file) => {
+      if (!earlySignalSent && file?.endsWith(".pending") && earlyChild) { earlySignalSent = true; earlyChild.kill("SIGTERM"); }
+    });
+    let cancellationDeadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const early = invoke(["agent", "prompt", name, "SHIM_EARLY_CANCEL_PROBE", "--wait", "--timeout", "60000"], sourcePane);
+      earlyChild = children[children.length - 1]!;
+      await Promise.race([early, new Promise<never>((_resolve, reject) => {
+        cancellationDeadline = setTimeout(() => reject(new Error("Owned staged prompt did not handle immediate cancellation")), 5000);
+      })]);
+      expect(earlyChild.signalCode).toBe("SIGTERM");
+      expect(readdirSync(join(journal, "messages")).filter((name) => name.endsWith(".pending"))).toHaveLength(0);
+    } finally { clearTimeout(cancellationDeadline); intentWatch.close(); }
     const cancelled = invoke(["agent", "prompt", name, "SHIM_SIGNAL_PROBE", "--wait", "--timeout", "60000"], sourcePane);
     const cancelChild = children[children.length - 1]!;
     for (const deadline = Date.now() + 10000; !readFileSync(log, "utf8").includes("SHIM_SIGNAL_PROBE");) {

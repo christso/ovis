@@ -109,6 +109,8 @@ try {
           const toggle = legend.getByRole("button", { name, exact: true });
           if ((await toggle.getAttribute("aria-pressed") === "true") !== !!(mask & 1 << index)) await toggle.click();
         }
+        await page.waitForFunction((mask) => document.querySelectorAll(".graph-node-kind-repository").length === (mask & 1 ? 3 : 0)
+          && document.querySelectorAll(".graph-node-kind-terminal").length === (mask & 2 ? 4 : 0), mask);
         assert.equal(await page.locator(".graph-node-kind-repository").count(), mask & 1 ? 3 : 0);
         assert.equal(await page.locator(".graph-node-kind-terminal").count(), mask & 2 ? 4 : 0);
         if (mask === 1) {

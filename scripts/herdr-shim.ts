@@ -84,8 +84,7 @@ async function run(configPath: string, args: string[]): Promise<void> {
   const prompt = herdrCliPrompt(args);
   const prepared = prompt && source && target && captureEnabled(configPath)
     ? preparePeerMessage(args[prompt.body]!, source, target, config.journal, await observePeerDisplayName(sourceSocket, source, typeof config.display_state === "string" && isAbsolute(config.display_state) ? config.display_state : undefined), herdrCliReplySession(sourceSocket)) : null;
-  const discardPending = prepared ? stagePeerMessage(prepared, sourceSocket, configPath, config.journal) : () => {};
-  process.once("exit", discardPending);
+  let discardPending = () => {};
   const forwarded = [...args];
   if (prepared && prompt) forwarded[prompt.body] = prepared.text;
   // A separate session receives terminal signals only through us. Inherited stdin remains
@@ -120,6 +119,8 @@ async function run(configPath: string, args: string[]): Promise<void> {
   child.stderr!.on("data", (part: Buffer) => collect(part, 1)); child.stderr!.pipe(process.stderr, { end: false });
   const signals = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"] as const;
   const handlers = signals.map((signal) => { const handler = () => forward(signal); process.on(signal, handler); return handler; });
+  discardPending = prepared ? stagePeerMessage(prepared, sourceSocket, configPath, config.journal) : () => {};
+  process.once("exit", discardPending);
   const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
     child.once("close", (code, signal) => { childClosed = true; resolve([code, signal]); }); child.once("error", (error: NodeJS.ErrnoException) => {
       if (prepared && !child.pid && error.code === "E2BIG") { discardPending(); executeHerdr(config.real, args); }
@@ -130,6 +131,8 @@ async function run(configPath: string, args: string[]): Promise<void> {
   // even if the CLI already exited before the destination finished writing its last chunk.
   await Promise.all([process.stdout, process.stderr].map((stream) => new Promise<void>((resolve) => { stream.write("", (error) => { if (error) outputClosed(error); resolve(); }); })));
   clearTimeout(reapTimer);
+  discardPending();
+  process.off("exit", discardPending);
   for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!);
   if (outputExitCode) process.exit(outputExitCode);
   process.stdout.off("error", outputClosed); process.stderr.off("error", outputClosed);
@@ -156,8 +159,6 @@ async function run(configPath: string, args: string[]): Promise<void> {
       }, config.journal);
     }
   }
-  discardPending();
-  process.off("exit", discardPending);
   if (signal) { process.kill(process.pid, signal); return; }
   process.exitCode = code ?? 1;
 }
