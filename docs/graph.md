@@ -310,7 +310,12 @@ Watch devices cannot read this history, current process evidence or namespace da
 After refreshing an owned wrapper through **Enable communication tracking**, supported future
 `herdr agent prompt TARGET TEXT` sends from a verified agent carry a generated peer envelope.
 The receiving agent sees its sender, `ovis-source://<send UUID>`, an explicit peer-content notice,
-the unchanged original body, and an authentication footer in the actual submitted prompt. Herdr
+its return pane at send time, the unchanged original body, and an authentication footer in the actual submitted prompt.
+The envelope identifies the Ovis display label as a label, not a registered Herdr agent name.
+The reply address belongs to the sender's machine and Herdr server; its session name is included
+only when the inherited socket matches that session's standard path. A custom socket never gets
+a guessed session. Replies should omit `--wait` to avoid mutual waiting, and recheck a source that
+moved or was replaced. Herdr
 still receives one CLI invocation and one submission. The wrapper does not inject terminal output,
 edit native transcripts, retry a send, or grant the peer human permissions.
 
@@ -365,22 +370,30 @@ supports these routes; forwarding to it from another PC remains a bypass. Cross-
 navigation requires that source session to be represented by a connected Ovis PC.
 
 `server/message-sources.ts` owns a separate additive `messages/` directory beneath the CLI journal:
-a private 32-byte authentication `key`, and immutable version-1 `<send UUID>.json` receipts with
-`version`, `id`, `source`, `target`, optional `display_name` and `proof`. Endpoints include daemon/terminal/process identity
+a private 32-byte authentication `key`, and immutable version-2 `<send UUID>.json` receipts with
+`version`, `id`, `source`, `target`, optional `display_name`, optional `reply_session` and `proof`.
+Version-1 receipts and envelopes retain their original authentication and rendering. Endpoints include daemon/terminal/process identity
 and registration labels. `display_name` is a separate immutable send-time display snapshot, also
 authenticated by `proof`; it never changes endpoint identity. Receipts without it retain their
 original authentication and registration-name fallback. `proof` authenticates metadata only. No prompt text, native arguments,
 terminal output or body hash is persisted there. The body authenticator travels only in the
-native prompt/transcript. Receipt publication waits for successful CLI submission and unchanged
-pre/post endpoints; a killed wrapper, collection disabled in flight, storage failure or ambiguous
-result leaves a visible envelope without verified projection/navigation. Nothing is replayed to
+native prompt/transcript. The wrapper stages a private signed `<send UUID>.pending` intent before
+launching the CLI, containing receipt metadata, the caller's socket and the wrapper configuration
+path, without prompt content. Pending intent alone supplies no attribution or navigation. When
+an owned native transcript contains its exact authenticated envelope, the conversation reader can
+publish the receipt after rechecking both original agent instances and enabled tracking. Scrollback,
+changed bodies and replaced endpoints cannot promote it. Thus `--wait` can keep waiting for agent
+status without delaying a received message's attribution. The wrapper also retains its original
+post-CLI publication path and removes pending intent on normal exit or handled cancellation.
+Graph operation receipts still wait for the CLI result. Storage failure, collection disabled before
+confirmation or ambiguous evidence leaves the ordinary envelope visible. Nothing is replayed to
 repair such a gap. This is local provenance evidence, not a security boundary against programs
 with the same account's filesystem access.
 
 Graph journal and registry formats are unchanged. Older Ovis releases ignore `messages/`; they
 cannot erase it in unrelated writes and render native envelopes as ordinary text. Deleting the
 new proof files removes structured attribution/navigation but leaves native transcript content.
-Wrapper `config.json` keeps version 1 and adds optional `bundle_revision: 3` and `display_state`
+Wrapper `config.json` keeps version 1 and adds optional `bundle_revision: 4` and `display_state`
 (the local Ovis state directory). Older wrappers ignore these fields; older setup writers may omit
 them, causing the new status reader to request explicit setup again. A changed state directory
 also requires an explicit refresh. Status checks never refresh code. Managed setup stages a new bundle only on explicit enable,

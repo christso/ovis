@@ -4,12 +4,12 @@ import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { withoutHerdrDiagnostics } from "../server/herdr/client.ts";
-import { herdrCliCaller, herdrCliDirectory, herdrCliEndpoint, herdrCliIdentity, herdrCliOperation, herdrCliPrompt, herdrCliSocket, herdrCliSubmitted, recordHerdrCli, sameHerdrCliEndpoint } from "../server/herdr/cli-observations.ts";
+import { herdrCliCaller, herdrCliDirectory, herdrCliEndpoint, herdrCliIdentity, herdrCliOperation, herdrCliPrompt, herdrCliReplySession, herdrCliSocket, herdrCliSubmitted, recordHerdrCli, sameHerdrCliEndpoint } from "../server/herdr/cli-observations.ts";
 
 import { graphCliTerminalMetadata } from "../shared/graph-cli.ts";
 import { herdrCliLauncher } from "../server/herdr/cli-launcher.ts";
 
-import { preparePeerMessage, publishPeerMessage } from "../server/message-sources.ts";
+import { preparePeerMessage, publishPeerMessage, stagePeerMessage } from "../server/message-sources.ts";
 import { observePeerDisplayName } from "../server/message-source-name.ts";
 import { defaultStateDir } from "../server/update-state.ts";
 import { HERDR_SHIM_REVISION } from "../shared/communication-tracking.ts";
@@ -83,7 +83,9 @@ async function run(configPath: string, args: string[]): Promise<void> {
   ]);
   const prompt = herdrCliPrompt(args);
   const prepared = prompt && source && target && captureEnabled(configPath)
-    ? preparePeerMessage(args[prompt.body]!, source, target, config.journal, await observePeerDisplayName(sourceSocket, source, typeof config.display_state === "string" && isAbsolute(config.display_state) ? config.display_state : undefined)) : null;
+    ? preparePeerMessage(args[prompt.body]!, source, target, config.journal, await observePeerDisplayName(sourceSocket, source, typeof config.display_state === "string" && isAbsolute(config.display_state) ? config.display_state : undefined), herdrCliReplySession(sourceSocket)) : null;
+  const discardPending = prepared ? stagePeerMessage(prepared, sourceSocket, configPath, config.journal) : () => {};
+  process.once("exit", discardPending);
   const forwarded = [...args];
   if (prepared && prompt) forwarded[prompt.body] = prepared.text;
   // A separate session receives terminal signals only through us. Inherited stdin remains
@@ -92,7 +94,7 @@ async function run(configPath: string, args: string[]): Promise<void> {
   try { child = spawn(config.real, forwarded, { detached: true, stdio: ["inherit", "pipe", "pipe"], env: process.env }); }
   catch (error) {
     // Envelope growth can exceed exec's argument limit. E2BIG proves no command executed.
-    if (prepared && (error as NodeJS.ErrnoException).code === "E2BIG") executeHerdr(config.real, args);
+    if (prepared && (error as NodeJS.ErrnoException).code === "E2BIG") { discardPending(); executeHerdr(config.real, args); }
     throw error;
   }
   let childClosed = false;
@@ -120,7 +122,7 @@ async function run(configPath: string, args: string[]): Promise<void> {
   const handlers = signals.map((signal) => { const handler = () => forward(signal); process.on(signal, handler); return handler; });
   const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
     child.once("close", (code, signal) => { childClosed = true; resolve([code, signal]); }); child.once("error", (error: NodeJS.ErrnoException) => {
-      if (prepared && !child.pid && error.code === "E2BIG") executeHerdr(config.real, args);
+      if (prepared && !child.pid && error.code === "E2BIG") { discardPending(); executeHerdr(config.real, args); }
       reject(error);
     });
   });
@@ -154,6 +156,8 @@ async function run(configPath: string, args: string[]): Promise<void> {
       }, config.journal);
     }
   }
+  discardPending();
+  process.off("exit", discardPending);
   if (signal) { process.kill(process.pid, signal); return; }
   process.exitCode = code ?? 1;
 }

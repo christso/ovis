@@ -2,7 +2,7 @@ import { expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { herdrCliOperation, herdrCliSubmitted } from "../server/herdr/cli-observations.ts";
+import { herdrCliOperation, herdrCliReplySession, herdrCliSocket, herdrCliSubmitted } from "../server/herdr/cli-observations.ts";
 
 it("keeps namespace selection separate from operands and does not capture remote machine calls", () => {
   expect(herdrCliOperation(["--session", "check-two", "agent", "prompt", "worker", "hello", "--wait"])).toEqual({ kind: "communication", target: "worker", session: "check-two" });
@@ -11,6 +11,13 @@ it("keeps namespace selection separate from operands and does not capture remote
   expect(herdrCliOperation(["--machine", "remote", "agent", "prompt", "worker", "hello"])).toBeNull();
   expect(herdrCliOperation(["--remote=host", "agent", "prompt", "worker", "hello"])).toBeNull();
   expect(herdrCliOperation(["agent", "list"])).toBeNull();
+});
+
+it("qualifies the reply pane with its source session without guessing from an overridden socket", () => {
+  const env = { XDG_CONFIG_HOME: "/fixture-config", HERDR_SESSION: "source-session" };
+  expect(herdrCliReplySession(herdrCliSocket(null, env), env)).toBe("source-session");
+  expect(herdrCliReplySession(herdrCliSocket("recipient-session", env), env)).toBe("recipient-session");
+  expect(herdrCliReplySession("/custom/source.sock", env)).toBeUndefined();
 });
 
 it("distinguishes successful submission from the wait's later failure", () => {

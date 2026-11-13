@@ -1,4 +1,4 @@
-export const HERDR_SHIM_REVISION = 3;
+export const HERDR_SHIM_REVISION = 4;
 
 /** Per-machine installation of optional Herdr CLI observations. */
 export interface CommunicationTrackingStatus {

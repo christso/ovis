@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readPeerMessage, peerMessageTurn, resolvePeerSource } from "./message-sources.ts";
+import { readPeerMessage, peerNativeTurns, resolvePeerSource } from "./message-sources.ts";
 import { herdrCliEndpoint } from "./herdr/cli-observations.ts";
 import { herdrSocketPath } from "./herdr/client.ts";
 import { graphHerdrEndpointValue } from "../shared/graph-relationships.ts";
@@ -334,7 +334,7 @@ export async function handlePaneRequest(request: Request, url: URL, pathname: st
       const { version, ...conversation } = await paneConversation(paneId, options.codexHome, page, options.devinDbPath, options.opencodeDb, options.hermesHome, options.grokHome, options.museData);
       if (!options.readOnly && conversation.turns.some((turn) => turn.role === "user" && turn.parts.some((part) => part.kind === "text" && part.text.startsWith("[Ovis peer message from ")))) {
         const target = await herdrCliEndpoint(herdrSocketPath(), paneId, options.messageSourcesDirectory);
-        if (target) conversation.turns = conversation.turns.map((turn) => peerMessageTurn(turn, target, options.messageSourcesDirectory));
+        if (target) conversation.turns = await peerNativeTurns(conversation.turns, target, options.messageSourcesDirectory);
       }
       const peerVersion = conversation.turns.some((turn) => turn.sender) ? `-peer${createHash("sha256").update(JSON.stringify(conversation.turns.map((turn) => turn.sender ?? null))).digest("hex").slice(0, 16)}` : "";
       conversationDiagnostics.recovered(paneId, requestIdContext.getStore()?.id);

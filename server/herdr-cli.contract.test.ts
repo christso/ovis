@@ -1,4 +1,4 @@
-import { peerMessageTurn, readPeerMessage, resolvePeerSource } from "./message-sources.ts";
+import { peerMessageTurn, peerNativeTurns, readPeerMessage, resolvePeerSource } from "./message-sources.ts";
 import { expect, it } from "bun:test";
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,7 +51,21 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     writeFileSync(join(root, "tab-labels.json"), JSON.stringify({ tab_labels: { [`${sourcePane}|${source.root_pane.terminal_id}`]: "Graph worktree projection" } }));
     const message = "offline message 'quoted' \"double\" $HOME `literal`\nsecond line Ω";
     expect(await invoke(["agent", "prompt", name, message], sourcePane)).toMatchObject({ code: 0, stderr: "" });
-    const waited = await invoke(["agent", "prompt", name, "SHIM_WAIT_TIMEOUT_PROBE", "--wait", "--timeout", "1500"], sourcePane);
+    const waiting = invoke(["agent", "prompt", name, "SHIM_WAIT_TIMEOUT_PROBE", "--wait", "--timeout", "4000"], sourcePane);
+    const waitingChild = children[children.length - 1]!;
+    for (const deadline = Date.now() + 3000; !readFileSync(log, "utf8").includes("SHIM_WAIT_TIMEOUT_PROBE");) {
+      if (Date.now() > deadline) throw new Error("Owned waiting prompt did not arrive before its CLI completed");
+      await herdrRpc("pane.read", { pane_id: targetPane, source: "recent", strip_ansi: true });
+    }
+    const waitingEnvelope = readFileSync(log, "utf8").match(/\[Ovis peer message from [^\[]*?\n\nSHIM_WAIT_TIMEOUT_PROBE\n\[\/Ovis peer message ([0-9a-f-]{36}) [0-9a-f]{64}\]/)!;
+    expect(waitingEnvelope).not.toBeNull();
+    expect(readPeerMessage(waitingEnvelope[1]!, journal)).toBeNull();
+    const attributionStart = performance.now();
+    const early = await peerNativeTurns([{ role: "user", ts: null, parts: [{ kind: "text", text: waitingEnvelope[0] }] }], (await herdrCliEndpoint(socket, targetPane, journal))!, journal);
+    expect(early[0]?.sender?.id).toBe(waitingEnvelope[1]);
+    expect(waitingChild.exitCode).toBeNull();
+    console.log(`Stock CLI attribution before wait completion: ${Math.round(performance.now() - attributionStart)} ms`);
+    const waited = await waiting;
     expect(waited.code).toBe(1); expect(JSON.parse(waited.stderr).error).toEqual({ code: "timeout", message: "timed out waiting for agent status" });
     expect((await invoke(["agent", "prompt", "shim_absent_target", "never submit"], sourcePane)).code).toBe(1);
     const received = readFileSync(log, "utf8");
@@ -65,6 +79,8 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     const firstSender = readPeerMessage(envelope[1]!, journal)!;
     expect(firstSender).not.toBeNull();
     expect(firstSender.display_name).toBe("Graph worktree projection");
+    expect(envelope[0]).toContain(`Return pane on the sender's Herdr server: ${sourcePane}`);
+    expect(firstSender.reply_session).toBe(process.env["HERDR_TEST_SESSION"]);
     const receivedTurn = { role: "user" as const, ts: null, parts: [{ kind: "text" as const, text: envelope[0] }] };
     const targetEndpoint = (await herdrCliEndpoint(socket, targetPane, journal))!;
     const attributed = peerMessageTurn(receivedTurn, targetEndpoint, journal);
@@ -78,6 +94,7 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     expect(await resolvePeerSource({ ...firstSender.source, agent_instance_id: "replacement" }, journal)).toBeNull();
     const messageRecords = readdirSync(join(journal, "messages")).filter((name) => name.endsWith(".json"));
     expect(messageRecords).toHaveLength(2);
+    expect(readdirSync(join(journal, "messages")).filter((name) => name.endsWith(".pending"))).toHaveLength(0);
     for (const record of messageRecords) expect(readFileSync(join(journal, "messages", record), "utf8")).not.toContain(message);
     const namespace = readdirSync(journal).find((name) => name !== "messages")!;
     expect(readdirSync(join(journal, namespace)).filter((name) => name.endsWith(".json") && name !== "identity.json")).toHaveLength(3);
@@ -115,6 +132,7 @@ it.skipIf(process.platform === "win32")("captures stock Herdr through PATH while
     }
     cancelChild.kill("SIGTERM"); await cancelled;
     expect(cancelChild.signalCode).toBe("SIGTERM");
+    expect(readdirSync(join(journal, "messages")).filter((name) => name.endsWith(".pending"))).toHaveLength(0);
     expect(readFileSync(log, "utf8").split("SHIM_SIGNAL_PROBE")).toHaveLength(2);
     expect((await herdrCliObservations(socket, journal))?.receipts).toHaveLength(3);
 
