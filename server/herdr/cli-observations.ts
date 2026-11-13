@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync, type Dir } from "node:fs";
 import { opendir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { AgentInfo } from "../../shared/herdr-api.generated.ts";
 import type { HerdrCoordinationEndpoint, HerdrCoordinationPage, GraphCliObservation, GraphCliPage } from "../../shared/graph-registry.ts";
 import type { SessionSnapshot } from "../../shared/protocol.ts";
@@ -17,6 +17,7 @@ import { graphCliObservationMetadata, graphCliObservationValue } from "../../sha
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export interface HerdrCliOperation { kind: "delegation" | "communication"; target: string; session: string | null }
+export const herdrCliSessionName = (value: unknown): value is string => typeof value === "string" && value.length <= 64 && value !== "." && value !== ".." && /^[a-zA-Z0-9._-]+$/.test(value);
 
 /** Match only the supported CLI surface; Herdr remains responsible for parsing and errors. */
 export function herdrCliOperation(args: readonly string[]): HerdrCliOperation | null {
@@ -30,7 +31,7 @@ export function herdrCliOperation(args: readonly string[]): HerdrCliOperation | 
     if (word.startsWith("--session=")) { session = word.slice(10); continue; }
     words.push(word);
   }
-  if (session !== null && (session.length > 64 || session === "." || session === ".." || !/^[a-zA-Z0-9._-]+$/.test(session))) return null;
+  if (session !== null && !herdrCliSessionName(session)) return null;
   if (words[0] !== "agent" || !["start", "prompt"].includes(words[1] ?? "")) return null;
   const command = words[1]!;
   let target: string | undefined;
@@ -90,6 +91,14 @@ export function herdrCliSocket(session: string | null, env: Record<string, strin
   const selected = session ?? env["HERDR_SESSION"] ?? "default";
   const config = join(env["XDG_CONFIG_HOME"] || join(homedir(), ".config"), "herdr");
   return selected === "default" ? join(config, "herdr.sock") : join(config, "sessions", selected, "herdr.sock");
+}
+
+/** Name the caller's session only when its actual socket matches the standard session path. */
+export function herdrCliReplySession(socket: string, env: Record<string, string | undefined> = process.env): string | undefined {
+  if (sameSocket(socket) === sameSocket(herdrCliSocket("default", env))) return "default";
+  const session = basename(dirname(socket));
+  if (!herdrCliSessionName(session)) return undefined;
+  return sameSocket(socket) === sameSocket(herdrCliSocket(session, env)) ? session : undefined;
 }
 
 interface Namespace { directory: string; server: string; boot: string }

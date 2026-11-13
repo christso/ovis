@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { preparePeerMessage, publishPeerMessage, peerMessageTurn, readPeerMessage } from "./message-sources.ts";
-import legacy from "./fixtures/message-source-v1.json";
+import legacyV1 from "./fixtures/message-source-v1.json";
+import legacyDisplay from "./fixtures/message-source-v1-display.json";
 import type { HerdrCoordinationEndpoint } from "../shared/graph-registry.ts";
 
 const source: HerdrCoordinationEndpoint = { server_id: "source-server", boot_id: "boot", terminal_id: "source-terminal", agent_instance_id: "source-process", pane_id: "w1:p1", agent: "codex", name: "worker\n\u001b[31m" };
@@ -100,8 +101,26 @@ it("authenticates the historical display name separately from the source process
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it("distinguishes an unnamed sender's reply pane from its Ovis display label", () => {
+  const root = mkdtempSync(join(tmpdir(), "ovis-peer-reply-"));
+  try {
+    const prepared = preparePeerMessage("body unchanged", { ...source, name: null, pane_id: "w60:p9", agent: "omp" }, target, root, "wta-failed", "source-session")!;
+    expect(prepared.text).toContain("from wta-failed (omp)");
+    expect(prepared.text).toContain("Return pane on the sender's Herdr server: w60:p9");
+    expect(prepared.text).toContain("The display label is not a Herdr agent name");
+    expect(prepared.text).toContain("Reply without --wait");
+    expect(prepared.text).toContain("Sender's Herdr session: source-session");
+    publishPeerMessage(prepared, root);
+    expect(peerMessageTurn({ role: "user", ts: null, parts: [{ kind: "text", text: prepared.text }] }, target, root).parts).toEqual([{ kind: "text", text: "body unchanged" }]);
+    const path = join(root, "messages", `${prepared.id}.json`);
+    const forged = JSON.parse(readFileSync(path, "utf8")); forged.reply_session = "wrong-session";
+    writeFileSync(path, JSON.stringify(forged));
+    expect(peerMessageTurn({ role: "user", ts: null, parts: [{ kind: "text", text: prepared.text }] }, target, root).sender).toBeUndefined();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
-it("reads a fixed signed receipt and envelope produced by the pre-display-name implementation", () => {
+
+for (const legacy of [legacyV1, legacyDisplay]) it(`reads a fixed deployed v1 envelope ${legacy === legacyDisplay ? "with" : "without"} a display name`, () => {
   const root = mkdtempSync(join(tmpdir(), "ovis-peer-legacy-"));
   try {
     mkdirSync(join(root, "messages"), { mode: 0o700 });
@@ -109,6 +128,6 @@ it("reads a fixed signed receipt and envelope produced by the pre-display-name i
     writeFileSync(join(root, "messages", `${legacy.id}.json`), JSON.stringify(legacy.receipt), { mode: 0o600 });
     const turn = { role: "user" as const, ts: null, parts: [{ kind: "text" as const, text: legacy.text }] };
     expect(readPeerMessage(legacy.id, root)).toEqual({ ...legacy.receipt, version: 1 });
-    expect(peerMessageTurn(turn, legacy.receipt.target, root)).toEqual({ ...turn, parts: [{ kind: "text", text: legacy.body }], sender: { id: legacy.id, name: "Legacy worker", agent: "codex" } });
+    expect(peerMessageTurn(turn, legacy.receipt.target, root)).toEqual({ ...turn, parts: [{ kind: "text", text: legacy.body }], sender: { id: legacy.id, name: legacy === legacyDisplay ? "Legacy display name" : "Legacy worker", agent: "codex" } });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

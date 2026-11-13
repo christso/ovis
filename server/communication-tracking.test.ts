@@ -256,7 +256,7 @@ it.skipIf(process.platform !== "linux")("refreshes an owned older wrapper only t
     expect(readFileSync(bundle, "utf8")).toBe(old);
     expect((await f.service.enable()).state).toBe("enabled");
     expect(readFileSync(bundle, "utf8")).not.toContain("preserved old bundle");
-    expect(JSON.parse(readFileSync(configPath, "utf8")).bundle_revision).toBe(3);
+    expect(JSON.parse(readFileSync(configPath, "utf8")).bundle_revision).toBe(4);
     expect(JSON.parse(readFileSync(configPath, "utf8")).display_state).toBe(join(f.root, "ovis-state"));
     expect((await f.service.disable()).state).toBe("disabled");
     expect(JSON.parse(readFileSync(configPath, "utf8")).display_state).toBe(join(f.root, "ovis-state"));
