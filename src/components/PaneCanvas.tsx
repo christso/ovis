@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type DragEvent, type MouseEvent, type MutableRefObject, type PointerEvent, type ReactNode } from "react";
-import { ArchiveRestore, Bot, Columns2, Ellipsis, Eraser, Folder, FolderInput, LockOpen, Maximize2, Minimize2, MoveHorizontal, Pencil, Plus, Rows2, ArrowLeftRight, Terminal, TextSearch, TextWrap, X } from "lucide-react";
+import { ArchiveRestore, Bot, Columns2, Ellipsis, Eraser, Folder, FolderInput, LockOpen, Maximize2, Minimize2, MoveHorizontal, PanelTop, Pencil, Plus, Rows2, ArrowLeftRight, Terminal, TextSearch, TextWrap, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { HerdrPane, HerdrTab, PaneLayoutSnapshot, SessionSnapshot } from "../../shared/protocol.ts";
 import { MAX_LABEL_CHARS } from "../../shared/labels.ts";
@@ -235,6 +235,15 @@ export function PaneCanvas({ snapshot, pane, selectedPaneId, onSelect, onChanged
     ]),
     ...(!appLayout.arrange ? [] : [{ id: "zoom", label: t(layout && zoomMode(layout, target.pane_id) === "off" ? "Unzoom pane" : "Zoom pane"), icon: Maximize2,
       run: () => zoom(target) }]),
+    ...(!appLayout.move || target.own_tab || (snapshot?.panes.filter((item) => item.tab_id === target.tab_id).length ?? 0) < 2 ? [] : [{
+      id: "move-new-tab", label: t("Move pane to new tab"), icon: PanelTop, disabled: watching,
+      run: () => run(async () => {
+        const tabId = latest.current.tabId;
+        const selection = latest.current.selection;
+        const moved = await api.movePaneToNewTab(target.pane_id);
+        if (alive.current && latest.current.tabId === tabId && latest.current.selection === selection) onSelect(moved.pane_id);
+      }),
+    }]),
   ];
   // A tab with no row (a phone's header lists the tabs, a lone tab on a cramped phone: TabStrip), so
   // the pane's menu carries what the row's menu would: the tab's other panes, shown one at a time

@@ -65,13 +65,15 @@ describe("the pane canvas on a PC the Herdr app lays out", () => {
     }
   });
 
+  const selected: string[] = [];
   let actions: (target: HerdrPane) => RowMenuItem[] = () => [];
   async function draw(offer: LayoutOffer, drawn: SessionSnapshot = snapshot, watching = false): Promise<(target: HerdrPane) => string[]> {
+    selected.length = 0;
     const actionsRef: { current: ((target: HerdrPane) => RowMenuItem[]) | null } = { current: null };
     actions = (target) => actionsRef.current!(target);
     await act(async () => {
       renderer = create(createElement(SettingsProvider, null, createElement(AppLayoutContext.Provider, { value: offer },
-        createElement(PaneCanvas, { snapshot: drawn, pane: drawn.panes[0] as HerdrPane, selectedPaneId: "p1", onSelect: () => {}, onChanged: () => {}, renderPane: () => null, actionsRef,
+        createElement(PaneCanvas, { snapshot: drawn, pane: drawn.panes[0] as HerdrPane, selectedPaneId: "p1", onSelect: (id: string) => { selected.push(id); }, onChanged: () => {}, renderPane: () => null, actionsRef,
           onNewTab: () => {}, onNewTerminal: async () => {}, onMoveToWorkspace: async () => {}, watching }))));
     });
     return (target) => actionsRef.current!(target).map((item) => item.id);
@@ -80,22 +82,43 @@ describe("the pane canvas on a PC the Herdr app lays out", () => {
 
   it("offers a TUI PC's panes their name, swap, split and zoom items, and a divider to drag", async () => {
     const itemsOf = await draw(TUI);
-    expect(itemsOf(snapshot.panes[0] as HerdrPane)).toEqual(["rename", "clear-name", "split-right", "split-down", "zoom", "close"]);
-    expect(itemsOf(snapshot.panes[1] as HerdrPane)).toEqual(["rename", "swap-focused", "split-right", "split-down", "zoom", "close"]);
+    expect(itemsOf(snapshot.panes[0] as HerdrPane)).toEqual(["rename", "clear-name", "split-right", "split-down", "zoom", "move-new-tab", "close"]);
+    expect(itemsOf(snapshot.panes[1] as HerdrPane)).toEqual(["rename", "swap-focused", "split-right", "split-down", "zoom", "move-new-tab", "close"]);
     expect(dividers()).toBe(1);
+  });
+
+  it("moves the chosen split pane to its own tab on its PC", async () => {
+    await draw(TUI);
+    const sent: { url: string; body: unknown }[] = [];
+    const fetch = spyOn(globalThis, "fetch").mockImplementation(Object.assign(async (input: string | URL | Request, init?: RequestInit) => {
+      sent.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return Response.json({ ok: true, pane: { ...pane("p2"), tab_id: "t2" } });
+    }, { preconnect: globalThis.fetch.preconnect }));
+    try {
+      const item = actions(snapshot.panes[1]!).find((item) => item.id === "move-new-tab");
+      expect(item?.label).toBe("Move pane to new tab");
+      await act(async () => { item!.run(); });
+      expect(sent).toEqual([{ url: "/api/pane/move-to-new-tab", body: { pane_id: "p2" } }]);
+      expect(selected).toEqual(["p2"]);
+    } finally { fetch.mockRestore(); }
+  });
+
+  it("disables moving while watching", async () => {
+    await draw(TUI, snapshot, true);
+    expect(actions(snapshot.panes[1]!).find((item) => item.id === "move-new-tab")?.disabled).toBe(true);
   });
 
   it("offers no split on a core whose layout Ovis keeps for a pane in a tab of its own terminal (#2806)", async () => {
     const own: SessionSnapshot = { ...snapshot, panes: [{ ...pane("p1", "named"), own_tab: true }, pane("p2")] };
     const itemsOf = await draw(OVIS_CORE, own);
     expect(itemsOf(own.panes[0] as HerdrPane)).toEqual(["rename", "clear-name", "zoom", "close"]);
-    expect(itemsOf(own.panes[1] as HerdrPane)).toEqual(["rename", "swap-focused", "split-right", "split-down", "zoom", "close"]);
+    expect(itemsOf(own.panes[1] as HerdrPane)).toEqual(["rename", "swap-focused", "split-right", "split-down", "zoom", "move-new-tab", "close"]);
   });
 
   it("gives a lone tab with no row (a cramped phone) the row's menu, for the header's More menu, and no pane ellipsis", async () => {
     phone = true;
     const itemsOf = await draw(TUI);
-    expect(itemsOf(snapshot.panes[0] as HerdrPane)).toEqual(["pane:p1", "pane:p2", "rename", "clear-name", "close", "new-terminal", "new-agent-tab", "rename-tab", "close-tab"]);
+    expect(itemsOf(snapshot.panes[0] as HerdrPane)).toEqual(["pane:p1", "pane:p2", "rename", "clear-name", "move-new-tab", "close", "new-terminal", "new-agent-tab", "rename-tab", "close-tab"]);
     const heads = renderer!.root.findAll((node) => node.props.className === "pane-frame-head");
     expect(heads.map((head) => head.parent?.props["data-layout-pane"])).toEqual(["p2"]);
   });
@@ -128,9 +151,10 @@ describe("the pane canvas on a PC the Herdr app lays out", () => {
   });
 
   it("leaves no actions behind for the header's menu once the canvas is gone", async () => {
+    selected.length = 0;
     const actionsRef: { current: ((target: HerdrPane) => RowMenuItem[]) | null } = { current: null };
     await act(async () => {
-      renderer = create(createElement(SettingsProvider, null, createElement(PaneCanvas, { snapshot, pane: snapshot.panes[0] as HerdrPane, selectedPaneId: "p1", onSelect: () => {}, onChanged: () => {}, renderPane: () => null, actionsRef })));
+      renderer = create(createElement(SettingsProvider, null, createElement(PaneCanvas, { snapshot, pane: snapshot.panes[0] as HerdrPane, selectedPaneId: "p1", onSelect: (id: string) => { selected.push(id); }, onChanged: () => {}, renderPane: () => null, actionsRef })));
     });
     expect(actionsRef.current).not.toBeNull();
     await act(async () => renderer?.unmount());
@@ -258,7 +282,7 @@ describe("the pane canvas on a PC the Herdr app lays out", () => {
     setSidebarPins(["local:p1"]);
     try {
       const itemsOf = await draw(TUI);
-      expect(itemsOf(snapshot.panes[0] as HerdrPane)).toEqual(["pane:p1", "pane:p2", "rename", "clear-name", "unlock", "new-terminal", "new-agent-tab", "rename-tab"]);
+      expect(itemsOf(snapshot.panes[0] as HerdrPane)).toEqual(["pane:p1", "pane:p2", "rename", "clear-name", "move-new-tab", "unlock", "new-terminal", "new-agent-tab", "rename-tab"]);
       // the other pane of the tab still closes on its own; the tab, with the locked agent in it, does not
       expect(itemsOf(snapshot.panes[1] as HerdrPane)).toContain("close");
       expect(itemsOf(snapshot.panes[1] as HerdrPane)).not.toContain("close-tab");

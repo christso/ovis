@@ -6,6 +6,7 @@
  * Register and fixed terms follow ../i18n.ja.ts; a key another feature also uses goes there.
  */
 export const TERMINAL_JA: Record<string, string> = {
+  "Move pane to new tab": "ペインを新しいタブに移動",
   "Show terminal": "ターミナルを表示",
   "Searching…": "検索中…",
   "Pane changed. Search again.": "ペインの内容が変わりました。再検索してください。",

@@ -151,7 +151,7 @@ async function checkDesktop(browser: Browser, origin: string, first: string, sec
     await tabMenu.waitFor();
     await tabMenuFocused();
     assert.deepEqual((await tabMenu.getByRole("menuitem").allTextContents()).filter((item) => item !== "Clear pane name"),
-      ["Rename pane", "Split right", "Split down", "Zoom pane", "Close pane", "New tab with agent…", "Rename tab", "Close tab"], "the button's menu carries the open pane's actions and the tab's (the + is a shell tab, so the agent's dialog stays here)");
+      ["Rename pane", "Split right", "Split down", "Zoom pane", "Move pane to new tab", "Close pane", "New tab with agent…", "Rename tab", "Close tab"], "the button's menu carries the open pane's actions and the tab's (the + is a shell tab, so the agent's dialog stays here)");
     await page.keyboard.press("Escape");
     await tabMenu.waitFor({ state: "detached" });
     assert.equal(await tab.evaluate((node) => node === document.activeElement), true, "the button's menu returns focus to the tab");
@@ -232,7 +232,7 @@ async function checkDesktop(browser: Browser, origin: string, first: string, sec
     assert.deepEqual(narrowItems.slice(0, 2).sort(), ["canvas-first", "canvas-second"], "a narrow window's tab menu lists the tab's panes first");
     assert.deepEqual(narrowItems.slice(-3), ["New tab with agent…", "Rename tab", "Close tab"], "the strip's + is a shell tab: the menu keeps the agent's dialog");
     assert.deepEqual(narrowItems.slice(2, -3).filter((item) => item !== "Clear pane name"),
-      ["Rename pane", "Close pane"], "the touch menu carries the open pane's actions but no split or zoom, between its panes and the tab's");
+      ["Rename pane", "Move pane to new tab", "Close pane"], "the touch menu carries the open pane's actions but no split or zoom, between its panes and the tab's");
     await page.setViewportSize({ width: 1280, height: 800 });
     await tabMenu.waitFor({ state: "detached" });
     await pointerOffStrip();
@@ -630,7 +630,7 @@ async function checkPhone(browser: Browser, origin: string, first: string, secon
     const actions = await paneSheet.locator(".row-sheet-item .row-sheet-label").allTextContents();
     assert.deepEqual(actions.slice(-2), ["Rename tab", "Close tab"], "the tab's own actions close the list; New tab is the title list's");
     assert.deepEqual(actions.slice(0, -2).filter((item) => item !== "Clear pane name"),
-      ["Rename pane", "Close pane"], "the open pane's actions, less split and zoom, come before the tab's");
+      ["Rename pane", "Move pane to new tab", "Close pane"], "the open pane's actions, less split and zoom, come before the tab's");
     await paneSheet.getByRole("button", { name: "Cancel", exact: true }).tap();
     await paneSheet.waitFor({ state: "detached" });
     await touchMenu.tap();
@@ -753,7 +753,7 @@ async function checkTouchTablet(browser: Browser, origin: string, first: string,
     const tabletItems = await menu.getByRole("menuitem").allTextContents();
     // a wide touch screen shows both panes, so the menu has no pane list: the open pane's actions lead it
     assert.deepEqual(tabletItems.filter((item) => item !== "Clear pane name"),
-      ["Rename pane", "Split right", "Split down", "Zoom pane", "Close pane", "New tab with agent…", "Rename tab", "Close tab"], "a wide touch canvas keeps split and zoom in its menu");
+      ["Rename pane", "Split right", "Split down", "Zoom pane", "Move pane to new tab", "Close pane", "New tab with agent…", "Rename tab", "Close tab"], "a wide touch canvas keeps split and zoom in its menu");
     await screenshot(page, "tablet-menu");
     await page.keyboard.press("Escape");
     await menu.waitFor({ state: "detached" });
@@ -785,6 +785,51 @@ async function checkTouchTablet(browser: Browser, origin: string, first: string,
   } finally { await context.close(); }
 }
 
+async function checkMoveToNewTab(browser: Browser, origin: string): Promise<void> {
+  for (const width of [1280, 390]) {
+    const created = await workspaceCreate({ label: "ovis-test-move-to-tab" });
+    const root = created.root_pane;
+    const right = await paneSplit(root.pane_id, "right", false);
+    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width === 390, hasTouch: width === 390, locale: "en-US" });
+    await context.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", defaultView: "terminal", alertsOn: false })));
+    try {
+      await paneFocus(root.pane_id);
+      const page = await context.newPage();
+      await openApp(page, origin, width === 390 ? right.pane_id : root.pane_id);
+      if (width === 390) {
+        await page.locator(".header-more-button").tap();
+        const more = page.getByRole("dialog", { name: "More", exact: true });
+        await more.waitFor();
+        await sheetsSettled(page);
+        await more.getByRole("button", { name: "Pane and tab…", exact: true }).tap();
+        const sheet = page.getByRole("dialog", { name: "Pane and tab…", exact: true });
+        await sheet.waitFor();
+        await sheetsSettled(page);
+        await sheet.getByRole("button", { name: "Move pane to new tab", exact: true }).tap();
+      } else {
+        const menu = await paneMenu(page, right.pane_id);
+        const items = await menu.getByRole("menuitem").allTextContents();
+        assert.equal(items.indexOf("Move pane to new tab"), items.indexOf("Zoom pane") + 1);
+        await menu.getByRole("menuitem", { name: "Move pane to new tab", exact: true }).click();
+      }
+      await until(async () => (await sessionSnapshot()).panes.find((pane) => pane.pane_id === right.pane_id)?.tab_id !== root.tab_id, "the chosen pane moves to a new tab");
+      await currentPane(page, right.pane_id);
+      const after = await sessionSnapshot();
+      const moved = after.panes.find((pane) => pane.pane_id === right.pane_id)!;
+      assert.equal(moved.terminal_id, right.terminal_id, "the running terminal is kept");
+      assert.equal(moved.workspace_id, root.workspace_id);
+      assert.deepEqual((await layout(root.tab_id)).panes.map((pane) => pane.pane_id), [root.pane_id]);
+      assert.deepEqual((await layout(moved.tab_id)).panes.map((pane) => pane.pane_id), [right.pane_id]);
+      assert.equal(after.focused_pane_id, root.pane_id, "herdr's focus stays on the other pane");
+      await screenshot(page, `move-new-tab-${width}`);
+    } finally {
+      await context.close();
+      await workspaceClose(created.workspace.workspace_id);
+    }
+  }
+  console.log("PASS Move pane to new tab from desktop and phone menus preserves the terminal and sibling pane");
+}
+
 export async function checkTabMenu(browser: Browser, origin: string): Promise<void> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ovis-tab-menu-")));
   let workspaceId: string | null = null;
@@ -800,6 +845,7 @@ export async function checkTabMenu(browser: Browser, origin: string): Promise<vo
     // exercised in phone-glass-header-demo-regression.ts.
     for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 720 }]) await checkPhone(browser, origin, first, second, viewport);
     await checkTouchTablet(browser, origin, first, second);
+    await checkMoveToNewTab(browser, origin);
     console.log("PASS native tab drag/keyboard/touch reorder, cancellation and failure handling, desktop context and keyboard tab menus, touch menu buttons, inactive-tab close, simultaneous split terminals, focus and input isolation, swap, split, divider drag, zoom and phone sheets");
   } finally {
     if (workspaceId) await workspaceClose(workspaceId).catch(() => undefined);

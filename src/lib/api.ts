@@ -87,6 +87,8 @@ import type {
   SwapPaneRequest,
   MovePaneRequest,
   PaneMoved,
+  MovePaneToNewTabRequest,
+  PaneMovedToNewTab,
   TabCreated,
   UpdateInstallRequest,
   StatuslineState, UsageReport,
@@ -1164,6 +1166,13 @@ export async function swapPaneWith(paneId: string, targetPaneId: string, machine
 export async function movePaneBeside(paneId: string, targetPaneId: string, side: PaneDirection, machineId = "local"): Promise<PaneMoved> {
   const request = sendJson(machinePath(machineId, "pane/move"), "POST", { pane_id: paneId, target_pane_id: targetPaneId, side } satisfies MovePaneRequest)
     .then(async (response) => (await response.json()) as PaneMoved);
+  return movingHerdrFocus(machineId, request);
+}
+
+/** Move a split pane into a new tab on its PC, preserving its terminal and pane ID. */
+export async function movePaneToNewTab(paneId: string, machineId = "local"): Promise<PaneInfo> {
+  const request = sendJson(machinePath(machineId, "pane/move-to-new-tab"), "POST", { pane_id: paneId } satisfies MovePaneToNewTabRequest)
+    .then(async (response) => ((await response.json()) as PaneMovedToNewTab).pane);
   return movingHerdrFocus(machineId, request);
 }
 

@@ -340,6 +340,7 @@ export type { DevicePairedEvent, DeviceRemovedEvent, PairingIntent, RelayPairing
  *         -> PaneSwapped { ok: true, changed, reason, target_pane_id } (pane.swap with the neighbour
  *         on that side, prefix+shift+hjkl, or an explicit pane; exactly one destination is required;
  *         changed false names no_neighbor, same_pane, cross_tab or not_found)
+ *  POST   /api/pane/move-to-new-tab { pane_id } -> PaneMovedToNewTab { ok: true, pane }
  *  POST   /api/pane/move   { pane_id, target_pane_id, side: left|right|up|down } -> PaneMoved { ok: true, changed, reason }
  *         (pane.move: the pane goes to that side of another pane of its own tab, its terminal and ID kept;
  *         herdr 0.9.5 moves none within a tab, so it passes through a tab of its own, and a swap puts
@@ -914,7 +915,7 @@ export interface AgentRenameRequest {
   name: string | null;
 }
 
-export type { SplitPaneDirection, PaneDirection, SplitPaneRequest, PaneSplit, ZoomPaneRequest, PaneZoomed, FocusPaneRequest, SwapPaneRequest, PaneSwapped, MovePaneRequest, PaneMoved, ResizePaneRequest, PaneResized, SetSplitRatioRequest } from "./pane-layout.ts";
+export type { SplitPaneDirection, PaneDirection, SplitPaneRequest, PaneSplit, ZoomPaneRequest, PaneZoomed, FocusPaneRequest, SwapPaneRequest, PaneSwapped, MovePaneRequest, PaneMoved, MovePaneToNewTabRequest, PaneMovedToNewTab, ResizePaneRequest, PaneResized, SetSplitRatioRequest } from "./pane-layout.ts";
 
 /** GET /api/pane/commands: one slash command the pane's agent understands. */
 export interface SlashCommand {

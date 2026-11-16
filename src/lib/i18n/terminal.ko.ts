@@ -6,6 +6,7 @@
  * Register and fixed terms follow ../i18n.ko.ts; a key another feature also uses goes there.
  */
 export const TERMINAL_KO: Record<string, string> = {
+  "Move pane to new tab": "패널을 새 탭으로 이동",
   "Show terminal": "터미널 보기",
   "Searching…": "검색 중…",
   "Pane changed. Search again.": "패널 내용이 변경되었습니다. 다시 검색하세요.",
