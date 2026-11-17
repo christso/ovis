@@ -12,6 +12,7 @@ import type { SessionMoveState } from "../src/lib/sessionMoves.ts";
 import { GraphRegistryStore, handleGraphRequest } from "../server/graph-registry.ts";
 import { buildSessionMoveFixture } from "./session-move-fixture-build.ts";
 import { chromePath } from "./chrome-path.ts";
+import { sheetEntryLeft } from "./sheets-settled.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ovis-move-browser-"));
 const app = join(root, "app");
@@ -378,6 +379,7 @@ try {
       assert.equal(store.read().sessions[0]!.current_execution_id, originalExecution.id);
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
       await row.getByRole("button", { name: "View move", exact: true }).waitFor();
+      await sheetEntryLeft(page);
       await page.reload(); await openFixture();
       await table.locator(`[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "View move", exact: true }).click();
       dialog = page.getByRole("dialog", { name: "Move session", exact: true });
@@ -433,6 +435,7 @@ try {
       await openFixture();
       assert.equal(await table.locator(`[data-row-id="${originalExecution.id}"]`).getByRole("button", { name: "Move session", exact: true }).count(), 0, "previous executions cannot start another move");
       statusUnreadable = true;
+      await sheetEntryLeft(page);
       await page.reload(); await openFixture();
       await page.getByRole("alert").filter({ hasText: "Move status is unavailable" }).waitFor();
       assert.equal(await table.getByRole("button", { name: "Move session", exact: true }).isEnabled(), false, "unreadable recovery receipts disable new moves");
