@@ -1,5 +1,6 @@
 import { apiFetch } from "./api-request-id.ts";
 import type { CommunicationTrackingSetupRequest, CommunicationTrackingStatus } from "../../shared/communication-tracking.ts";
+import { CompactAgentsError, expandMachine, type WireMachine } from "../../shared/compact-agents.ts";
 import type { PreferencesChange, SharedPreferences } from "../../shared/preferences.ts";
 import type { AlertWebhookSave, AlertWebhookView } from "../../shared/alert-webhook.ts";
 import type { SeenFinish, SeenPresentation } from "../../shared/seen.ts";
@@ -41,6 +42,7 @@ import type {
   TabMoved,
   TabMovedToWorkspace,
   OmoActivity,
+  PaneSummaries,
   ClaudeArtifact,
   OmpBtwHistory,
   PaneBackgroundAgentDetail,
@@ -409,16 +411,30 @@ export async function shareSeen(finish: SeenFinish, presented?: SeenPresentation
   throw await errorFrom(url, response);
 }
 
-export async function fetchTelemetry(): Promise<TelemetryStatus | null> {
-  try { return await getJson<TelemetryStatus>("/api/telemetry"); }
-  catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; }
+const telemetryStatusListeners = new Set<(status: TelemetryStatus | null) => void>();
+
+/** Hears every answer about the counts (null: this server sends none), whoever asked: lib/usageCounters.ts counts only by it. */
+export function onTelemetryStatus(listener: (status: TelemetryStatus | null) => void): () => void {
+  telemetryStatusListeners.add(listener);
+  return () => { telemetryStatusListeners.delete(listener); };
 }
 
-export async function changeTelemetry(change: TelemetryChange): Promise<TelemetryStatus> {
+function toldTelemetryStatus<T extends TelemetryStatus | null>(status: T): T {
+  for (const listener of telemetryStatusListeners) listener(status);
+  return status;
+}
+
+export async function fetchTelemetry(): Promise<TelemetryStatus | null> {
+  try { return toldTelemetryStatus(await getJson<TelemetryStatus>("/api/telemetry")); }
+  catch (error) { if (error instanceof ApiError && error.status === 404) return toldTelemetryStatus(null); throw error; }
+}
+
+/** `keepalive`: the page is going away, and the request is to outlive it */
+export async function changeTelemetry(change: TelemetryChange, { keepalive = false }: { keepalive?: boolean } = {}): Promise<TelemetryStatus> {
   const url = "/api/telemetry";
-  const response = await apiFetch(url, { method: "POST", headers: { "content-type": "application/json", "x-herdr-update": "1" }, body: JSON.stringify(change) });
+  const response = await apiFetch(url, { method: "POST", headers: { "content-type": "application/json", "x-herdr-update": "1" }, body: JSON.stringify(change), ...(keepalive ? { keepalive } : {}) });
   if (!response.ok) throw await errorFrom(url, response);
-  return (await response.json()) as TelemetryStatus;
+  return toldTelemetryStatus((await response.json()) as TelemetryStatus);
 }
 
 /**
@@ -849,7 +865,7 @@ async function readPaneConversation(paneId: string, machineId: string, page: Con
     // as it arrived, whatever becomes of its body: its time bounds this browser's clock against the PC's
     const received = performance.now(), receivedWall = Date.now();
     if (response.status === 304 && known) {
-      observeWaitingClock(waitingKey(machineId, paneId), response.headers.get("x-server-time"), received, receivedWall);
+      observeWaitingClock(waitingKey(machineId, paneId), response.headers.get("x-server-time"), received, receivedWall, true);
       return { response, body: known.body };
     }
     if (!response.ok) throw await errorFrom(url, response);
@@ -911,6 +927,8 @@ async function readPaneConversation(paneId: string, machineId: string, page: Con
 export interface HealthInfo {
   ok: boolean;
   herdr: HerdrIdentity;
+  /** this Ovis server's version (`0.5.3`), authenticated only; absent from an older server */
+  version?: string;
   /** `server_id`: this PC's relay ID, told to an authenticated browser where the PC has one; absent from an older server */
   web_ui?: { boot_id: string | null; revision: string | null; server_id?: string };
   /** Absent only on a server that predates the token gate. */
@@ -1220,7 +1238,7 @@ export async function deleteAgentLauncher(id: string, machineId = "local"): Prom
 }
 
 /** GET /api/agent-catalog: every agent Ovis can install, with that PC's commands and what it has installed. */
-export async function fetchAgentCatalog(machineId = "local", signal?: AbortSignal): Promise<AgentCatalogResponse> {
+export async function fetchAgentCatalog(machineId = "local", signal?: AbortSignal, recheck = false): Promise<AgentCatalogResponse> {
   // bounded to 30 s, so a read that never answers ends and Check again can try again; joined by
   // hand, as verifySourceBoot's: AbortSignal.any needs Safari 17.4
   const bounded = new AbortController();
@@ -1229,7 +1247,8 @@ export async function fetchAgentCatalog(machineId = "local", signal?: AbortSigna
   if (signal?.aborted) end();
   else signal?.addEventListener("abort", end, { once: true });
   try {
-    return await getJson<AgentCatalogResponse>(machinePath(machineId, "agent-catalog"), { signal: bounded.signal, cache: "no-store" });
+    // recheck (Check again): that PC reads its shells' PATH afresh first; an older one ignores it
+    return await getJson<AgentCatalogResponse>(`${machinePath(machineId, "agent-catalog")}${recheck ? "?recheck=1" : ""}`, { signal: bounded.signal, cache: "no-store" });
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", end);
@@ -1589,6 +1608,28 @@ export async function fetchPanePromptState(paneId: string, machineId = "local"):
   };
 }
 
+/** How long a summary request may take: the PC answers within PANE_SUMMARY_DEADLINE_MS, the rest is the way there and back. */
+export const SUMMARY_REQUEST_MS = 8_000;
+
+/**
+ * GET /api/pane/summary: each pane's last words; null, each time it is asked, from a PC whose bridge predates the
+ * route (the reader, lib/useInboxSummaries.ts, remembers it). Another PC's answer comes through unchecked.
+ */
+export async function fetchPaneSummaries(machineId: string, paneIds: readonly string[]): Promise<PaneSummaries | null> {
+  const query = new URLSearchParams(paneIds.map((paneId) => ["pane_id", paneId]));
+  // bounded by hand, as fetchAgentCatalog's (AbortSignal.timeout needs Safari 16): a stalled PC fails the request, and
+  // the reader asks again under its own retry rules
+  const bounded = new AbortController();
+  const timer = setTimeout(() => bounded.abort(), SUMMARY_REQUEST_MS);
+  try { return await getJson<PaneSummaries>(machinePath(machineId, `pane/summary?${query.toString()}`), { signal: bounded.signal }); }
+  catch (error) {
+    if (!routeMissing(error)) throw error;
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** POST /api/pane/prompt/answer: ApiError 409 `prompt_changed` when the menu moved on. */
 export async function answerPanePrompt(answer: PromptAnswer, machineId = "local"): Promise<void> {
   await sendJson(machinePath(machineId, "pane/prompt/answer"), "POST", answer);
@@ -1629,10 +1670,16 @@ export async function fetchPushSubscriptionStatus(subscription: PushSubscription
 }
 
 export function fetchBridgeHealth(): Promise<BridgeHealth> { return getJson("/api/health?scope=bridge"); }
-export async function fetchMachines(signal?: AbortSignal): Promise<Machine[]> {
-  const response = await apiFetch("/api/machines", { signal });
+/** The roster, its compact agent rows restored; `full` asks for full rows, which a compact one that cannot be read falls back to. */
+export async function fetchMachines(signal?: AbortSignal, full = false): Promise<Machine[]> {
+  const response = await apiFetch(full ? "/api/machines" : "/api/machines?compact_agents=1", { signal });
   if (!response.ok) throw await errorFrom("/api/machines", response);
-  return ((await response.json()) as { machines: Machine[] }).machines;
+  if (full) return ((await response.json()) as { machines: Machine[] }).machines;
+  const { machines } = (await response.json()) as { machines: WireMachine[] };
+  try { return machines.map(expandMachine); } catch (error) {
+    if (error instanceof CompactAgentsError) return fetchMachines(signal, true);
+    throw error;
+  }
 }
 /**
  * GET /api/machines?verify_source_boot: the roster, and the boot id of the server behind `machineId`

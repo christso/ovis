@@ -4,7 +4,6 @@
  * Register and fixed terms follow ../i18n.zh.ts; a key another feature also uses goes there.
  */
 export const PALETTE_ZH: Record<string, string> = {
-  "Workspace": "工作区",
   "Actions": "操作",
   "Move tab to {workspace}": "将标签页移动到 {workspace}",
   "Enable notifications": "开启通知",
@@ -13,7 +12,7 @@ export const PALETTE_ZH: Record<string, string> = {
   "Close command palette": "关闭窗格和命令搜索",
   "Filter panes by status": "按状态筛选窗格",
   "Status filter": "状态筛选",
-  "Search": "搜索",
+  "Workspace": "工作区",
   "Unknown workspace": "未知工作区",
   "Plugin actions": "插件操作",
   "Running…": "正在运行…",

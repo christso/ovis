@@ -1,3 +1,4 @@
+import { entryCommand } from "./entries.ts";
 import { HERDR_SHIM_REVISION } from "../shared/communication-tracking.ts";
 /** User-owned, opt-in shell setup for the standalone CLI observer. Never changes the daemon. */
 import { spawn } from "node:child_process";
@@ -355,8 +356,8 @@ export class CommunicationTracking implements CommunicationTrackingService {
     }
     const stage = join(this.directory, `.installation-${randomUUID()}`);
     try {
-      const installed = await command([process.execPath, join(import.meta.dir, "../scripts/herdr-shim.ts"), "install", "--real", setup.real, "--directory", stage, "--journal", this.directory, "--display-state", this.displayState(), "--enabled", "false"], { ...env, HOME: this.home }, 30_000);
-      if (!installed.ok || !(await command([process.execPath, join(stage, "observe.js"), "--shim", join(stage, "config.json"), "--", "--version"], env)).ok) throw new Error("install_failed");
+      const installed = await command([...entryCommand("herdr-shim"), "install", "--real", setup.real, "--directory", stage, "--journal", this.directory, "--display-state", this.displayState(), "--enabled", "false"], { ...env, HOME: this.home }, 30_000);
+      if (!installed.ok || !(await command([join(stage, "herdr"), "--version"], env)).ok) throw new Error("install_failed");
       writeFileSync(join(stage, "herdr"), herdrCliLauncher(realpathSync(process.execPath), this.installation), { mode: 0o700 });
       if (!existsSync(this.installation)) renameSync(stage, this.installation);
       else {

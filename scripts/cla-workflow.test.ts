@@ -4,14 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 interface Step { name?: string; run?: string }
-interface Workflow { jobs: { cla: { steps: Step[] } } }
+interface Workflow { jobs: { cla: { if: string; steps: Step[] } } }
 
 const workflow = Bun.YAML.parse(readFileSync(new URL("../.github/workflows/cla.yml", import.meta.url), "utf8")) as Workflow;
 const guard = workflow.jobs.cla.steps.find((step) => step.run !== undefined)!;
 
+test("the upstream CLA service runs only in the maintainer's repository", () => {
+  expect(workflow.jobs.cla.if.replace(/\s+/g, " ").trim()).toBe(
+    "github.repository == 'devswha/ovis' && (github.event_name == 'pull_request_target' || (github.event.issue.pull_request && (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')))"
+  );
+});
+
 interface Pr { opener: string; head: { repo: string; owner: string; type: string } | null; authors: string[] }
 
-/** Runs the guard step for PR 7 of devswha/ovis with `gh api` answered from `pr` through jq, like `gh --jq`. */
 function runGuard(pr: Pr): { code: number; output: string } {
   const dir = mkdtempSync(join(tmpdir(), "cla-guard-"));
   try {

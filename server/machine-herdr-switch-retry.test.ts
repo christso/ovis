@@ -6,9 +6,11 @@ import { BRIDGE_PROTOCOL, REMOTE_BUNDLE_VERSION, type SetupJob, type SshTarget }
 import { CompletionTracker } from "./completion.ts";
 import { MachineManager } from "./machines.ts";
 import { createPushService } from "./push.ts";
-import { posixHost } from "./remote-host.ts";
+import { posixHost, windowsHost } from "./remote-host.ts";
 import { SshConnection } from "./ssh.ts";
 import { tunnelRelays } from "./machine-tunnel.fixture.ts";
+
+const SETTLE_MS = 5000;
 
 it.each([
   { loss: "before", result: "connected", session: "a" },
@@ -28,7 +30,6 @@ it.each([
   const timers = new Map<number, () => void>();
   const set = globalThis.setTimeout, clear = globalThis.clearTimeout;
   const mocks = [
-    // Hold retry deadlines, not the setup or test deadlines: advance them explicitly, without a sleep.
     spyOn(globalThis, "setTimeout").mockImplementation(new Proxy(set, {
       apply(target, _receiver, [fn, delay, ...args]: unknown[]) {
         if (typeof fn !== "function" || delay !== undefined && typeof delay !== "number") throw new Error("Expected timer callback and delay");
@@ -48,13 +49,12 @@ it.each([
       return { platform: "linux-x64", home: "/home/fixture", herdrPath: "/fixture/herdr", expectedSocket: selected, bundleReady: true, bundleOlder: false,
         descriptors: selected === a.herdr_socket && oldLost ? [] : [descriptor(selected)], runtimeDir: "/runtime", registryDir: "/registry" };
     }),
+    spyOn(windowsHost, "inspect").mockRejectedValue(new Error("Not a Windows PC")),
     spyOn(posixHost, "herdrVersion").mockResolvedValue("herdr 0.9.3"),
     spyOn(posixHost, "alive").mockResolvedValue(true),
-    // a chosen socket the PC verifies as this account's and answering
     spyOn(posixHost, "chosenSocketStatus").mockResolvedValue("usable"),
     spyOn(posixHost, "start").mockImplementation(async () => { oldStarts++; resumed.resolve(); throw new Error("Old bridge unavailable"); }),
     spyOn(posixHost, "installBundle").mockResolvedValue(undefined),
-    // the SSH tunnel to a bridge (machine-tunnel.fixture.ts)
     ...tunnelRelays(relays, (remotePort) => {
       const socket = remotePort === 12345 ? a.herdr_socket : b.herdr_socket;
       return Bun.serve({ port: 0, hostname: "127.0.0.1", fetch(request, server) {
@@ -69,7 +69,7 @@ it.each([
   const manager = new MachineManager(dir, createPushService({ stateDir: dir }), new CompletionTracker(null), async () => { throw new Error("isolated"); }, { now: () => clock });
   const run = (target: SshTarget) => new Promise<SetupJob>((resolve, reject) => {
     let job: SetupJob | undefined;
-    const deadline = set(() => { off(); reject(new Error("setup did not settle")); }, 5000);
+    const deadline = set(() => { off(); reject(new Error("setup did not settle")); }, SETTLE_MS);
     const off = manager.subscribe(() => { if (job && ["failed", "connected"].includes(job.phase)) { off(); clear(deadline); resolve(job); } });
     job = manager.setup({ ...target, machine_id: id, update_remote: true }, { auto: true });
   });
@@ -86,7 +86,9 @@ it.each([
   try {
     expect((await run(a)).phase).toBe("connected");
     if (loss === "before") drop();
-    moving = run(b); await reached.promise;
+    moving = run(b);
+    const asked = set(() => reached.reject(new Error("The switch never asked B")), SETTLE_MS);
+    try { await reached.promise; } finally { clear(asked); }
     if (loss === "during") drop();
     advanceRetries();
     manager.retryNow(id);
@@ -97,7 +99,7 @@ it.each([
     expect(oldStarts).toBe(0);
     expect(manager.list().find((pc) => pc.id === id)?.target).toEqual(result === "connected" ? b : a);
     if (result === "failed") {
-      const deadline = set(() => resumed.reject(new Error("Old PC retries did not resume")), 5000);
+      const deadline = set(() => resumed.reject(new Error("Old PC retries did not resume")), SETTLE_MS);
       try { advanceRetries(); await resumed.promise; } finally { clear(deadline); }
       expect(oldStarts).toBe(1);
     }
@@ -108,4 +110,4 @@ it.each([
     for (const relay of relays) relay.stop(true);
     rmSync(dir, { recursive: true, force: true });
   }
-});
+}, 4 * SETTLE_MS);

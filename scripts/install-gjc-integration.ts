@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
@@ -16,8 +16,9 @@ export interface InstallGjcIntegrationResult {
   path: string;
 }
 
-/** Bundles one integrations/ entry into a standalone file, as the agent loads it. */
 export async function buildIntegration(name: string, target: "bun" | "node"): Promise<string> {
+  const built = join(import.meta.dir, "..", "integrations", `${name}.js`);
+  if (existsSync(built)) return readFileSync(built, "utf8");
   const entrypoint = join(import.meta.dir, "..", "integrations", `${name}.ts`);
   const staging = mkdtempSync(join(tmpdir(), `herdr-${name}-integration-`));
   try {
@@ -76,11 +77,10 @@ function replaceAtomically(path: string, content: string, banner: string): void 
       linkSync(temporary, path);
     }
   } finally {
-    try { rmSync(temporary, { force: true }); } catch { /* best-effort removal of our temporary file */ }
+    try { rmSync(temporary, { force: true }); } catch {}
   }
 }
 
-/** Install or remove only the one file at `extensionPath`, and only while it carries `banner`. */
 export async function installExtensionFile(
   extensionPath: string,
   banner: string,
@@ -97,7 +97,6 @@ export async function installExtensionFile(
   return { action: "installed", path: extensionPath };
 }
 
-/** Install or remove only herdr-web-ui.js under a selected GJC agent directory. */
 export default async function installGjcIntegration(
   options: InstallGjcIntegrationOptions = {},
 ): Promise<InstallGjcIntegrationResult> {

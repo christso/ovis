@@ -1,8 +1,9 @@
 import { afterAll, afterEach, beforeAll, expect, it, jest } from "bun:test";
-import { HerdrSocket } from "./ws.ts";
+import { backoffDelay, HerdrSocket } from "./ws.ts";
 import { nativeTransport, setTransport, type WebSocketLike } from "./transport.ts";
 import type { ClientConnectionTrace, PendingMessage } from "../../shared/protocol.ts";
 import { OUTPUT_STALLED_CLOSE_CODE } from "../../shared/terminal-flow.ts";
+import { RECONNECT_GRACE_MS } from "./reconnectGrace.ts";
 
 /** A WebSocket the test drives: it opens, receives and records what the client sends. */
 class FakeSocket {
@@ -587,10 +588,10 @@ it("types a secret for a prompt only a newer bridge takes as direct input to a b
     client.close();
   }
   // a released bridge gives typing an id and keeps it until the bridge has read it, to hold it for review when the
-  // connection ends first: a typed secret gets no id and is never kept
+  // connection ends first: a typed secret gets an id too, for its receipt, and is never kept
   const { client, socket } = liveClient(["submit", "secret-input", "ping", "input-receipt"]);
   expect(await client.sendSecret("w1:p1", git, "hunter2", () => true)).toEqual({ ok: true });
-  expect(typed(socket)).toEqual(asTyped);
+  expect(typed(socket)).toEqual([{ type: "input", pane_id: "w1:p1", text: "hunter2", id: 1 }, { type: "input", pane_id: "w1:p1", text: "\r", id: 2 }]);
   socket.disconnect();
   expect(client.takeUnconfirmedInput("w1:p1")).toEqual([]);
   client.close();
@@ -853,6 +854,31 @@ it("releases the shared grid once when the chat lens covers a terminal this tab 
   client.releaseSize("w1:p1");
   expect(releases()).toHaveLength(1);
   client.close();
+});
+
+it("says a pane holds the pty's size only while it sized it last and has not let it go since", () => {
+  const client = new HerdrSocket("ws://test/ws");
+  client.connect();
+  FakeSocket.last.open();
+  try {
+    // a pane this tab never attached holds nothing, and one attached keeping another device's size holds none
+    expect(client.holdsSize("w1:p1")).toBe(false);
+    client.attach("w1:p1", 40, 20, true);
+    expect(client.holdsSize("w1:p1")).toBe(false);
+    // sized by this tab, it holds the size until it lets it go, by either way of letting it go
+    client.resize("w1:p1", 53, 33, true);
+    expect(client.holdsSize("w1:p1")).toBe(true);
+    client.releaseSize("w1:p1");
+    expect(client.holdsSize("w1:p1")).toBe(false);
+    client.resize("w1:p1", 53, 33, true);
+    client.keepSize("w1:p1", false);
+    expect(client.holdsSize("w1:p1")).toBe(false);
+    // attached sizing the pty: it holds the size from the attach
+    client.attach("w1:p2", 120, 40);
+    expect(client.holdsSize("w1:p2")).toBe(true);
+  } finally {
+    client.close();
+  }
 });
 
 it("keeps a visible unfocused grid while changing only its reconnect policy", () => {
@@ -1318,10 +1344,12 @@ it("reconnects at once when the page wakes instead of waiting out the backoff, a
 
 it("backs off repeated short-lived opens, even when each receives a snapshot and terminal readiness", () => {
   jest.useFakeTimers();
+  const random = jest.spyOn(Math, "random").mockReturnValue(0);
   const { client, socket } = liveClient([]);
   try {
     let current = socket;
-    for (const delay of [250, 500, 1000, 2000, 4000, 5000, 5000]) {
+    // main's fixed steps up to 2s, then the 4s and 5s steps at the bottom of their jittered window
+    for (const delay of [250, 500, 1000, 2000, 2000, 2500, 2500]) {
       current.disconnect();
       expect(client.state).toBe("waiting");
       jest.advanceTimersByTime(delay - 1);
@@ -1338,6 +1366,7 @@ it("backs off repeated short-lived opens, even when each receives a snapshot and
     }
   } finally {
     client.close();
+    random.mockRestore();
     jest.useRealTimers();
   }
 });
@@ -1417,6 +1446,66 @@ it("still bypasses a flapping connection's backoff on wake and resets its next r
     expect(FakeSocket.last).not.toBe(woken);
   } finally {
     client.close();
+    jest.useRealTimers();
+  }
+});
+
+/** The largest value Math.random returns: just under 1, never 1. */
+const TOP_DRAW = 1 - 2 ** -53;
+
+it("reconnects after a 3.75s server restart on main's schedule whatever the draw, inside the pane's grace", () => {
+  jest.useFakeTimers();
+  const random = jest.spyOn(Math, "random");
+  try {
+    for (const draw of [0, TOP_DRAW]) {
+      random.mockReturnValue(draw);
+      const { client, socket } = liveClient([]);
+      try {
+        socket.disconnect();
+        let current = socket;
+        let elapsed = 0;
+        // the server is down for 3.75s: the attempts before that fail, the fourth finds it back
+        for (const delay of [250, 500, 1000, 2000]) {
+          if (current !== socket) current.disconnect();
+          jest.advanceTimersByTime(delay - 1);
+          expect(FakeSocket.last).toBe(current);
+          jest.advanceTimersByTime(1);
+          expect(FakeSocket.last).not.toBe(current);
+          current = FakeSocket.last;
+          elapsed += delay;
+        }
+        current.open();
+        expect(client.connected).toBe(true);
+        expect(elapsed).toBeLessThan(RECONNECT_GRACE_MS);
+      } finally {
+        client.close();
+      }
+    }
+  } finally {
+    random.mockRestore();
+    jest.useRealTimers();
+  }
+});
+
+it("schedules the first jittered reconnect, at the 4s step, at the top of its window", () => {
+  jest.useFakeTimers();
+  const random = jest.spyOn(Math, "random").mockReturnValue(TOP_DRAW);
+  const { client, socket } = liveClient([]);
+  try {
+    socket.disconnect();
+    // the fixed steps 0.25, 0.5, 1 and 2s, each attempt failing
+    for (const delay of [250, 500, 1000, 2000]) {
+      jest.advanceTimersByTime(delay);
+      FakeSocket.last.disconnect();
+    }
+    const failed = FakeSocket.last;
+    jest.advanceTimersByTime(5999);
+    expect(FakeSocket.last).toBe(failed);
+    jest.advanceTimersByTime(1);
+    expect(FakeSocket.last).not.toBe(failed);
+  } finally {
+    client.close();
+    random.mockRestore();
     jest.useRealTimers();
   }
 });
@@ -1726,6 +1815,28 @@ it("holds typing the socket took when its connection ends before the server conf
   }
 });
 
+it("counts keys sent as a password that a connection ended with before the server confirmed them, keeping nothing of them", () => {
+  const { client, socket } = liveClient(["submit", "ping"]);
+  try {
+    // a bridge without receipts: a ping fences a password as it fences typing
+    expect(client.sendInput("w1:p1", "a", false, false, true)).toBe(true);
+    expect(submissions(socket)).toEqual([{ type: "input", pane_id: "w1:p1", text: "a" }]);
+    expect(pings(socket)).toEqual([{ type: "ping", id: 1 }]);
+    socket.receive({ type: "pong", id: 1 });
+    expect(client.sendInput("w1:p1", "b", false, false, true)).toBe(true);
+    expect(pings(socket)).toEqual([{ type: "ping", id: 1 }, { type: "ping", id: 2 }]);
+    socket.disconnect();
+    // "a" was confirmed by its pong, "b" was not: one key may not have arrived, and neither is held
+    expect(client.takeUnconfirmedSecrets("w1:p1")).toBe(1);
+    expect(client.takeUnconfirmedInput("w1:p1")).toEqual([]);
+    // given once, and only for its pane
+    expect(client.takeUnconfirmedSecrets("w1:p1")).toBe(0);
+    expect(client.takeUnconfirmedSecrets("w1:p2")).toBe(0);
+  } finally {
+    client.close();
+  }
+});
+
 it("holds typing a bridge with input-receipt read but did not confirm typing when its connection ends (#2677)", () => {
   const { client, socket } = liveClient(["submit", "ping", "input-receipt"]);
   try {
@@ -1864,6 +1975,75 @@ it("never offers typing lost on one herdr to a pane of another that reuses its I
   try {
     proven(same.again, "herdr-a");
     expect(same.client.takeUnconfirmedInput("w1:p1")).toEqual(["rm -rf build"]);
+  } finally { same.client.close(); }
+});
+
+it("confirms a key sent as a password by its receipt, not by a pong, where the bridge gives receipts", () => {
+  const { client, socket } = liveClient(["submit", "ping", "input-receipt"]);
+  try {
+    expect(client.sendInput("w1:p1", "a", false, false, true)).toBe(true);
+    expect(client.sendInput("w1:p1", "b", false, false, true)).toBe(true);
+    expect(submissions(socket)).toEqual([{ type: "input", pane_id: "w1:p1", text: "a", id: 1 }, { type: "input", pane_id: "w1:p1", text: "b", id: 2 }]);
+    // a receipt needs no fence, and a pong proves only that the bridge read the frame: a key it queued is not taken yet
+    expect(pings(socket)).toEqual([]);
+    socket.receive({ type: "pong", id: 1 });
+    socket.receive({ type: "input-result", id: 1, pane_id: "w1:p1", ok: true });
+    socket.disconnect();
+    // "a" was taken, "b" only read: one key may not have arrived, and neither is held
+    expect(client.takeUnconfirmedSecrets("w1:p1")).toBe(1);
+    expect(client.takeUnconfirmedInput("w1:p1")).toEqual([]);
+  } finally {
+    client.close();
+  }
+});
+
+it("fences a key sent as a password with a ping once the bridge says it gives no receipts", () => {
+  for (const pongs of [true, false]) {
+    const { client, socket } = liveClient(["submit", "ping", "input-receipt"]);
+    try {
+      expect(client.sendInput("w1:p1", "a", false, false, true)).toBe(true);
+      expect(pings(socket)).toEqual([]);
+      socket.receive(snapshot(["input-ready", "ping"]));
+      // its id gets no receipt now: a ping fences it instead, and the old id confirms nothing
+      expect(pings(socket)).toHaveLength(1);
+      socket.receive({ type: "input-result", id: 1, pane_id: "w1:p1", ok: true });
+      if (pongs) socket.receive({ type: "pong", id: pings(socket)[0]!["id"] as number });
+      socket.disconnect();
+      expect(client.takeUnconfirmedSecrets("w1:p1")).toBe(pongs ? 0 : 1);
+    } finally {
+      client.close();
+    }
+  }
+});
+
+it("never says a key sent as a password on one herdr may not have arrived to a pane of another that reuses its ID", () => {
+  const proven = (socket: FakeSocket, lifetime: string) => socket.receive({ type: "snapshot", snapshot: { workspaces: [], panes: [], agents: [], layouts: [], herdr_lifetime: lifetime }, features: ["input-ready", "ping"] });
+  const lostOn = (lifetime: string) => {
+    const client = new HerdrSocket("ws://test/ws");
+    client.attach("w1:p1", 80, 24);
+    client.connect();
+    const socket = FakeSocket.last;
+    socket.open();
+    proven(socket, lifetime);
+    socket.receive({ type: "input-ready", pane_id: "w1:p1" });
+    expect(client.sendInput("w1:p1", "hunter2", false, false, true)).toBe(true);
+    socket.disconnect();
+    client.wake();
+    const again = FakeSocket.last;
+    again.open();
+    // a new connection that has not said which herdr it reads keeps the count back
+    expect(client.takeUnconfirmedSecrets("w1:p1")).toBe(0);
+    return { client, again };
+  };
+  const replaced = lostOn("herdr-a");
+  try {
+    proven(replaced.again, "herdr-b");
+    expect(replaced.client.takeUnconfirmedSecrets("w1:p1")).toBe(0);
+  } finally { replaced.client.close(); }
+  const same = lostOn("herdr-a");
+  try {
+    proven(same.again, "herdr-a");
+    expect(same.client.takeUnconfirmedSecrets("w1:p1")).toBe(1);
   } finally { same.client.close(); }
 });
 
@@ -2376,7 +2556,7 @@ it("never reconnects from a backoff retry left pending once the server stopped o
   client.on((message) => { if (message.type === "error") errors.push(message.code); });
   try {
     client.connect();
-    // failed attempts back the retry off to 4s
+    // failed attempts back the retry off to the 4s step, the first jittered one
     for (const delay of [250, 500, 1_000, 2_000]) {
       FakeSocket.last.disconnect();
       jest.advanceTimersByTime(delay);
@@ -2845,8 +3025,28 @@ it("forgets machine event capability on disconnect before a replacement subscrib
   socket.receive({ type: "features", features: ["machine-events"], connection: "c" });
   expect(client.machineEventsAvailable).toBe(true);
   client.setMachineEvents(true);
-  expect(socket.sent.filter((frame) => frame.type === "machine-events")).toEqual([{ type: "machine-events", enabled: true }]);
+  expect(socket.sent.filter((frame) => frame.type === "machine-events")).toEqual([{ type: "machine-events", enabled: true, compact_agents: true }]);
   socket.disconnect();
   expect(client.machineEventsAvailable).toBeNull();
   client.close();
+});
+
+it("backoffDelay keeps main's steps up to 2s whatever the draw, and jitters from the 4s step on", () => {
+  const random = jest.spyOn(Math, "random");
+  try {
+    for (const draw of [0, TOP_DRAW]) {
+      random.mockReturnValue(draw);
+      expect([0, 1, 2, 3].map(backoffDelay)).toEqual([250, 500, 1000, 2000]);
+    }
+    // from the 4s step, capped at 5s, successive draws move the delay within half a step either side
+    for (const [retries, step] of [[4, 4000], [5, 5000], [30, 5000]] as const) {
+      random.mockReturnValueOnce(0).mockReturnValueOnce(TOP_DRAW);
+      expect(backoffDelay(retries)).toBe(step / 2);
+      const top = backoffDelay(retries);
+      expect(top).toBeGreaterThan(step * 1.499);
+      expect(top).toBeLessThanOrEqual(step * 1.5);
+    }
+  } finally {
+    random.mockRestore();
+  }
 });

@@ -7,6 +7,7 @@ import type { HerdrPane, SessionSnapshot } from "../../shared/protocol.ts";
 import { AppLayoutContext, appLayoutOf, type LayoutOffer } from "../lib/machineContext.tsx";
 import { SettingsProvider } from "../lib/settings.ts";
 import { setSidebarPins } from "../lib/sidebarPins.ts";
+import { usageCounters } from "../lib/usageCounters.ts";
 import type { RowMenuItem } from "./RowMenu.tsx";
 
 await mock.module("react-dom", () => ({ ...ReactDom, createPortal: (node: ReactNode) => node }));
@@ -67,9 +68,10 @@ describe("the pane canvas on a PC the Herdr app lays out", () => {
 
   const selected: string[] = [];
   let actions: (target: HerdrPane) => RowMenuItem[] = () => [];
+  let actionsRef: { current: ((target: HerdrPane, options?: { counted?: boolean }) => RowMenuItem[]) | null } = { current: null };
   async function draw(offer: LayoutOffer, drawn: SessionSnapshot = snapshot, watching = false): Promise<(target: HerdrPane) => string[]> {
     selected.length = 0;
-    const actionsRef: { current: ((target: HerdrPane) => RowMenuItem[]) | null } = { current: null };
+    actionsRef = { current: null };
     actions = (target) => actionsRef.current!(target);
     await act(async () => {
       renderer = create(createElement(SettingsProvider, null, createElement(AppLayoutContext.Provider, { value: offer },
@@ -271,6 +273,32 @@ describe("the pane canvas on a PC the Herdr app lays out", () => {
     expect(asking()).toHaveLength(0);
   });
 
+  it("closes no second pane of a workspace until the roster has dropped the first, then asks for its last one (#3286)", async () => {
+    await draw(TUI);
+    const bodies: unknown[] = [];
+    const fetch = spyOn(globalThis, "fetch").mockImplementation(Object.assign(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith("/pane/close") && typeof init?.body === "string") bodies.push(JSON.parse(init.body));
+      return Response.json({});
+    }, { preconnect: globalThis.fetch.preconnect }));
+    const closeOf = (id: string) => actions(snapshot.panes.find((item) => item.pane_id === id)!).find((item) => item.id === "close")!;
+    try {
+      await act(async () => { closeOf("p2").run(); });
+      // herdr closed p2, but the roster still lists it: a press on p1 now would take the workspace without asking
+      await act(async () => { closeOf("p1").run(); });
+      await act(async () => { closeOf("p2").run(); });
+      expect(bodies).toEqual([{ pane_id: "p2" }]);
+      expect(asking()).toHaveLength(0);
+      const after: SessionSnapshot = { ...snapshot, panes: [snapshot.panes[0]!] };
+      await act(async () => { renderer!.update(createElement(SettingsProvider, null, createElement(AppLayoutContext.Provider, { value: TUI },
+        createElement(PaneCanvas, { snapshot: after, pane: after.panes[0] as HerdrPane, selectedPaneId: "p1", onSelect: () => {}, onChanged: () => {}, renderPane: () => null, actionsRef })))); });
+      await act(async () => { actions(after.panes[0]!).find((item) => item.id === "close")!.run(); });
+      expect(bodies).toEqual([{ pane_id: "p2" }]);
+      expect(asking()).toHaveLength(1);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
   it("shows a watching device the title's Close, which it cannot use", async () => {
     await draw(TUI, snapshot, true);
     expect(closeButtons().map((button) => button.props.disabled)).toEqual([true, true]);
@@ -329,5 +357,23 @@ describe("the pane canvas on a PC the Herdr app lays out", () => {
     expect(itemsOf(snapshot.panes[0] as HerdrPane)).toEqual(["close"]);
     expect(itemsOf(snapshot.panes[1] as HerdrPane)).toEqual(["close"]);
     expect(dividers()).toBe(0);
+  });
+
+  it("counts its Close pane as the menu's only when the menu was pressed, and closes even when the count fails", async () => {
+    await draw(OVIS_CORE);
+    const told: string[] = [];
+    const counting = spyOn(usageCounters, "paneUse").mockImplementation((name) => { told.push(name); });
+    const close = (options?: { counted?: boolean }) => actionsRef.current!(snapshot.panes[1] as HerdrPane, options).find((item) => item.id === "close")!;
+    try {
+      // App's Close pane (by shortcut or palette) asks for the items uncounted: its own source is counted there
+      await act(async () => { close({ counted: false }).run(); });
+      expect(told).toEqual([]);
+      counting.mockImplementation(() => { throw new Error("storage full"); });
+      const logged = spyOn(console, "error").mockImplementation(() => {});
+      try { await act(async () => { expect(() => close().run()).not.toThrow(); }); } finally { logged.mockRestore(); }
+      counting.mockImplementation((name) => { told.push(name); });
+      await act(async () => { close().run(); });
+      expect(told).toEqual(["close_pane_by_menu"]);
+    } finally { counting.mockRestore(); }
   });
 });

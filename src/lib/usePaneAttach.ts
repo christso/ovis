@@ -10,6 +10,7 @@ import { modalOpen } from "./focus.ts";
 import type { PendingMessageView } from "./pendingMessages.ts";
 import { FONT_LOAD_TIMEOUT_MS, type FontSettled } from "./fontFamily.ts";
 import { typeAheadFocused } from "./typeAhead.ts";
+import { t } from "./i18n.ts";
 
 export interface PaneAttachDeps {
   activeRef: RefObject<boolean>;
@@ -17,6 +18,8 @@ export interface PaneAttachDeps {
   cached: boolean;
   watched: boolean;
   coarseRef: RefObject<boolean>;
+  /** the inbox mode's list stands over the pane (lib/paneSubmitContext.ts PaneCoveredContext): it sizes nothing there */
+  coveredRef: RefObject<boolean>;
   deferAttachRef: RefObject<(pane: string) => boolean>;
   fontSettledRef: RefObject<FontSettled>;
   draftPaneRef: RefObject<string | null>;
@@ -71,7 +74,7 @@ export interface PaneAttachDeps {
 }
 
 export function usePaneAttach(deps: PaneAttachDeps): void {
-  const { activeRef, autoSelected, cached, watched, coarseRef, deferAttachRef, fontSettledRef, draftPaneRef, findOpenRef, fitRef, fittedRef, fixedGridRef, frameGateRef, hyperlinksRef, hostRef, machineId, mirrored, modifyOtherKeysRef, observeRef, paneId, pending, presented, presentationRef, releaseRef, releasedRef, retireOutputRef, secretRef, setDraft, setComposing, setEnded, setHeld, setInputError, setInputReady, setOutputError, setOutputReady, setReleased, setSecret, setUnsupported, setWatching, sharedGridRef, socketRef, stalledRef, terminalId, termRef, chatViewRef, cancelLeaveRef, cachedRef, watchingRef, keyboardHoldsRef, followRef, followCursorRef, leaveRef, shownRef, typeAheadRef } = deps;
+  const { activeRef, autoSelected, cached, watched, coarseRef, coveredRef, deferAttachRef, fontSettledRef, draftPaneRef, findOpenRef, fitRef, fittedRef, fixedGridRef, frameGateRef, hyperlinksRef, hostRef, machineId, mirrored, modifyOtherKeysRef, observeRef, paneId, pending, presented, presentationRef, releaseRef, releasedRef, retireOutputRef, secretRef, setDraft, setComposing, setEnded, setHeld, setInputError, setInputReady, setOutputError, setOutputReady, setReleased, setSecret, setUnsupported, setWatching, sharedGridRef, socketRef, stalledRef, terminalId, termRef, chatViewRef, cancelLeaveRef, cachedRef, watchingRef, keyboardHoldsRef, followRef, followCursorRef, leaveRef, shownRef, typeAheadRef } = deps;
 
   // Reset on a pane or terminal replacement: a herdr restart can keep the pane ID.
   // Old composition timers must never see the new terminal.
@@ -103,6 +106,8 @@ export function usePaneAttach(deps: PaneAttachDeps): void {
     } catch {}
     // typing a connection ended with unconfirmed while no terminal of this pane was mounted (#2587)
     setDraft(holdBefore(paneId ? socket.takeUnconfirmedInput(paneId) : [], saved));
+    // and a key sent to it as a password that such a connection never confirmed: said, as nothing of it is kept
+    if (paneId && socket.takeUnconfirmedSecrets(paneId) > 0) setInputError(t("A key may not have reached the terminal: the connection ended before it was confirmed."));
     draftPaneRef.current = paneId;
     term.reset();
     retireOutputRef.current();
@@ -148,7 +153,10 @@ export function usePaneAttach(deps: PaneAttachDeps): void {
       // A pane exempt from watching still asks to keep an existing attachment's size while away.
       const away = !inUse();
       typeAheadRef.current(paneId);
-      socket.attach(paneId, term.cols, term.rows, chatViewRef.current || away || !shownRef.current || followRef.current || held);
+      // a pane that comes to a slot under the inbox mode's list (the selection's fallback, herdr's zoom) takes no size
+      // there, as resume does; back in the classic app it takes its size at its next fit, unless its terminal held
+      // the size as the list covered it and asks for the grid as the list goes (useTerminalRefits.ts)
+      socket.attach(paneId, term.cols, term.rows, chatViewRef.current || away || !shownRef.current || followRef.current || coveredRef.current || held);
       // no blur or hidden comes for a tab already out of use: it lets go of this pane after a moment too
       if (away) leaveRef.current();
       // the chat lens covers the grid and its composer takes the keyboard: focusing the hidden

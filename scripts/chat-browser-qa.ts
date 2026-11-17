@@ -1,12 +1,12 @@
-/** Native transcript -> real HTTP -> React checks on an owned herdr pane.
- * Run after bun run build. No live user's terminal is attached or written. */
-import "./test-herdr.ts"; // a herdr session of its own: nothing shows in the user's
+import "./test-herdr.ts";
 import assert from "node:assert/strict";
 import { Database } from "bun:sqlite";
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { DEVICE_COOKIE } from "../server/auth.ts";
+import { DeviceStore } from "../server/devices.ts";
 import { createServer } from "../server/index.ts";
 import { herdrRpc, sessionSnapshot, workspaceClose, workspaceCreate } from "../server/herdr/client.ts";
 import { chromePath } from "./chrome-path.ts";
@@ -47,7 +47,6 @@ try {
   add({ type: "function_call_output", call_id: "c1", output: "clean" }, 3);
   add({ type: "function_call", name: "exec_command", call_id: "c2", arguments: '{"cmd":"bun test"}' }, 4);
   add({ type: "function_call_output", call_id: "c2", output: "Process exited with code 1\n1 fail" }, 5);
-  // the turn is at work: its answer comes later
   persist();
   activityRecords.push({ type: "session_meta", payload: { id: "01a0c7a1-56d9-7e20-9f08-f7a2d973bcbd", cwd: activityCwd } });
   activityRecords.push({ type: "turn_context", payload: { model: "codex-activity-test-model", effort: "low" } });
@@ -81,13 +80,17 @@ try {
     await Bun.sleep(50);
   }
   const reportActivity = (state: "working" | "idle") => herdrRpc("pane.report_agent", { pane_id: activityPaneId, source: "manual", agent: "codex", state });
-  // tailscaleOwner null: the plain-HTTP page below reaches the server under a name that is not
-  // loopback, which a PC running Tailscale would otherwise send to pairing
-  server = createServer({ port: 0, hostname: "127.0.0.1", token: "", stateDir: join(root, "push"), codexHome, tailscaleOwner: null });
+  const stateDir = join(root, "push");
+  const devices = new DeviceStore(stateDir);
+  const paired = devices.pair(devices.startPairing().code, "Chat QA", "drive");
+  assert.ok(paired, "the QA device pairs");
+  devices.match(paired.token);
+  server = createServer({ port: 0, hostname: "127.0.0.1", token: "", stateDir, codexHome, tailscaleOwner: null });
   browser = await chromium.launch({ executablePath: chromePath(), headless: process.env["HEADED"] !== "1", args: ["--no-sandbox", "--host-resolver-rules=MAP clipboard.test 127.0.0.1", "--no-proxy-server"] });
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "en-US" });
+  // the cookie is for clipboard.test only; the page stays plain http under that name
+  await context.addCookies([{ name: DEVICE_COOKIE, value: paired.token, domain: "clipboard.test", path: "/", httpOnly: true, sameSite: "Strict" }]);
   const page = await context.newPage();
-  // a pane opens its terminal the first time; this QA is about the chat lens
   await page.addInitScript((id) => {
     localStorage.setItem("ovis:settings", JSON.stringify({ language: "en" }));
     localStorage.setItem(`ovis:view:${id}`, "chat");
@@ -103,7 +106,6 @@ try {
   assert.equal((await log.innerText()).includes("PRIVATE"), false);
   const modelInfo = page.getByLabel("Model and reasoning");
   await modelInfo.getByText("codex-test-model", { exact: true }).waitFor();
-  // the level is drawn as one word; the sentence is the screen reader's
   await modelInfo.getByText("xhigh", { exact: true }).waitFor();
   await modelInfo.getByText("Reasoning xhigh", { exact: true }).waitFor({ state: "attached" });
   // Native pane status is the activity source for Codex and OMP; their conversation responses do
@@ -134,6 +136,13 @@ try {
   addActivity(message("assistant", "Text-only final answer.", "final_answer"), 1);
   persistActivity();
   await activityLog.getByText("Text-only final answer.", { exact: true }).waitFor();
+  // A completed answer reserves a trailing working status; a new native work edge after rest
+  // owns the next head even before it has an assistant/tool row of its own.
+  await activityLog.locator(".chat-activity-reserved").waitFor({ state: "attached" });
+  assert.equal(await activityLog.locator(".chat-activity").count(), 0, "a completed answer has no duplicate Working label while native status trails it");
+  await reportActivity("idle");
+  await activityLog.locator(".chat-activity-reserved").waitFor({ state: "detached" });
+  await reportActivity("working");
   await activityLog.locator(".chat-activity").getByText("Working…", { exact: true }).waitFor();
   assert.equal(await activityLog.locator(".work-block:not(.is-pending)").count(), 0, "text-only final answer has no rendered work block");
   activityRecords.push({ type: "response_item", timestamp: "2026-09-22T00:01:02Z", payload: { type: "function_call", name: "exec_command", call_id: "activity-tool", arguments: '{"cmd":"pwd"}' } });
@@ -149,13 +158,10 @@ try {
     const box = (selector: string): DOMRect => card.querySelector(selector)!.getBoundingClientRect();
     const [text, attach, status, action] = [box(".composer-text"), box(".composer-attach"), box(".composer-status"), box(".composer-action")];
     return card.querySelectorAll(".composer-action").length === 1 && action.width === action.height
-      // the message is the first row, at the card's full width
       && text.width >= card.getBoundingClientRect().width - 4 && text.bottom <= Math.min(attach.top, action.top)
-      // and one row under it: add, then the status content, then the round button
       && attach.right <= status.left && status.right <= action.left && status.top < action.bottom && status.bottom > action.top;
   }), true, "the message on top, one row of controls under it, one round button");
   assert.equal(await page.locator(".composer-status").evaluate((node) => {
-    // Every pane status word is read by assistive tech, not drawn in the chat controls.
     const word = node.querySelector("strong");
     const hidden = [node.querySelector(".composer-agent-label"), word, node.querySelector(".composer-reasoning-full")];
     return hidden.every((item) => item !== null && item.textContent !== "" && item.getBoundingClientRect().width <= 1);
@@ -166,25 +172,18 @@ try {
   await report("working");
   await head(true, "Working…").waitFor();
   assert.equal(await log.locator(".work-block.is-folded").count(), 0, "the running turn's work is open");
-  // working inside the block is a choice to keep it: the fold must not take a focused row away
-  // the row reads as verb + object (#457); its tool id is the title
   const toolRow = log.getByRole("button", { name: "Ran git status", exact: true });
   await toolRow.click();
   await log.getByText("git status", { exact: true }).last().waitFor();
-  // the answer ends the turn, then the pane rests
   add(message("assistant", answer, "final_answer"), 8); persist();
   await log.getByText(answer, { exact: true }).waitFor();
   await report("idle");
   await head(true, "Worked for 7s").waitFor();
   assert.equal(await toolRow.evaluate((node) => node === document.activeElement), true, "the row the reader opened keeps focus when the turn settles");
   await log.getByText("git status", { exact: true }).last().waitFor();
-  // the answer landed while the pane still worked: the head held for the next turn (seen or not)
-  // stays until the idle status arrives, and it is a work-block head too
   await log.locator(".chat-activity, .chat-activity-reserved").waitFor({ state: "detached" });
   await work.click();
   await head(false, "Worked for 7s").waitFor();
-  // the agent works again with no new row yet (a turn it began by itself): the turn that ended on its
-  // answer stays finished, and the Working head under it stands for the new one
   await report("working");
   await log.locator(".chat-activity .work-block-title", { hasText: "Working…" }).waitFor();
   assert.equal(await head(false, "Worked for 7s").count(), 1, "the finished turn is not opened again");
@@ -196,16 +195,13 @@ try {
   assert.match(await work.innerText(), /Worked for 7s/);
   await work.click();
   assert.equal(await work.getAttribute("aria-expanded"), "true");
-  // a tool the verb table knows reads as verb + object; its id is the title and the detail's first line
   const row = log.getByRole("button", { name: "Ran git status", exact: true });
   assert.equal(await row.getAttribute("title"), "exec_command · git status");
   assert.equal(await row.locator(".work-row-caret").isVisible(), true);
   assert.equal(await row.locator(".work-row-icon, .work-row-sep").count(), 0);
-  // a failed call says so after its object, never between the verb and what it ran
   const failedRow = log.getByRole("button", { name: "Ran bun test failed", exact: true });
   assert.equal(await failedRow.evaluate((node) => node.lastElementChild?.className), "work-row-failed");
   assert.equal(await failedRow.getAttribute("title"), "exec_command · bun test");
-  // the row opened while the turn ran stays open through fold and unfold: a click would close it
   if (await row.getAttribute("aria-expanded") !== "true") await row.click();
   assert.equal(await log.locator(".work-row-detail > :first-child").innerText(), "exec_command");
   await log.getByText("git status", { exact: true }).last().waitFor();
@@ -218,7 +214,6 @@ try {
   await work.click();
   assert.equal(await work.getAttribute("aria-expanded"), "false", "and so is folding it again");
   add(message("assistant", "Checking the second request.", "commentary"), 21); persist();
-  // the pane is idle: this turn is settled and has no answer, so folding it would hide its only text
   await log.getByText("Checking the second request.", { exact: true }).waitFor();
   assert.equal(await work.first().getAttribute("aria-expanded"), "false", "manual folding is preserved");
   assert.equal(await work.nth(1).getAttribute("aria-expanded"), "true", "a settled turn that ends in commentary keeps its text in view");
@@ -245,8 +240,6 @@ try {
   assert.equal(await nativeImage.count(), 1);
   console.log("PASS native Codex image-only turn loads its pane-scoped thumbnail");
 
-  // a turn that has written nothing yet (Claude Code's spinner): the activity wears a live block's
-  // head, and the block the first tool row draws takes its place with its title where the line's was
   await report("working");
   const placeholder = log.locator(".chat-activity .work-block-title", { hasText: "Working…" });
   await placeholder.waitFor();
@@ -258,8 +251,6 @@ try {
   assert.ok(Math.abs((await liveTitle.boundingBox())!.x - placeholderX) < 1, "the block's title starts where the activity line's did");
   await report("idle");
   await log.locator(".work-block-title", { hasText: "Worked" }).last().waitFor();
-  // a running turn with only words so far: the activity is a line under them, not a head over
-  // them, so the words stay put when the turn ends and the line goes
   add(message("user", "A third request."), 24);
   add(message("assistant", "Let me look first."), 25); persist();
   const words = log.getByText("Let me look first.", { exact: true });
@@ -270,7 +261,6 @@ try {
   assert.equal(await log.locator(".chat-turn-agent .work-block.is-pending").count(), 0, "no head over the words");
   assert.equal(await log.locator(".chat-activity").count(), 1, "one Working at a time");
   assert.ok((await line.boundingBox())!.y > (await words.boundingBox())!.y, "the line is under the words");
-  // measured from its turn: the follow scroll moves the whole turn when the line goes
   const inTurn = () => words.evaluate((node) => node.getBoundingClientRect().top - node.closest(".chat-turn-agent")!.getBoundingClientRect().top);
   const wordsAt = await inTurn();
   await report("idle");
@@ -307,7 +297,6 @@ try {
   const statusItems = page.locator(".composer-model, .composer-reasoning");
   assert.equal(await statusItems.evaluateAll((items) => items.length === 2 && items.every((item) => item.getBoundingClientRect().width > 0 && item.getBoundingClientRect().right <= innerWidth)), true, "model and reasoning stay visible on mobile");
   assert.equal(await page.locator(".composer-status").evaluate((node) => node.scrollWidth <= node.clientWidth), true, "the status content fits its place in the controls row");
-  // a level that does not fit steps out whole (read, not drawn): it is never drawn in part
   await page.waitForFunction(() => {
     const level = document.querySelector(".composer-reasoning");
     return level !== null && (level.scrollWidth <= level.clientWidth || level.getBoundingClientRect().width <= 1);
@@ -345,8 +334,6 @@ try {
   await insecureLog.getByRole("button", { name: "Copy code", exact: true }).click();
   await insecureLog.getByRole("button", { name: "Code copied", exact: true }).waitFor();
   assert.equal(await clipboard(), code);
-  // A rejected secure API still gets the copy-command path. Neither failure may be
-  // advertised as success if the browser refuses both mechanisms.
   const secureCopy = page.getByRole("button", { name: "Copy as markdown", exact: true }).first();
   await secureCopy.focus();
   await secureCopy.click();
@@ -364,7 +351,6 @@ try {
   await messageCopy.click();
   await insecureLog.getByRole("alert").filter({ hasText: "Couldn't copy. Select the text and copy it manually." }).waitFor();
   assert.equal(await messageCopy.getAttribute("aria-label"), "Copy as markdown");
-  // the hint outlives the hover/focus that shows the copy controls (reduced motion: no fade to wait out)
   await insecure.emulateMedia({ reducedMotion: "reduce" });
   await insecure.mouse.move(0, 0);
   await insecure.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());

@@ -1,7 +1,8 @@
+import { COMPILED, ROOT } from "../server/entries.ts";
 import { spawn } from "node:child_process";
 import type { AgentInfo } from "../shared/herdr-api.generated.ts";
 import { randomUUID } from "node:crypto";
-import { closeSync, openSync, readSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, closeSync, openSync, readSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { withoutHerdrDiagnostics } from "../server/herdr/client.ts";
 import { herdrCliCaller, herdrCliDirectory, herdrCliEndpoint, herdrCliIdentity, herdrCliOperation, herdrCliPrompt, herdrCliReplySession, herdrCliSocket, herdrCliSubmitted, recordHerdrCli, sameHerdrCliEndpoint } from "../server/herdr/cli-observations.ts";
@@ -51,9 +52,12 @@ async function install(args: string[]): Promise<void> {
   try {
     writeFileSync(join(path, "owner.json"), JSON.stringify({ version: 1, owner: "ovis-herdr-cli-shim" }) + "\n", { mode: 0o600, flag: "wx" });
     const bundle = join(path, "observe.js");
-    const built = await Bun.build({ entrypoints: [import.meta.path], target: "bun", packages: "bundle", outfile: bundle });
-    if (!built.success) throw new Error(`Cannot bundle the shim: ${built.logs.join("\n")}`);
-    await Bun.write(bundle, built.outputs[0]!);
+    if (COMPILED) copyFileSync(join(ROOT, "scripts", "herdr-shim.js"), bundle);
+    else {
+      const built = await Bun.build({ entrypoints: [import.meta.path], target: "bun", packages: "bundle" });
+      if (!built.success) throw new Error(`Cannot bundle the shim: ${built.logs.join("\n")}`);
+      await Bun.write(bundle, built.outputs[0]!);
+    }
     const config = join(path, "config.json");
     writeFileSync(config, JSON.stringify({ version: 1, bundle_revision: HERDR_SHIM_REVISION, display_state: resolve(values.get("--display-state") ?? defaultStateDir()), real, journal: values.get("--journal") ?? herdrCliDirectory(), enabled: values.get("--enabled") !== "false" } satisfies Config) + "\n", { mode: 0o600 });
     writeFileSync(join(path, "herdr"), herdrCliLauncher(realpathSync(process.execPath), path), { mode: 0o700 });
@@ -62,6 +66,7 @@ async function install(args: string[]): Promise<void> {
 }
 
 function executeHerdr(real: string, args: string[]): never {
+  if (process.execve === undefined) throw new Error("Herdr CLI passthrough requires POSIX process execution");
   process.execve(real, [real, ...args], process.env as Record<string, string>);
   throw new Error("Cannot execute Herdr");
 }
@@ -163,7 +168,9 @@ async function run(configPath: string, args: string[]): Promise<void> {
   process.exitCode = code ?? 1;
 }
 
-if (import.meta.main) {
+export async function runHerdrShim(): Promise<void> {
+  // The launcher may use the compiled Ovis executable as Bun; never pass its runtime mode to Herdr.
+  delete process.env["BUN_BE_BUN"];
   try {
     const args = process.argv.slice(2);
     if (args[0] === "install") await install(args.slice(1));
@@ -171,3 +178,5 @@ if (import.meta.main) {
     else throw new Error("Use bun scripts/herdr-shim.ts install --real /absolute/herdr --directory /absolute/shim-directory [--journal /absolute/journal-directory]");
   } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }
 }
+
+if (import.meta.main) await runHerdrShim();

@@ -11,6 +11,7 @@ test.each([false, true])("keeps offline Graph navigation in the page query (rela
   Object.defineProperty(globalThis, "window", { configurable: true, value: { get location() { return location; }, history, addEventListener() {}, removeEventListener() {} } });
   Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => relay ? { getAttribute: () => "relay" } : null } });
   const props: Parameters<typeof useAddressBar>[0] = {
+    inbox: { shown: false, enabled: false, show() {}, leave() {} }, newSessionMachineId: "remote", newSessionPending: { current: false },
     page: "graph", newSessionOpen: false, selectedPane: null, selectedPaneId: null,
     selectedWorkspace: null, viewing: null, selectedMachineId: "remote", leaveFile: () => false,
     restoreFile() {}, fileFromPop: () => 0, forgetLeftFiles() {}, locked: false,

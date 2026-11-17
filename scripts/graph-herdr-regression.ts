@@ -232,7 +232,7 @@ try {
   }
   if (evidence) {
     const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-    const diff = execFileSync("git", ["diff", "HEAD", "--binary"], { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+    const diff = execFileSync("git", ["diff", "HEAD", "--binary"], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
     mkdirSync(join(evidence, "graph-integration"), { recursive: true });
     writeFileSync(join(evidence, "graph-integration", "results.json"), JSON.stringify({ sha, diffSha256: createHash("sha256").update(diff).digest("hex"), driverSha256: createHash("sha256").update(readFileSync(import.meta.path)).digest("hex"), source: "real integrated Ovis App, Graph store and Move routes/coordinator/nodes, two loopback endpoints and filesystem transfer", fixtures: ["Herdr occupancy/operation receipts", "native Codex history/ownership/authentication", "roster transport"], nativeHerdrProducer: false, userSessions: 0, results }, null, 2));
   }

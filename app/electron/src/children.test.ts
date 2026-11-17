@@ -19,14 +19,12 @@ function tempDir(): string {
   return dir;
 }
 
-/** a stand-in server: bin/bun is this Bun, server/server/index.ts the given script */
 function fakeServer(script: string): ReturnType<typeof layout> {
   const root = tempDir();
-  mkdirSync(join(root, "bin"));
-  mkdirSync(join(root, "server", "server"), { recursive: true });
-  writeFileSync(join(root, "bin", "bun"), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`);
-  chmodSync(join(root, "bin", "bun"), 0o755);
-  writeFileSync(join(root, "server", "server", "index.ts"), script);
+  mkdirSync(join(root, "server"), { recursive: true });
+  writeFileSync(join(root, "script.ts"), script);
+  writeFileSync(join(root, "server", "ovis-server"), `#!/bin/sh\n[ "$1" = serve ] || exit 64\nexec "${process.execPath}" "${join(root, "script.ts")}"\n`);
+  chmodSync(join(root, "server", "ovis-server"), 0o755);
   return layout(root);
 }
 
@@ -48,7 +46,6 @@ describe("environments", () => {
       GSETTINGS_SCHEMA_DIR: `${mount}/usr/share/glib-2.0/schemas:/opt/schemas`,
     }, `${mount}/ovis`);
     for (const name of ["APPDIR", "APPIMAGE", "ARGV0", "OWD", "LD_LIBRARY_PATH"]) expect(env).not.toHaveProperty(name);
-    // the user's own empty entry (the current folder) stays
     expect(env["PATH"]).toBe("/usr/bin::/bin");
     expect(env["XDG_DATA_DIRS"]).toBe("/usr/local/share:/usr/share:/usr/share/gnome:/usr/local/share/:/usr/share/");
     expect(env["GSETTINGS_SCHEMA_DIR"]).toBe("/opt/schemas");
@@ -81,7 +78,6 @@ describe("environments", () => {
 describe("withoutInherited", () => {
   it.if(process.platform === "linux")("starts a program without the descriptors its parent left open", () => {
     const [command, args] = withoutInherited("ls", ["/proc/self/fd"]);
-    // the parent holds fd 9 and 23 open across exec, as Chromium does
     const listed = spawnSync("/bin/bash", ["-c", 'exec 9</dev/null 23</dev/null; exec "$@"', "parent", command, ...args], { encoding: "utf8" });
     const fds = listed.stdout.split("\n");
     expect(fds).toContain("2");
@@ -102,7 +98,7 @@ describe("withoutInherited", () => {
 
 describe("layout", () => {
   it("names the Windows programs with .exe", () => {
-    expect(layout("/r", "win32")).toEqual({ bun: join("/r", "bin", "bun.exe"), hc: join("/r", "bin", "herdr-core.exe"), server: join("/r", "server") });
+    expect(layout("/r", "win32")).toEqual({ bun: join("/r", "bin", "bun.exe"), hc: join("/r", "bin", "herdr-core.exe"), server: join("/r", "server"), serverBinary: join("/r", "server", "ovis-server.exe") });
     expect(layout("/r", "linux").hc).toBe(join("/r", "bin", "herdr-core"));
   });
 });
@@ -179,7 +175,6 @@ describe.skipIf(!posix)("startServer", () => {
 });
 
 describe("installCore", () => {
-  /** an hc that records how it was run, beside itself */
   function fakeHc(dir: string, tag: string): string {
     mkdirSync(dir, { recursive: true });
     const path = join(dir, "herdr-core");
@@ -210,7 +205,6 @@ describe("installCore", () => {
     await installCore(bundled, join(root, "data", "bin"), process.env, log);
     expect(readFileSync(join(root, "data", "bin", "conpty", "conpty.dll"), "utf8")).toBe("dll");
     expect(readFileSync(join(root, "data", "bin", "conpty", "x64", "OpenConsole.exe"), "utf8")).toBe("exe");
-    // closed before afterEach removes the folder it writes in
     await new Promise<void>((resolve) => log.end(resolve));
   });
 
@@ -308,39 +302,40 @@ describe("saved settings", () => {
 });
 
 describe("endLeftover", () => {
-  it.skipIf(!posix)("ends only the same process: this app's Bun on its server, started at the recorded time", async () => {
+  it.skipIf(!posix)("ends only the same process: this app's server binary serving, started at the recorded time", async () => {
     const programs = fakeServer(`process.on("SIGTERM", () => process.exit(0)); console.log("Ovis listening on http://127.0.0.1:1"); setInterval(() => {}, 1000);`);
     const log = openLog(join(tempDir(), "ovis.log"));
     let spawned = 0;
     const server = await startServer(programs, process.env, log, 20_000, () => { spawned += 1; });
     expect(spawned).toBe(1);
     const pid = server.child.pid!;
-    const ours = { command: async () => `${programs.bun} ${programs.server}/server/index.ts`, started: async () => "then" };
-    expect(await endLeftover({ pid, bun: programs.bun, started: "then" }, { ...ours, command: async () => `/other/bun ${programs.server}/server/index.ts` })).toBe(false);
-    expect(await endLeftover({ pid, bun: programs.bun, started: "then" }, { ...ours, command: async () => null })).toBe(false);
-    expect(await endLeftover({ pid, bun: programs.bun, started: "then" }, { ...ours, started: async () => "later" })).toBe(false);
-    expect(await endLeftover({ pid, bun: programs.bun, started: null }, ours)).toBe(false);
+    const binary = programs.serverBinary;
+    const ours = { command: async () => `${binary} serve`, started: async () => "then" };
+    expect(await endLeftover({ pid, bun: binary, started: "then" }, { ...ours, command: async () => `/other/ovis-server serve` })).toBe(false);
+    expect(await endLeftover({ pid, bun: binary, started: "then" }, { ...ours, command: async () => `${binary} plugin status` })).toBe(false);
+    expect(await endLeftover({ pid, bun: binary, started: "then" }, { ...ours, command: async () => null })).toBe(false);
+    expect(await endLeftover({ pid, bun: binary, started: "then" }, { ...ours, started: async () => "later" })).toBe(false);
+    expect(await endLeftover({ pid, bun: binary, started: null }, ours)).toBe(false);
     expect(server.child.exitCode).toBeNull();
-    // Windows quotes a program path with a space in it; a quoted other Bun is still not ours
-    expect(await endLeftover({ pid, bun: programs.bun, started: "then" }, { ...ours, command: async () => `"/other/bun" ${programs.server}/server/index.ts` })).toBe(false);
-    expect(await endLeftover({ pid, bun: programs.bun, started: "then" }, { ...ours, command: async () => `"${programs.bun}" ${programs.server}/server/index.ts` })).toBe(true);
+    expect(await endLeftover({ pid, bun: binary, started: "then" }, { ...ours, command: async () => `"/other/ovis-server" serve` })).toBe(false);
+    expect(await endLeftover({ pid, bun: binary, started: "then" }, { ...ours, command: async () => `"${binary}" serve` })).toBe(true);
     expect(await server.exited).toBe(0);
     log.end();
   });
 
-  it.skipIf(!posix)("ends only the same process when it is found unquoted too", async () => {
+  it.skipIf(!posix)("ends the server an app from before the binary left: its Bun on the server's source", async () => {
     const programs = fakeServer(`process.on("SIGTERM", () => process.exit(0)); console.log("Ovis listening on http://127.0.0.1:1"); setInterval(() => {}, 1000);`);
     const log = openLog(join(tempDir(), "ovis.log"));
     const server = await startServer(programs, process.env, log, 20_000);
     const pid = server.child.pid!;
     const ours = { command: async () => `${programs.bun} ${programs.server}/server/index.ts`, started: async () => "then" };
+    expect(await endLeftover({ pid, bun: programs.bun, started: "then" }, { ...ours, command: async () => `/other/bun ${programs.server}/server/index.ts` })).toBe(false);
     expect(await endLeftover({ pid, bun: programs.bun, started: "then" }, ours)).toBe(true);
     expect(await server.exited).toBe(0);
     log.end();
   });
 
   it("reads a live process's start time and command, and nothing for one that is gone", async () => {
-    // ps's `Wed Nov  4 08:00:00 2026`, or CIM's UTC `2026-11-04T08:00:00.1234560Z` on Windows
     expect(await processStart(process.pid)).toMatch(process.platform === "win32" ? /^\d{4}-\d\d-\d\dT.*Z$/ : /\d{4}$/);
     expect(processStartSync(process.pid)).toBe(await processStart(process.pid));
     expect(await processCommand(process.pid)).toContain("bun");
