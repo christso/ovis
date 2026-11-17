@@ -69,6 +69,24 @@ it("the demo preserves native split paths, explicit swaps, moves beside a pane a
     expect(await (await post("pane/move", { pane_id: moving, target_pane_id: moving, side: "left" })).json()).toEqual({ ok: true, changed: false, reason: "same_pane" });
     expect(await (await post("pane/move", { pane_id: moving, target_pane_id: root, side: "left" })).json()).toEqual({ ok: true, changed: false, reason: "cross_tab" });
     expect((await post("pane/move", { pane_id: moving, target_pane_id: target, side: "middle" })).status).toBe(400);
+    const beforeMove = await snapshot();
+    const terminal = beforeMove.panes.find((pane) => pane.pane_id === moving)!.terminal_id;
+    const moved = await (await post("pane/move-to-new-tab", { pane_id: moving })).json() as { pane: { tab_id: string; pane_id: string; terminal_id: string } };
+    expect(moved.pane.pane_id).toBe(moving);
+    expect(moved.pane.terminal_id).toBe(terminal);
+    expect(moved.pane.tab_id).not.toBe(moveTab);
+    const afterMove = await snapshot();
+    expect(afterMove.tabs.length).toBe(beforeMove.tabs.length + 1);
+    expect(afterMove.panes.length).toBe(beforeMove.panes.length);
+    expect(afterMove.layouts.find((entry) => entry.tab_id === moveTab)!.panes.map((pane) => pane.pane_id)).toEqual([target]);
+    expect((await post("pane/move-to-new-tab", { pane_id: moving })).status).toBe(409);
+    const extra = await (await post("tab/create", { workspace_id: made.workspace_id })).json() as { pane_id: string };
+    await post("tab/close", { tab_id: tabId });
+    const extraSplit = await split(extra.pane_id, "right");
+    const extraMoved = await (await post("pane/move-to-new-tab", { pane_id: extraSplit })).json() as { pane: { tab_id: string } };
+    const workspaceTabs = (await snapshot()).tabs.filter((tab) => tab.workspace_id === made.workspace_id);
+    expect(workspaceTabs.find((tab) => tab.tab_id === extraMoved.pane.tab_id)!.label).toBe(String(workspaceTabs.length));
+
   } finally {
     for (const [key, descriptor] of saved) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);

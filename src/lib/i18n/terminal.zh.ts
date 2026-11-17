@@ -6,6 +6,7 @@
  * Register and fixed terms follow ../i18n.zh.ts; a key another feature also uses goes there.
  */
 export const TERMINAL_ZH: Record<string, string> = {
+  "Move pane to new tab": "将窗格移到新标签页",
   "Show terminal": "显示终端",
   "Searching…": "搜索中…",
   "Pane changed. Search again.": "窗格内容已更改，请重新搜索。",

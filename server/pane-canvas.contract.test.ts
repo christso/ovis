@@ -51,6 +51,28 @@ describe("pane canvas: focus, explicit swap and dragged split ratio", () => {
     rmSync(state, { recursive: true, force: true });
   });
 
+  it("moves a split pane to a new tab without replacing its terminal or changing another pane's focus", async () => {
+    const split = await paneSplit(root, "right", false);
+    await paneFocus(anotherTab);
+    const before = await sessionSnapshot();
+    const response = await post("pane/move-to-new-tab", { pane_id: split.pane_id });
+    expect(response.status).toBe(200);
+    const { pane } = await response.json() as { pane: typeof split };
+    expect(pane.pane_id).toBe(split.pane_id);
+    expect(pane.terminal_id).toBe(split.terminal_id);
+    expect(pane.workspace_id).toBe(workspaceId);
+    expect(pane.tab_id).not.toBe(tabId);
+    const after = await sessionSnapshot();
+    expect(after.focused_pane_id).toBe(anotherTab);
+    expect(after.tabs.length).toBe(before.tabs.length + 1);
+    expect(after.panes.length).toBe(before.panes.length);
+    expect(after.layouts.find((layout) => layout.tab_id === tabId)!.panes.some((p) => p.pane_id === split.pane_id)).toBe(false);
+    expect(after.layouts.find((layout) => layout.tab_id === pane.tab_id)!.panes.map((p) => p.pane_id)).toEqual([split.pane_id]);
+    expect((await post("pane/move-to-new-tab", { pane_id: split.pane_id })).status).toBe(409);
+    expect((await post("pane/move-to-new-tab", { pane_id: "missing" })).status).toBe(404);
+    expect((await post("pane/move-to-new-tab", { pane_id: " " })).status).toBe(400);
+  });
+
   it("focuses exactly the requested pane, workspace and tab and follows it while zoomed", async () => {
     expect(await (await post("pane/focus", { pane_id: right })).json()).toEqual({ ok: true });
     const snapshot = await sessionSnapshot();

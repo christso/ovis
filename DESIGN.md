@@ -1360,6 +1360,12 @@ Alert rows of the table above from the `--droplet-*` roles in `src/styles.css`.
 - Close follows herdr's `ui.confirm_close`: a workspace close, or a pane close that takes its
   workspace with it, asks in a confirm first. A busy pane also asks before it stops. After a
   confirmed close, focus lands on the header's workspace-list toggle.
+- A split pane's menu offers **Move pane to new tab** directly beneath Zoom pane. It follows
+  [VS Code's terminal move actions](https://code.visualstudio.com/docs/terminal/basics): move the
+  running terminal rather than start a replacement. The pane keeps its ID, terminal and workspace;
+  the chosen pane opens in the new tab unless the user has selected somewhere else while it moves.
+  A lone pane needs no move. The action is disabled for watching devices and absent where the
+  Herdr app owns the layout. On a phone it stays in the open pane's tab menu.
 - Tab and pane menus follow herdr's target scopes. A tab's menu contains New tab with agent…, Rename
   tab and Close tab, plus Move tab left/right when a neighbouring position exists and no move is pending.
   A tab with one pane also offers Move to workspace…, when its PC has another workspace: the same

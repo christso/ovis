@@ -9,7 +9,7 @@ import { graphHerdrEndpointValue } from "../shared/graph-relationships.ts";
  * move beside another, resize, clear, focus, paste an image). Each answers from herdr alone, so none needs the
  * server's own state. The dispatcher in index.ts runs the access gate first.
  */
-import type { AgentRenameRequest, PaneDirection, PaneMoved, PaneResized, PaneSplit, PaneSwapped, PaneZoomed, ReadFormat, ReadSource } from "../shared/protocol.ts";
+import type { AgentRenameRequest, PaneDirection, PaneMoved, PaneMovedToNewTab, PaneResized, PaneSplit, PaneSwapped, PaneZoomed, ReadFormat, ReadSource } from "../shared/protocol.ts";
 import { mergeCatalogSources } from "./catalog-sources.ts";
 import { rememberPaneCommands, scanPaneCommands } from "./commands.ts";
 import { paneDocuments, paneFiles } from "./files.ts";
@@ -21,7 +21,7 @@ import { searchConversationPages } from "./conversation-search.ts";
 import { OPENCODE_TOOL_REF } from "./opencode.ts";
 import { openCodeFlagVersion, openCodeInstalledVersion } from "./opencode-service.ts";
 import { DevinHistoryChanged } from "./devin.ts";
-import { agentRename, HerdrError, layoutSetSplitRatio, paneClear, paneClose, paneFind, paneFocus, paneMoveBeside, paneRead, paneRename, paneResize, paneScroll, paneScrollInfo, paneSelectionRead, paneSendKeys, paneSendText, paneSplit, paneSwap, paneSwapWith, paneZoom } from "./herdr/client.ts";
+import { agentRename, HerdrError, layoutSetSplitRatio, paneClear, paneClose, paneFind, paneFocus, paneMoveBeside, paneMoveToNewTab, sessionSnapshot, paneRead, paneRename, paneResize, paneScroll, paneScrollInfo, paneSelectionRead, paneSendKeys, paneSendText, paneSplit, paneSwap, paneSwapWith, paneZoom } from "./herdr/client.ts";
 import { paneContext, resolveAgent, versionSourceOf } from "./pane-context.ts";
 import { ompScreenContext } from "./omp-status.ts";
 import { PasteImageError, readImageBody, savePaneImage } from "./paste.ts";
@@ -426,6 +426,23 @@ export async function handlePaneRequest(request: Request, url: URL, pathname: st
     try {
       await layoutSetSplitRatio(payload.tab_id, payload.path, payload.ratio);
       return jsonResponse({ ok: true });
+    } catch (error) { return errorResponse(error); }
+  }
+
+  if (pathname === "/api/pane/move-to-new-tab") {
+    setRequestRoute(pathname);
+    if (request.method !== "POST") return badRequest("method_not_allowed", "use POST");
+    const payload = await readJsonObject<{ pane_id?: unknown }>(request);
+    if (payload instanceof Response) return payload;
+    if (typeof payload.pane_id !== "string" || !payload.pane_id.trim()) return badRequest("missing_pane_id", "pane_id is required");
+    try {
+      const snapshot = await sessionSnapshot();
+      const pane = snapshot.panes.find((entry) => entry.pane_id === payload.pane_id);
+      if (!pane) return jsonResponse({ error: { code: "pane_not_found", message: "no pane has that ID" } }, 404);
+      if (snapshot.panes.filter((entry) => entry.tab_id === pane.tab_id).length < 2) return conflictResponse("single_pane", "the pane already has its own tab");
+      const moved = await paneMoveToNewTab(pane.pane_id, pane.workspace_id, null);
+      if (moved.pane.tab_id === pane.tab_id) return conflictResponse("move_refused", "Unzoom the tab before moving its pane");
+      return jsonResponse({ ok: true, pane: moved.pane } satisfies PaneMovedToNewTab);
     } catch (error) { return errorResponse(error); }
   }
 

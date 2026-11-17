@@ -1936,7 +1936,7 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
   // exchanges two rects, a move takes the pane out as a close does and into half of another's as a
   // split does, a resize moves the ratio of the split the border belongs to and lays its panes out
   // again (src/lib/layoutTree.ts), and a clear blanks the pane's screen on every socket attached to it
-  if (path === "/api/pane/split" || path === "/api/pane/zoom" || path === "/api/pane/swap" || path === "/api/pane/move" || path === "/api/pane/resize" || path === "/api/pane/clear" || path === "/api/pane/focus") {
+  if (path === "/api/pane/split" || path === "/api/pane/zoom" || path === "/api/pane/swap" || path === "/api/pane/move" || path === "/api/pane/move-to-new-tab" || path === "/api/pane/resize" || path === "/api/pane/clear" || path === "/api/pane/focus") {
     const body = await layoutBodyOf(method, init, input);
     if (body instanceof Response) return body;
     if (typeof body["pane_id"] !== "string" || !body["pane_id"].trim()) return error("missing_pane_id", "pane_id is required", 400);
@@ -1989,6 +1989,30 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
       if (zoomed === layout.zoomed) return answer(zoomed, false, zoomed ? "already_zoomed" : "already_unzoomed");
       layout.zoomed = zoomed;
       return answer(zoomed, true, null);
+    }
+    if (path === "/api/pane/move-to-new-tab") {
+      if (layout.panes.length < 2) return error("single_pane", "the pane already has its own tab", 409);
+      if (layout.zoomed) return error("move_refused", "Unzoom the tab before moving its pane", 409);
+      const oldTab = snap.tabs.find((tab) => tab.tab_id === pane.tab_id)!;
+      const number = Math.max(0, ...snap.tabs.filter((tab) => tab.workspace_id === pane.workspace_id).map((tab) => tab.number)) + 1;
+      const tabId = `${pane.workspace_id}:t${number}`;
+      closeLayoutPane(layout, pane.pane_id);
+      oldTab.pane_count -= 1;
+      pane.tab_id = tabId;
+      snap.tabs.push({ ...oldTab, tab_id: tabId, number, label: String(number), pane_count: 1, focused: false });
+      autoTabs.add(tabId);
+      relabelAutoTabs(pane.workspace_id);
+      const agent = snap.agents.find((entry) => entry.pane_id === pane.pane_id);
+      if (agent) agent.tab_id = tabId;
+      addDemoLayout(pane.workspace_id, tabId, pane.pane_id);
+      const workspace = snap.workspaces.find((entry) => entry.workspace_id === pane.workspace_id)!;
+      workspace.tab_count += 1;
+      if (snap.focused_pane_id === pane.pane_id) {
+        const sibling = snap.panes.find((entry) => entry.tab_id === oldTab.tab_id)!;
+        focusDemoPane(sibling);
+      }
+      structureChanged();
+      return json({ ok: true, pane });
     }
     if (path === "/api/pane/move") {
       const target = body["target_pane_id"];

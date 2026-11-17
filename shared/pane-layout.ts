@@ -69,6 +69,10 @@ export interface PaneMoved {
   reason: string | null;
 }
 
+/** POST /api/pane/move-to-new-tab: keep the terminal in its workspace, in a tab of its own. */
+export interface MovePaneToNewTabRequest { pane_id: string }
+export interface PaneMovedToNewTab { ok: true; pane: PaneInfo }
+
 /**
  * POST /api/pane/resize: the border the pane shares with a neighbour moves `direction`-wards by
  * `amount` of the split that border belongs to, which herdr measures on the split's own extent,
