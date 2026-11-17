@@ -8,6 +8,7 @@ import { files, read, stripComments } from "../scripts/source-scan.ts";
 import { FakeAccountService } from "../shared/account-service-fake.ts";
 import { unmanagedUpdateStatus } from "../shared/update.ts";
 import { createServer } from "./index.ts";
+import { handleRequest } from "./dispatch.ts";
 import * as herdr from "./herdr/client.ts";
 import { HerdrError, herdrRpc, paneRead } from "./herdr/client.ts";
 import { harmlessGroups, trustRefusal } from "./herdr-core/discovery.ts";
@@ -652,6 +653,7 @@ const restricted = [
   "/api/runtime/move/stop", "/api/runtime/move/stop-all", "/api/runtime/move/start", "/api/runtime/move/cancel",
   "/api/portal", "/api/portal/start", "/api/relay/direct", "/api/machines", "/api/machines/ssh-candidates",
   "/api/fleet/machines", "/api/fleet/invites", "/api/fleet/restore/confirm", "/api/bridge",
+  "/api/flock", "/api/session-moves", "/api/session-moves/node",
 ];
 it.each(restricted)("refuses %s even to an owner in the machine profile", async (path) => {
   const stateDir = scratch();
@@ -660,6 +662,26 @@ it.each(restricted)("refuses %s even to an owner in the machine profile", async 
   const response = await owner(stateDir, path, { method: "POST", headers: { ...headers, origin: "http://localhost", "content-type": "application/json" }, body: '{}' });
   expect(response.status).toBe(409);
   expect(await response.json()).toMatchObject({ error: { code: "machine_profile" } });
+});
+
+it("keeps fork local reads behind the machine profile owner and relay roles", async () => {
+  const stateDir = scratch();
+  const status = { state: "disabled" as const, shell: null, profiles: [], detail: null, can_manage: true };
+  const tracking = { status: async () => status, enable: async () => status, disable: async () => status };
+  const server = createServer({ profile: "machine", stateDir, port: 0, hostname: "127.0.0.1", token, tailscaleOwner: null, sidecar: false,
+    communicationTracking: tracking, messageSourcesDirectory: scratch() });
+  cleanup.push(() => server.stop());
+  for (const path of ["/api/agents/communication-tracking", "/api/agents/launchers", "/api/pane/message-source", "/api/pane/message-source/resolve"]) {
+    const expected = path.endsWith("/resolve") ? 400 : 200;
+    const local = await owner(stateDir, path);
+    expect([path, local.status]).toEqual([path, expected]);
+    if (expected === 200) expect(local.headers.get("cache-control")).toBe("no-store");
+    expect((await fetch(`http://127.0.0.1:${server.port}${path}`, { headers })).status).toBe(401);
+    expect((await owner(stateDir, path, { headers: { host: "evil.example" } })).status).toBe(401);
+    const watching = await handleRequest(new Request(`http://localhost${path}`), { ...server.context,
+      peer: { kind: "relay", device: { id: "fork-profile-watch", label: "Fixture", role: "watch" }, sessionId: "fixture", serverId: "fixture", key: "fixture" } });
+    expect([path, watching?.status, await watching?.json()]).toEqual([path, 403, { error: { code: "read_only", message: "this device can only watch" } }]);
+  }
 });
 
 it("answers its owner's check for updates as unmanaged, and asks the updater nothing, even when given a managed one", async () => {
@@ -1053,7 +1075,7 @@ function shippedRoutes(): string[] {
   }
   return [...paths].sort();
 }
-const NO_HERDR = /^\/api\/(?:account|relay|devices|push|alerts|auth|telemetry|preferences|seen|system|fonts|updates|voice|cliproxy|access|health|connection-diagnostics|info|event|herdr-ui|usage(?!\/login))(?:\/|$)/;
+const NO_HERDR = /^\/api\/(?:agents\/launchers|pane\/message-source$|account|relay|devices|push|alerts|auth|telemetry|preferences|seen|system|fonts|updates|voice|cliproxy|access|health|connection-diagnostics|info|event|herdr-ui|usage(?!\/login))(?:\/|$)/;
 const ids = { pane_id: "w1:p1", workspace_id: "w1", tab_id: "w1:t1", target: "w1:p1", target_pane_id: "w1:p2", source: "recent", text: "x", keys: "Enter",
   name: "x", label: "x", agent_id: "x", plugin_id: "x", action_id: "x", branch: "x", query: "x", q: "x", ref: "x", id: "x", provider: "claude" };
 const walkQuery = `?${new URLSearchParams({ ...ids, offset: "1", index: "0", start: "0", end: "1" }).toString()}`;
@@ -1062,7 +1084,7 @@ const OWN: Record<string, Record<string, string>> = {
   "/api/sessions/history": { agent: "claude" }, "/api/pane/find": { direction: "forward" },
   "/api/pane/move": { side: "right" },
 };
-const NOT_WALKED = /^(?:(?:GET|POST|PUT) \/api\/(?:usage\/login|agent-catalog\/(?:install|sign-in)|fs\/favicon|workspace\/directories|agent\/commands)|PUT \/api\/fs\/text|POST \/api\/(?:layout\/ratio|pane\/image|pane\/prompt\/answer|pane\/scroll|pane\/swap|tab\/move|workspace\/move|workspace\/pr\/merge|worktree\/create|worktree\/open|tab\/create|workspace\/create|sessions\/resume)|(?:GET|POST|PUT) \/api\/pane\/(?:selection|conversation\/image)|GET \/api\/plugin\/action)(?:$|\?|\/)/;
+const NOT_WALKED = /^(?:(?:GET|POST|PUT) \/api\/agents\/communication-tracking|GET \/api\/pane\/message-source\/resolve|(?:GET|POST|PUT) \/api\/(?:usage\/login|agent-catalog\/(?:install|sign-in)|fs\/favicon|workspace\/directories|agent\/commands)|PUT \/api\/fs\/text|POST \/api\/(?:layout\/ratio|pane\/image|pane\/prompt\/answer|pane\/scroll|pane\/swap|tab\/move|workspace\/move|workspace\/pr\/merge|worktree\/create|worktree\/open|tab\/create|workspace\/create|sessions\/resume)|(?:GET|POST|PUT) \/api\/pane\/(?:selection|conversation\/image)|GET \/api\/plugin\/action)(?:$|\?|\/)/;
 
 async function walk(ask: (path: string, init: RequestInit) => Promise<Response>, calls: () => number) {
   const answers: { route: string; status: number; code: string | null; text: string; headers: string; reached: boolean }[] = [];
@@ -1348,6 +1370,7 @@ it("tells a pane herdr could not restore in its own words, keeping the field, an
   const told = [restoreOf(session.snapshot), restoreOf(listed.machines[0]!.snapshot), restoreOf(mine.snapshot), mine.attach.message];
   expect(told.map((text) => [typeof text === "string" && text.length > 0, text?.includes(marker)])).toEqual(told.map(() => [true, false]));
   expect([new Set(told).size, mine.attach.code, asked.headers.get("cache-control")]).toEqual([1, "pane_not_restored", "no-store"]);
+  // The fork keeps every session snapshot private, including ordinary servers.
   expect([restoreOf(theirSession.snapshot), restoreOf(theirs.snapshot), theirs.attach.code, theirs.attach.message, theirAnswer.headers.get("cache-control")])
-    .toEqual([`${marker} could not restore`, `${marker} could not restore`, "pane_not_restored", `${marker} could not restore`, null]);
+    .toEqual([`${marker} could not restore`, `${marker} could not restore`, "pane_not_restored", `${marker} could not restore`, "no-store"]);
 }, 60_000);

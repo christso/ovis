@@ -234,7 +234,7 @@ export async function machineReadError(error: unknown, engine: string, refusal: 
 
 export function machineRouteRestricted(path: string, method: string): boolean {
   if (path === "/api/machines" && method === "GET") return false;
-  return /^\/api\/(?:herdr\/update$|runtime(?:\/|$)|portal(?:\/|$)|fleet(?:\/|$)|machines(?:\/|$)|bridge$|devices\/pair$)/.test(path)
+  return /^\/api\/(?:herdr\/update$|runtime(?:\/|$)|portal(?:\/|$)|flock$|session-moves(?:\/|$)|fleet(?:\/|$)|machines(?:\/|$)|bridge$|devices\/pair$)/.test(path)
     || path === "/api/relay/direct" && !MACHINE_DIRECT_CARRIER_ENABLED;
 }
 

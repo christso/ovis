@@ -54,7 +54,7 @@ try {
   const namedClose = drawer.getByRole("button", { name: "Close workspace list", exact: true });
   assert.equal(await namedClose.count(), 1, "the drawer holds a named close for a screen reader");
   assert.deepEqual(await drawer.locator(".sidebar-footer > *").evaluateAll((nodes) => nodes.filter((node) => node.getClientRects().length > 0).map((node) => node.className)),
-    ["sidebar-footer-row"], "the drawer's foot is the gear's row alone");
+    ["graph-sidebar", "sidebar-footer-row"], "the drawer's foot retains Graph and the gear's row");
   const ringless = () => page.evaluate(() => document.activeElement?.id === "workspace-drawer" && document.querySelector(":focus-visible:not(#workspace-drawer)") === null);
   assert.equal(await ringless(), true, "the opened drawer holds the focus itself, with no control's ring");
   assert.equal(await page.locator(".pane-column").getAttribute("inert"), "", "the pane behind the drawer is inert");

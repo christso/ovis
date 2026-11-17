@@ -16,7 +16,7 @@ import { PANE_TABPANEL_ID, paneTabPanelLabel } from "./lib/paneRegion.ts";
 import { worktreeRepoName } from "./lib/composerStrip.ts";
 import { AccessGate } from "./components/AccessGate.tsx";
 import { GraphEntry } from "./features/graph/GraphEntry.tsx";
-import { useGraphPage } from "./lib/graphPage.ts";
+import { useGraphPage, useWorkspaceInbox } from "./lib/graphPage.ts";
 import { AgentMark } from "./components/AgentMark.tsx";
 import { NewSessionDialog } from "./components/NewSessionDialog.tsx";
 import { SetupGuide, SetupGuideResume } from "./components/SetupGuide.tsx";
@@ -426,7 +426,8 @@ export function App() {
   // by a tap outside, a swipe, Back, Escape or the named close a screen reader finds at its start
   const markInDrawer = modeOffered && !wideScreen && drawerOpen && !inMode;
   // going into the agent inbox and out of it, counted wherever a person asked
-  const { enter: enterInbox, leave: leaveMode } = useCountedInboxWays(() => { showWorkspace(); enterInboxShell(); }, leaveModeShell);
+  const enterWorkspaceInbox = useWorkspaceInbox(enterInboxShell, showWorkspace);
+  const { enter: enterInbox, leave: leaveMode } = useCountedInboxWays(enterWorkspaceInbox, leaveModeShell);
   useShownCount("inbox", modeOffered, LOCAL_MACHINE);
 
 

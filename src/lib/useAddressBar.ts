@@ -91,6 +91,7 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
   // itself replace the entry. Nothing is written while locked or before the roster is in, so a
   // link survives the access gate and a slow first read.
   const writtenLink = useRef<AppLink | null>(null);
+  const workspaceCreation = useRef<{ open: boolean; machineId: string; paneId: string | null } | null>(null);
   const onPageRef = useRef(onPage); onPageRef.current = onPage;
   // Back or Forward landed somewhere other than its entry said: that place is written over the entry
   const poppedTo = useRef(false);
@@ -163,7 +164,14 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
       if (writeGraphPage(page)) writtenLink.current = null;
       return;
     }
-    if (linkWorkspaceId === undefined) {
+    // Only the creation dialog keeps an unlisted pane waiting; a worktree can leave the list too.
+    const creation = workspaceCreation.current;
+    if (newSessionOpen || (creation?.open && linkWorkspaceId === undefined)) {
+      workspaceCreation.current = { open: newSessionOpen, machineId: selectedMachineId, paneId: selectedPaneId };
+    } else if (linkWorkspaceId !== undefined || creation?.machineId !== selectedMachineId || creation?.paneId !== selectedPaneId) {
+      workspaceCreation.current = null;
+    }
+    if (linkWorkspaceId === undefined && workspaceCreation.current !== null) {
       // the pane New workspace made from the list is not listed yet and the dialog has closed: the list's
       // entry it was open on says the list's place again, so Back from the new pane does not open it again
       const written = writtenLink.current;
@@ -183,7 +191,7 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
     const link: AppLink = {
       ...(page === "workspace" ? {} : { page }),
       // the list's place names no PC (above); the dialog opened over it names its own PC, which the list may not have selected
-      machine: inboxShown ? (newSessionOpen ? newSessionMachineId : LOCAL_MACHINE) : selectedMachineId, workspace: linkWorkspaceId, workspaceSlug: linkSlug, pane: linkPaneId, view: linkPaneId ? view : null, file: inboxShown ? null : linkFile,
+      machine: inboxShown ? (newSessionOpen ? newSessionMachineId : LOCAL_MACHINE) : selectedMachineId, workspace: linkWorkspaceId ?? null, workspaceSlug: linkSlug, pane: linkPaneId, view: linkPaneId ? view : null, file: inboxShown ? null : linkFile,
       settings: settingsOpen ? settingsPage : null, section: settingsOpen && settingsPage === settingsLinkPage ? settingsLinkSection : null,
       sidebar: wideScreen && sidebarCollapsed ? "hidden" : null,
       create: newSessionOpen ? { kind: newTab ? "tab" : "workspace", cwd: newFields?.cwd ?? null, name: newFields?.name ?? null, agent: newFields?.agent ?? null } : null,

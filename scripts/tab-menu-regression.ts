@@ -737,7 +737,7 @@ async function checkMoveToNewTab(browser: Browser, origin: string): Promise<void
     const root = created.root_pane;
     const right = await paneSplit(root.pane_id, "right", false);
     const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: width === 390, hasTouch: width === 390, locale: "en-US" });
-    await context.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", defaultView: "terminal", alertsOn: false })));
+    await context.addInitScript(() => { localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", defaultView: "terminal", alertsOn: false })); localStorage.setItem("ovis:phone-tabs", JSON.stringify("header")); });
     try {
       await paneFocus(root.pane_id);
       const page = await context.newPage();

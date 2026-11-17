@@ -195,14 +195,21 @@ describe("the tools typecheck", () => {
   };
   const added = (now: readonly string[], before: readonly string[], renames: ReadonlyMap<string, string>): string[] =>
     now.filter((file) => !before.includes(file) && !before.includes(renames.get(file) ?? ""));
-  /**
-   * The exclude entries that take out a file the base checked: those its exclude list lacks but a renamed file's. Null
-   * when the base has no exclude list: every base since main went green with the list (dad4ce663) has one, and the
-   * file list before it cannot say what the folder include checks now.
-   */
+  /** Old forks may still use explicit roots; migration keeps those roots checked rather than assuming the exclude schema already exists. */
   const uncheckedNow = (now: readonly string[], baseJson: string, renames: ReadonlyMap<string, string>): string[] | null => {
-    const base = JSON.parse(baseJson) as { exclude?: unknown };
-    return Array.isArray(base.exclude) ? added(now, base.exclude as string[], renames) : null;
+    const base = JSON.parse(baseJson) as { exclude?: unknown; files?: unknown; include?: unknown };
+    const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((entry) => typeof entry === "string");
+    if (strings(base.exclude)) return added(now, base.exclude, renames);
+    if (base.exclude !== undefined || !strings(base.files) || !Array.isArray(base.include) || base.include.length !== 0) return null;
+    if (base.files.some((file) => posix.normalize(file) !== file || !ROOTS.some((root) => file.startsWith(`${root}/`)))) return null;
+    const checked = new Set(base.files);
+    const roots = [...base.files, ...[...renames].filter(([, from]) => checked.has(from)).map(([to]) => to)];
+    return now.filter((pattern) => {
+      const path = posix.normalize(pattern);
+      const file = new Bun.Glob(path);
+      const directory = new Bun.Glob(`${path}/**`);
+      return roots.some((root) => file.match(root) || directory.match(root));
+    });
   };
   const now = excluded(read("tsconfig.tools.json")) ?? [];
 
@@ -211,13 +218,26 @@ describe("the tools typecheck", () => {
     if (base === null) return;
     const json = atBase(base, "tsconfig.tools.json");
     const offenders = json === null ? null : uncheckedNow(now, json, renamesSince(base));
-    if (offenders === null) throw new Error(`tsconfig.tools.json at ${base} has no exclude list to compare with: keep the list in it, empty when every file is fixed.`);
+    if (offenders === null) throw new Error(`tsconfig.tools.json at ${base} has neither a valid exclude list nor legacy explicit roots with an empty include list to compare with: keep the exclude list in it, empty when every file is fixed.`);
     fail(offenders, "The exclude list of tsconfig.tools.json may only shrink: fix the type errors `bun run typecheck` reports in these files instead of excluding them. A renamed file (renamed with `git mv`, or with the rename staged, so git sees it) takes its entry along under the new path.");
   });
 
-  it("compares only with a base's exclude list: a base with the old file list has none, and fails", () => {
+  it("preserves the old explicit roots when migrating to folder includes", () => {
+    const before = JSON.stringify({ files: ["scripts/a.ts", "scripts/b.ts"], include: [] });
+    expect(uncheckedNow(["scripts/c.ts"], before, new Map())).toEqual([]);
+    expect(uncheckedNow(["scripts/b.ts", "scripts/c.ts"], before, new Map())).toEqual(["scripts/b.ts"]);
+    expect(uncheckedNow(["scripts/*.ts"], before, new Map())).toEqual(["scripts/*.ts"]);
+    expect(uncheckedNow(["scripts"], before, new Map())).toEqual(["scripts"]);
+    expect(uncheckedNow(["./scripts/b.ts"], before, new Map())).toEqual(["./scripts/b.ts"]);
+    expect(uncheckedNow(["scripts/moved.ts"], before, new Map([["scripts/moved.ts", "scripts/b.ts"]]))).toEqual(["scripts/moved.ts"]);
+    expect(uncheckedNow(["scripts/moved.ts"], before, new Map([["scripts/moved.ts", "scripts/c.ts"]]))).toEqual([]);
     expect(uncheckedNow(["scripts/c.ts"], JSON.stringify({ exclude: [] }), new Map())).toEqual(["scripts/c.ts"]);
-    expect(uncheckedNow([], JSON.stringify({ files: ["scripts/a.ts"] }), new Map())).toBeNull();
+  });
+
+  it("refuses an unknown or malformed ratchet-base schema", () => {
+    for (const before of [{}, { files: ["scripts/a.ts"] }, { files: ["scripts/a.ts"], include: ["scripts"] }, { files: [1], include: [] }, { files: ["outside/a.ts"], include: [] }, { files: ["scripts/../outside/a.ts"], include: [] }, { exclude: [1] }]) {
+      expect(uncheckedNow([], JSON.stringify(before), new Map())).toBeNull();
+    }
   });
 
   it("tells a new entry from a renamed file's, whatever the list's length", () => {

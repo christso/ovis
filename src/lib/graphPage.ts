@@ -6,6 +6,11 @@ import { useGraphRegistry } from "./useGraphRegistry.ts";
 import { useGraphRegistryInventory } from "./graphRegistryInventory.ts";
 
 export type GraphPage = "workspace" | "graph";
+
+export function useWorkspaceInbox(enterInbox: () => void, showWorkspace: () => void): () => void {
+  return useCallback(() => { showWorkspace(); enterInbox(); }, [showWorkspace, enterInbox]);
+}
+
 function locationView(): GraphPage {
   return readLink(window.location.search).page ?? "workspace";
 }
