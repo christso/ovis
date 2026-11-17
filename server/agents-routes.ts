@@ -52,9 +52,6 @@ export async function handleAgentsRequest(request: Request, pathname: string, sh
       try { if (canSaveLaunchers) saved = savedLaunchers.get(); }
       catch (error) { if (!(error instanceof HerdrError) || error.code !== "launcher_store_unavailable") throw error; }
       const kinds = new Set((await agentManifests()).manifests.map((manifest) => manifest.agent));
-      // another machine of the core (machine-bridge.ts): this PC's PATH does not tell what that machine
-      // has, and a shell-started agent would be typed in from this PC's path, so only herdr's own kinds
-      // are offered, without saying whether they are installed
       if (hcMachine() !== null) {
         const agents: AgentKind[] = [...kinds].map((kind) => ({ kind, label: AGENT_LABELS[kind] ?? kind }))
           .sort((left, right) => left.label.localeCompare(right.label) || left.kind.localeCompare(right.kind));
@@ -67,8 +64,6 @@ export async function handleAgentsRequest(request: Request, pathname: string, sh
         kinds.add("omp");
         kinds.add("claude");
       }
-      // not herdr kinds: offered where this server can run them (see shell-agent.ts), with the locator
-      // the start asks too, so what is offered is what starts
       const shellStarted = new Set<string>();
       for (const kind of Object.keys(SHELL_AGENTS)) if (has !== undefined ? await has(kind) : (await shellAgents.executable(kind)) !== null) shellStarted.add(kind);
       for (const kind of shellStarted) kinds.add(kind);

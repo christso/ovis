@@ -3,6 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties
 import { ChevronDown } from "lucide-react";
 
 import type { AgentKind, SavedAgentLauncher } from "../../shared/protocol.ts";
+import { usePhoneSheetBack } from "../lib/sheetHistory.ts";
 import { useT } from "../lib/i18n.ts";
 import { useMachineApi } from "../lib/machineContext.tsx";
 import { useAnnouncedText } from "../lib/useAnnouncedText.ts";
@@ -112,6 +113,7 @@ export function AgentLaunchPicker({ agent, launcher, disabled, onLauncherChange,
   const highlighted = choices.find((choice) => choice.key === highlightedKey) ?? choices[0];
   const highlight = highlighted ? choices.indexOf(highlighted) : -1;
   const closePopup = (): void => { setOpen(null); setSuggestions([]); };
+  usePhoneSheetBack(closePopup, open !== null);
   const choose = (index: number): void => {
     if (open === "executable") {
       const executable = suggestions[index];

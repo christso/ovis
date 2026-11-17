@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium, type Browser, type Page } from "playwright-core";
+import { chromium, type Browser } from "playwright-core";
 import machinesFixture from "../site/demo/fixtures/machines.json";
 import type { Machine } from "../shared/machines.ts";
 import type { SessionMoveRecord, SessionMoveRequest } from "../shared/session-move.ts";

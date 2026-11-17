@@ -1,0 +1,52 @@
+name: Hook kill tests
+
+# No path filter and no condition: a check that is matched by its name must run and report on every pull
+# request, drafts included.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  hook-kill-tests:
+    # the check's name, as branch protection and the merge tool match it: never renamed
+    name: Hook kill tests (container)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci
+        with:
+          cache: restore
+      - name: Install dependencies without their scripts
+        run: |
+          echo "install started $(date -u +%FT%TZ)"
+          bun install --frozen-lockfile --ignore-scripts
+      - name: Build the hook test image (not the runner image)
+        run: |
+          echo "build started $(date -u +%FT%TZ)"
+          docker build --pull -t ovis-hook-test:ci -f scripts/self-hosted-runner/hook-test.Dockerfile scripts/self-hosted-runner
+      - name: Run the hook kill tests in a confined container, its confinement shown first
+        run: |
+          echo "run started $(date -u +%FT%TZ)"
+          mkdir "$RUNNER_TEMP/hook-test-out"
+          bash scripts/self-hosted-runner/hook-test-container.sh ovis-hook-test:ci "$GITHUB_WORKSPACE" "$RUNNER_TEMP/hook-test-out"
+          echo "run ended $(date -u +%FT%TZ)"
+      - name: Check the container's own result
+        run: |
+          out="$RUNNER_TEMP/hook-test-out"
+          status=$(cat "$out/status" 2>/dev/null || echo missing)
+          if [ "$status" != 0 ]; then echo "::error::the container's command did not end with status 0 (status: $status)"; exit 1; fi
+          counts=$( { grep -E '^ *[0-9]+ (pass|skip|fail|todo)$' "$out/log.txt" || true; } | sed -E 's/^ +//' | LC_ALL=C sort | tr '\n' ';')
+          if [ "$counts" != "0 fail;8 pass;" ]; then echo "::error::the tests' summary is '$counts', not '0 fail;8 pass;'"; exit 1; fi
+          if grep -q 'kill tests skipped' "$out/log.txt"; then echo "::error::the kill tests were skipped"; exit 1; fi
+          echo "the container's own result: status 0, 0 fail;8 pass;"

@@ -17,6 +17,6 @@ function Fixture() {
     return () => { stopped = true; clearInterval(timer); };
   }, []);
   const rows = graphRegistry.registry ? graphRegistryInventory(graphRegistry.registry, machines) : [];
-  return <SessionMoveFixtureControls registry={graphRegistry.registry} rows={rows} machines={machines} error={graphRegistry.error} refresh={graphRegistry.refresh} onOpenTarget={(target) => { const url = new URL(location.href); url.searchParams.set("machine", target.machine_id); url.searchParams.set("pane", target.pane_id); history.pushState(null, "", url); }} />;
+  return <SessionMoveFixtureControls registry={graphRegistry.registry} rows={rows} machines={machines} error={graphRegistry.error} refresh={async () => { await graphRegistry.refresh(); }} onOpenTarget={(target) => { const url = new URL(location.href); url.searchParams.set("machine", target.machine_id); url.searchParams.set("pane", target.pane_id); history.pushState(null, "", url); }} />;
 }
 createRoot(document.getElementById("root")!).render(<React.StrictMode><SettingsProvider><Fixture /></SettingsProvider></React.StrictMode>);

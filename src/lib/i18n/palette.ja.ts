@@ -4,7 +4,6 @@
  * Register and fixed terms follow ../i18n.ja.ts; a key another feature also uses goes there.
  */
 export const PALETTE_JA: Record<string, string> = {
-  "Workspace": "ワークスペース",
   "Actions": "操作",
   "Move tab to {workspace}": "タブを {workspace} へ移動",
   "Enable notifications": "通知を有効にする",
@@ -13,7 +12,7 @@ export const PALETTE_JA: Record<string, string> = {
   "Close command palette": "ペインとコマンドの検索を閉じる",
   "Filter panes by status": "状態でペインを絞り込む",
   "Status filter": "状態フィルター",
-  "Search": "検索",
+  "Workspace": "ワークスペース",
   "Unknown workspace": "不明なワークスペース",
   "Plugin actions": "プラグインの操作",
   "Running…": "実行中…",

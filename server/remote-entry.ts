@@ -1,7 +1,6 @@
-// The bundle is launched only through SSH. Keep it alive after the tunnel closes;
-// herdr owns the terminal processes and no disconnect should terminate their work.
 import "./adopt-legacy-env.ts";
 import { createServer } from "./index.ts";
+import { ROOT } from "./entries.ts";
 import { bridgeIdentity, descriptorLive, descriptorPath, registerBridge } from "./bridge.ts";
 import { acquireOwnerDirectory } from "./owner-guard.ts";
 import { parseProcessLine, refusedSocket, staleMarker } from "./herdr-marker.ts";
@@ -14,11 +13,30 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { chosenHerdrSocketStatus, discoverHerdrSessions, validHerdrSocket } from "./herdr-discovery.ts";
 
+const [request, socketArgument, ...extra] = process.argv.slice(2);
+const REMOTE_USAGE = "usage: ovis-server remote [--discover | --socket-status <herdr socket>]\n  with no argument: the bridge for the herdr session HERDR_REMOTE_SESSION names, started over SSH";
+if (request === "--help") {
+  console.log(REMOTE_USAGE);
+  process.exit(0);
+}
+if (request === "--discover" && socketArgument === undefined) {
+  console.log(JSON.stringify(await discoverHerdrSessions()));
+  process.exit(0);
+}
+if (request === "--socket-status" && socketArgument !== undefined && extra.length === 0) {
+  console.log(await chosenHerdrSocketStatus(socketArgument));
+  process.exit(0);
+}
+if (request !== undefined) {
+  console.error(REMOTE_USAGE);
+  process.exit(2);
+}
+
 process.env["OVIS_REMOTE"] = "1";
 const windows = process.platform === "win32";
 // the transcript readers find agent stores under $HOME, which Windows does not set
 if (windows && !process.env["HOME"]) process.env["HOME"] = homedir();
-const bundle = join(import.meta.dir, "..");
+const bundle = ROOT;
 process.env["PATH"] = `${join(bundle, "bin")}${delimiter}${process.env["PATH"] ?? "/usr/bin:/bin"}`;
 const session = process.env["HERDR_REMOTE_SESSION"];
 // herdr puts its sockets under XDG_CONFIG_HOME when it is set (GitHub's Linux runners and some
@@ -36,7 +54,7 @@ function staleWindowsMarker(path: string): boolean {
     try {
       const probe = Bun.spawnSync(["powershell", "-NoProfile", "-NonInteractive", "-Command", `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { $p.ProcessName + '|' + ([DateTimeOffset]$p.StartTime).ToUnixTimeMilliseconds() }`], { stdin: "ignore", stderr: "ignore" });
       if (probe.exitCode === 0) return parseProcessLine(probe.stdout.toString());
-    } catch { /* no PowerShell: the pid alone has to do */ }
+    } catch {}
     try { process.kill(pid, 0); return { name: "herdr", startedMs: null }; } catch (e) { return (e as NodeJS.ErrnoException).code === "ESRCH" ? null : { name: "herdr", startedMs: null }; }
   });
 }
@@ -56,9 +74,9 @@ try {
     try {
       const file = lstatSync(path);
       if (file.isFile() && (uid === undefined || file.uid === uid) && file.mtimeMs < cutoff) rmSync(path);
-    } catch { /* gone, inaccessible, or another start already removed it */ }
+    } catch {}
   }
-} catch { /* housekeeping must not block starting the bridge */ }
+} catch {}
 const report = (code: "herdr_sessions_found" | "herdr_session_gone", sessions: Awaited<ReturnType<typeof discoverHerdrSessions>>, refusal?: string) => {
   const result = JSON.stringify({ code, sessions });
   const resultPath = process.env["HERDR_REMOTE_RESULT"];
@@ -66,14 +84,12 @@ const report = (code: "herdr_sessions_found" | "herdr_session_gone", sessions: A
   console.error(refusal ?? (code === "herdr_session_gone" ? "The chosen herdr session is no longer running or answering. Choose a running session on this PC again." : "A herdr session is already running on this PC. Choose it or start a new one."));
   process.exitCode = 2;
 };
-// Validate before even pinging it or accepting an existing bridge descriptor for it.
 if (chosenSocket) {
   const status = await chosenHerdrSocketStatus(chosenSocket);
   if (status === "refused") return report("herdr_session_gone", [], "The chosen herdr socket cannot be used safely by this account. Choose a session on this PC again.");
   if (status === "gone") return report("herdr_session_gone", (await discoverHerdrSessions()).filter((found) => found.socket_path !== chosenSocket));
 }
 if (windows) rmSync(windowsStartupStatus(dirname(descriptor), session), { force: true });
-// the lock records its owner's birth: a PID that now belongs to another process does not block this start
 const lock = acquireOwnerDirectory(descriptor + ".lock", { running: "Another bridge is starting; retry shortly", starting: "Another bridge is starting; retry shortly" });
 try {
   let existing = false;
@@ -94,7 +110,6 @@ try {
       const sessions = await discoverHerdrSessions();
       if (sessions.length) return report("herdr_sessions_found", sessions);
     }
-    // a Windows bundle carries no herdr: its installer is herdr's own, and setup ran it
     const herdr = process.env["OVIS_HERDR_BIN"] || join(bundle, "bin/herdr");
     if (windows && !existsSync(herdr)) throw new Error(`herdr is not installed at ${herdr}; install it with herdr.dev/install.cmd`);
     const args = session ? ["--session", session, "server"] : ["server"];
@@ -118,7 +133,6 @@ try {
     }
     else Bun.spawn([herdr, ...args], { stdin: "ignore", stdout: Bun.file(log), stderr: Bun.file(log) }).unref();
     let ready = false;
-    // a cold first start (fresh HOME, slow disk or CI runner) can take well over ten seconds
     for (let i = 0; i < 300; i++) { try { await bridgeIdentity(); ready = true; break; } catch { await Bun.sleep(100); } }
     if (!ready) throw new Error("herdr did not start; inspect ~/.config/herdr-web-ui/bridges/herdr.log");
   }
@@ -129,8 +143,6 @@ try {
   const server = createServer({ port: 0, hostname: "127.0.0.1", token, machines: false, bridgeOnly: true, stateDir: descriptor + ".state", shellAgents: new ShellAgentLocator(), agentDetector: new AgentDetector({ locate: catalogLocator({ probe: defaultLoginProbe() }) }) });
   const registration = registerBridge(server.port, token);
   if (!registration.registered) {
-    // the app finds a bridge only through its descriptor: an unregistered one serves nobody, and
-    // the app would start one more on every retry, so this one stops
     server.stop();
     throw new Error(`This bridge stopped because it was not registered (descriptor ${descriptor})`);
   }

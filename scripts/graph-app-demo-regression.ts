@@ -18,7 +18,7 @@ import { openGraph as openGraphFromSidebar, openNativeAgent } from "./graph-navi
 
 const videoDir = process.env.GRAPH_VIDEO_DIR;
 const testedSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-const sourceDiff = execFileSync("git", ["diff", "--binary", "HEAD"], { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+const sourceDiff = execFileSync("git", ["diff", "--binary", "HEAD"], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
 const diffSha256 = createHash("sha256").update(sourceDiff).digest("hex");
 const sourceFingerprint = `${testedSha}+${diffSha256}`;
 const runs: readonly (readonly [number, number, "dark" | "light"])[] = videoDir ? [[Number(process.env.GRAPH_VIDEO_WIDTH ?? 1600), Number(process.env.GRAPH_VIDEO_HEIGHT ?? 1000), "dark"]] : [1280, 390, 320].flatMap((width) => (width === 1280 ? [844] : [844, 640]).flatMap((height) => (["dark", "light"] as const).map((theme) => [width, height, theme] as const)));
@@ -397,12 +397,16 @@ try {
       await inspect(oldCliId);
       const staleOpen = page.getByRole("button", { name: "Open in Workspace", exact: true });
       assert.equal(await staleOpen.isEnabled(), true);
-      // Only the source changes: no roster event or Graph poll has told the browser yet.
-      cliSnapshot.graph_cli.current_agents[0]!.agent_instance_id = "replacement-cli-process";
-      await staleOpen.click();
-      await page.locator(".graph-selection-hint").filter({ hasText: "unavailable" }).waitFor({ timeout: 3000 });
-      assert.equal(new URL(page.url()).searchParams.get("page"), "graph", "Open checks the selected process before navigating");
-      assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0);
+      // Let the inspected node settle, then keep the automatic poll behind this explicit source check.
+      await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+      try {
+        // Only the source changes: no roster event or Graph poll has told the browser yet.
+        cliSnapshot.graph_cli.current_agents[0]!.agent_instance_id = "replacement-cli-process";
+        await staleOpen.click();
+        await page.locator(".graph-selection-hint").filter({ hasText: "unavailable" }).waitFor({ timeout: 3000 });
+        assert.equal(new URL(page.url()).searchParams.get("page"), "graph", "Open checks the selected process before navigating");
+        assert.equal(await page.getByRole("button", { name: "Open in Workspace", exact: true }).count(), 0);
+      } finally { await page.clock.resume(); }
       const currentCliId = graphTerminals([cliMachine], {}, undefined, graphRegistryInventory(store.read(), [cliMachine])).find((tab) => tab.panes.some((pane) => pane.pane_id === cliPane.pane_id))!.node.id;
       await inspect(currentCliId);
       // Hold the user's source read across a due automatic poll, without waiting on wall time.

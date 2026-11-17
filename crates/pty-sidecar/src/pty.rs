@@ -72,8 +72,6 @@ fn working_directory() -> io::Result<PathBuf> {
     }
 }
 
-/// This process's environment as pty-host.mjs and node-pty hand it on: no bridge token under either name,
-/// `TERM=xterm-256color`, `PWD` the working directory.
 fn environment(cwd: &OsStr) -> Vec<(OsString, OsString)> {
     let mut env: Vec<(OsString, OsString)> = std::env::vars_os()
         .filter(|(key, _)| key != "OVIS_TOKEN" && key != "HERDR_WEB_TOKEN" && key != "TERM" && key != "PWD")
@@ -83,7 +81,6 @@ fn environment(cwd: &OsStr) -> Vec<(OsString, OsString)> {
     env
 }
 
-/// Starts `command` as the session leader of a new pty, its controlling terminal: the master and the child's pid.
 pub fn spawn(command: &OsStr, args: &[OsString], cols: u16, rows: u16) -> io::Result<(OwnedFd, libc::pid_t)> {
     let (mut master, mut slave): (RawFd, RawFd) = (-1, -1);
     let mut term = termios();
@@ -114,7 +111,6 @@ pub fn spawn(command: &OsStr, args: &[OsString], cols: u16, rows: u16) -> io::Re
             let mut none: libc::sigset_t = std::mem::zeroed();
             libc::sigemptyset(&mut none);
             libc::pthread_sigmask(libc::SIG_SETMASK, &none, std::ptr::null_mut());
-            // a host killed outright (SIGKILL, the OOM killer) takes the command with it
             #[cfg(target_os = "linux")]
             {
                 check(libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL))?;
@@ -150,7 +146,6 @@ pub struct Ready {
     pub wake: bool,
 }
 
-/// Waits until the master or the wake pipe can be read, or `timeout` passes (None).
 /// select, not poll: macOS's poll does not support terminal devices.
 pub fn wait_readable(master: RawFd, wake: RawFd, timeout: Option<Duration>) -> io::Result<Option<Ready>> {
     if master.max(wake) >= libc::FD_SETSIZE as RawFd {
@@ -206,7 +201,6 @@ pub fn wait_exited(pid: libc::pid_t) -> io::Result<()> {
     }
 }
 
-/// Whether the child has exited, without waiting for it or reaping it.
 pub fn has_exited(pid: libc::pid_t) -> bool {
     // SAFETY: an all-zero siginfo_t is valid, and waitid writes only into it
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
@@ -227,8 +221,6 @@ pub fn default_sigchld() -> io::Result<()> {
     }
 }
 
-/// Reaps the child, waiting for it unless `nohang`: its wait status (see `exit_code`), or None when it
-/// has not exited.
 pub fn reap(pid: libc::pid_t, nohang: bool) -> Option<libc::c_int> {
     let mut status = 0;
     loop {
@@ -244,9 +236,6 @@ pub fn reap(pid: libc::pid_t, nohang: bool) -> Option<libc::c_int> {
     Some(status)
 }
 
-/// A wait status as the host's exit code: the child's own code, or 128 + the signal's number when a
-/// signal ended it (as a shell reports it, and pty-host.mjs), never the 0 a caller reads as success.
-/// One of the signals the host sent the running child itself (`sent`) is the host's own end: 0, as before.
 pub fn exit_code(status: libc::c_int, sent: &[libc::c_int]) -> i32 {
     if libc::WIFEXITED(status) {
         libc::WEXITSTATUS(status)
@@ -261,7 +250,6 @@ pub fn signal(pid: libc::pid_t, signal: libc::c_int) {
     unsafe { libc::kill(pid, signal) };
 }
 
-/// Signals every process in the group `group`, the child's: it is a session leader, so its pid is the group's id.
 /// Never 0 or 1: kill(0) and kill(-1) would reach this host's own group (the server's) or every process.
 pub fn signal_group(group: libc::pid_t, signal: libc::c_int) {
     if group > 1 {
@@ -283,8 +271,7 @@ extern "C" fn kill_group(signal: libc::c_int) {
     }
 }
 
-/// A crash (an abort: an allocation that failed, a panic; a fault) kills `group` on the host's way out: the
-/// host's own end never leaves the command running. SA_ONSTACK: a stack overflow runs it on std's own stack.
+/// SA_ONSTACK: a stack overflow runs it on std's own stack.
 pub fn kill_group_on_crash(group: libc::pid_t) -> io::Result<()> {
     GROUP.store(group, Ordering::Relaxed);
     for signal in [libc::SIGABRT, libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGFPE] {

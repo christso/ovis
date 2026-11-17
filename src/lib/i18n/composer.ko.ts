@@ -8,7 +8,6 @@
  */
 export const COMPOSER_KO: Record<string, string> = {
   "Worktree": "워크트리",
-  "Next": "다음",
   "Next question": "다음 질문",
   "Edit queued message": "대기 중인 메시지 편집",
   "Sent to Pi · waiting for transcript": "Pi로 보냄 · 대화 기록을 기다리는 중",
@@ -86,6 +85,8 @@ export const COMPOSER_KO: Record<string, string> = {
   "Not sent: this view only watches the pane.": "보내지 않음: 이 화면은 패널을 보기만 합니다.",
   "Not sent: Claude Code's input box in the terminal is not empty. Send or clear it there, then send this message.": "보내지 않음: 터미널의 Claude Code 입력란이 비어 있지 않습니다. 그곳에서 보내거나 지운 뒤 이 메시지를 보내세요.",
   "Not sent: Hermes' input in the terminal is not empty. Send or clear it there, then send this message.": "보내지 않았습니다: 터미널의 Hermes 입력칸이 비어 있지 않습니다. 터미널에서 보내거나 지운 다음 이 메시지를 보내세요.",
+  "Not sent: the agent's input box in the terminal holds text typed there. Send or clear it there, then send this message.": "보내지 않았습니다: 터미널의 에이전트 입력칸에 입력한 글자가 있습니다. 터미널에서 보내거나 지운 다음 이 메시지를 보내세요.",
+  "Not sent: Claude Code's input box in the terminal holds a paste or image it folded, whose lines are not shown here, so it cannot be sent over. Send or clear it there, then send this message.": "보내지 않았습니다: 터미널의 Claude Code 입력칸에 접힌 붙여넣기나 이미지가 있어 그 줄이 여기 보이지 않으므로 그 위로 보낼 수 없습니다. 터미널에서 보내거나 지운 다음 이 메시지를 보내세요.",
   "Not sent: Claude Code's input box in the terminal already holds “{draft}”.": "보내지 않음: 터미널의 Claude Code 입력란에 이미 입력된 내용이 있습니다(“{draft}”).",
   "Clear it and send": "지우고 보내기",
   "Send it": "그대로 보내기",
@@ -242,6 +243,8 @@ export const COMPOSER_KO: Record<string, string> = {
   "Question {n}": "질문 {n}",
   "Tab switched OpenCode's agent from {from} to {to}. Nothing more was typed. Check the terminal before sending again.": "Tab 키로 OpenCode 에이전트가 {from}에서 {to}(으)로 바뀌었습니다. 더 이상 입력하지 않았습니다. 다시 보내기 전에 터미널을 확인하세요.",
   "OpenCode attached another skill. Your chat text stayed here. Check the terminal before sending again.": "OpenCode가 다른 스킬을 첨부했습니다. 채팅 텍스트는 여기에 남아 있습니다. 다시 보내기 전에 터미널을 확인하세요.",
+  "In Grok's queue behind {count} queued before it; it goes when they do. Nothing more was pressed. This copy stays here to read and is not sent again.": "Grok 대기열에서 먼저 대기 중인 {count}개 뒤에 있습니다. 그 메시지들이 보내진 뒤에 보냅니다. 더 이상 누르지 않았습니다. 이 사본은 확인용으로 여기에 남으며 다시 보내지 않습니다.",
+  "In Grok's queue; it goes when Grok gets to it. Nothing more was pressed. This copy stays here to read and is not sent again.": "Grok 대기열에 있습니다. Grok의 차례가 되면 보냅니다. 더 이상 누르지 않았습니다. 이 사본은 확인용으로 여기에 남으며 다시 보내지 않습니다.",
   // quoting a selection into the composer (lib/chatQuote.ts)
   "Quote": "인용",
   "Quote it in your message": "메시지에 인용",

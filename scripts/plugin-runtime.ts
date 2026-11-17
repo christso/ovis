@@ -3,7 +3,8 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { updateStateDir } from "../server/update-state.ts";
 
-/** The plugin checkout survives updates; pane entrypoints must follow its active release. */
+export const COMMAND_ALIASES: Readonly<Record<string, "link">> = { add: "link", login: "link" };
+
 export function activePluginScript(root: string, port: number, stateDir: string): string {
   const own = join(resolve(root), "scripts", "plugin.ts");
   try {

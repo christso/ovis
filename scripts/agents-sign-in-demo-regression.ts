@@ -1,16 +1,3 @@
-/**
- * The in-browser sign-in on the demo build (`?demo_sign_in=1`, site/demo/transport.ts), which plays
- * the flows recorded from Claude Code 2.1.312 and codex-cli 0.163.0, at 1280 and 390, dark and light:
- *
- * - Settings → Agents: Claude Code has no account, so its row offers Sign in. The dialog shows the
- *   sign-in page as a link on claude.com and a box for the code that page shows; a sent code signs it
- *   in, and the dialog names the account. Open terminal is there until it ends.
- * - Codex's Add account → On this PC → Start sign-in follows the login in the browser: its device page
- *   on auth.openai.com and its one-time code, then the account it signed in.
- * - The setup guide offers Sign in under its tiles for an installed Claude Code without an account.
- *
- * With UI_EVIDENCE_DIR, each step is captured under agents-sign-in/.
- */
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +6,7 @@ import { chromium, type Browser, type Page } from "playwright-core";
 import panes from "../site/demo/fixtures/panes.json";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
+import { sheetEntryLeft } from "./sheets-settled.ts";
 
 const app = mkdtempSync(join(tmpdir(), "ovis-agents-sign-in-"));
 const evidence = process.env["UI_EVIDENCE_DIR"] ? join(process.env["UI_EVIDENCE_DIR"], "agents-sign-in") : null;
@@ -62,7 +50,6 @@ try {
       };
       const press = (locator: ReturnType<Page["locator"]>) => width === 390 ? locator.tap() : locator.click();
       try {
-        // Claude Code's first sign-in, from its Agents row
         await page.goto(`${root}&settings=agents`);
         const claude = page.locator(".agents-item[data-agent='claude']");
         await claude.waitFor();
@@ -91,7 +78,6 @@ try {
         await dialog.waitFor({ state: "detached" });
         console.log(`PASS Claude Code signs in from its Agents row: its page on claude.com, the pasted code, the account named (${at})`);
 
-        // Codex's Add account → On this PC, followed in the browser
         const codex = page.locator(".agents-item[data-agent='codex']");
         await press(codex.locator(".agents-toggle"));
         await press(codex.getByRole("button", { name: "Add account", exact: true }));
@@ -107,12 +93,10 @@ try {
         await follow.getByText("Signed in as codex@example.test.", { exact: true }).waitFor();
         await shot("4-codex-signed-in");
         await press(follow.getByRole("button", { name: "Done", exact: true }));
-        // Done ends the whole Add account flow: no dialog is left behind
         await page.locator(".usage-account-dialog").first().waitFor({ state: "detached" });
         console.log(`PASS Codex's Add account follows its device code in the browser, then names the account (${at})`);
 
-        // Sign in again on a shut row: the dialog lives on the page, so a click into it toggles no row
-        // and the end of the expiry it was opened for does not take it away
+        await sheetEntryLeft(page);
         await page.goto(`${root}&demo_usage=refused&settings=agents`);
         const expired = page.locator(".agents-item[data-agent='claude']");
         const renew = expired.getByRole("button", { name: /^Sign in again/ });
@@ -131,7 +115,7 @@ try {
         await renewing.waitFor({ state: "detached" });
         console.log(`PASS Sign in again on a shut row stays open through clicks and the end of the expiry, to its outcome (${at})`);
 
-        // closing the dialog stops the sign-in: Escape while Claude's waits for its code cancels it by its id
+        await sheetEntryLeft(page);
         await page.goto(`${root}&settings=agents`);
         await page.evaluate(() => {
           const passing = window.fetch;
@@ -152,13 +136,18 @@ try {
         assert.match((await page.evaluate(() => (window as unknown as { cancels: string[] }).cancels))[0]!, /"login":"demo-login-\d+"/, `Escape cancels the running sign-in ${at}`);
         console.log(`PASS closing the dialog stops the sign-in it was following (${at})`);
 
-        // the setup guide offers the first sign-in under its tiles
+        await sheetEntryLeft(page);
         await page.goto(`${root}&settings=agents`);
         await page.locator(".agents-item").first().waitFor();
         await press(page.getByRole("button", { name: "Open setup guide", exact: true }));
-        const guide = page.getByRole("region", { name: "Setup guide", exact: true });
+        const guide = page.getByRole("dialog", { name: "Set up Ovis", exact: true });
         await guide.waitFor();
         const guideSignIn = guide.getByRole("button", { name: "Sign in to Claude Code", exact: true });
+        await guide.getByRole("heading", { name: "Pick an agent", exact: true }).waitFor();
+        assert.equal(await guideSignIn.count(), 0, `no sign-in offered before the sign-ins are known ${at}`);
+        await press(guide.locator(".setup-foot").getByRole("button", { name: "Continue", exact: true }));
+        await guide.getByRole("heading", { name: "Pick a look", exact: true }).waitFor();
+        await press(guide.locator(".setup-foot").getByRole("button", { name: "Back", exact: true }));
         await guideSignIn.waitFor();
         await shot("5-guide-sign-in");
         await press(guideSignIn);

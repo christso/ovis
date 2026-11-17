@@ -1,13 +1,6 @@
 import type { HerdrKeys } from "./herdr-keys.ts";
 import type { MachineEvent } from "./machines.ts";
 /**
- * Ovis's own HTTP/WebSocket contract, shared by the Bun server and the React client.
- *
- * The herdr WIRE types are NOT hand-written here: they are generated from herdr's
- * published API schema into ./herdr-api.generated.ts and re-exported below, so a
- * herdr upgrade shows up as a failing `bun run generate:types --check` instead of
- * types that quietly disagree with the server.
- *
  * HTTP responses and successful WebSocket handshakes carry X-Request-Id, a fresh
  * server UUID. A client's optional X-Request-Id (1-64 ASCII letters, digits, dot,
  * underscore or hyphen) is correlation data only, never the response's identity.
@@ -45,9 +38,11 @@ export interface HerdrUiConfig {
   keys?: HerdrKeys;
 }
 
-/** Friendly aliases used across the UI. */
 export type HerdrWorkspace = WorkspaceInfo;
 export type HerdrTab = TabInfo;
+/** What a request filled of the model's context, in tokens; `window` is null when nothing says it. */
+export type PaneContext = { used: number; window: number | null };
+
 /**
  * `background_tasks`: an OmO pane's `task` children, a Claude Code or OpenCode pane's subagents and background commands, or an agy or grok pane's background tasks, still running, counted by the server; absent when none.
  * `background_wait`: the pane is at rest while work its turn started still runs, and the turn goes on when it ends (server/background-wait.ts); absent when not.
@@ -63,9 +58,6 @@ export type HerdrTab = TabInfo;
  * agent waits for (`permission`, `question`, `auth`), its message in its own words (never
  * translated), and how far it is, 0 to 100.
  */
-/** What a request filled of the model's context, in tokens; `window` is null when nothing says it. */
-export type PaneContext = { used: number; window: number | null };
-
 export type HerdrPane = PaneInfo & {
   background_tasks?: number; background_wait?: true; plan?: PlanSummary; context?: PaneContext;
   parent_pane_id?: string;
@@ -151,6 +143,8 @@ export type { DevicePairedEvent, DeviceRemovedEvent, PairingIntent, RelayPairing
  *                                          terminal lens is the pane's screen, repainted; /api/bridge tells the same herdr), auth: HealthAuth,
  *                                          web_ui: { boot_id: string, revision: string | null, server_id?: string (its relay ID,
  *                                          authenticated only, where it has one: Machine.server_id) },
+ *                                          version?: string (this server's own version, package.json's, which the compiled
+ *                                          binary carries from its build; authenticated only),
  *                                          security?: SecuritySummary (authenticated only, no-store),
  *                                          herdr_core?: HerdrCoreFacts (shared/machines.ts; authenticated only, absent until
  *                                          the server's first look for hc has ended), herdr_runtime?: HerdrRuntimeFacts (a driving owner
@@ -320,6 +314,10 @@ export type { DevicePairedEvent, DeviceRemovedEvent, PairingIntent, RelayPairing
  *         same pages; a few pages per answer, `cursor` goes on as `before` with the answer's
  *         history_id. 409 history_changed, 503 conversation_read_pending as above; a pane with no
  *         readable store answers no matches, one that loses it after a page was read 409 history_changed.)
+ *  GET    /api/pane/summary?pane_id=&pane_id=... -> PaneSummaries (each pane's last words for a
+ *         list row, read pane after pane within PANE_SUMMARY_DEADLINE_MS: a pane not read by then
+ *         is left out, one with nothing said or no readable conversation is null. 400
+ *         missing_pane_id, 400 too_many_panes past PANE_SUMMARY_MAX_IDS distinct ids)
  *  POST   /api/pane/close { pane_id }         -> { ok: true } (pane.close RPC; the collector's
  *         session-changed broadcast removes it from every client's sidebar)
  *  POST   /api/pane/rename { pane_id, label } -> { ok: true } (pane.rename; empty label clears it)
@@ -542,7 +540,7 @@ export interface ApiError {
 
 export type { PaneFindMatch, PaneFindRequest, PaneFindResponse } from "./find.ts";
 
-export type { UsageProviderId, UsageWindow, UsageResets, UsageCredits, UsageProblem, ProviderUsage, UsageReport, MissingCommand, StatuslineState } from "./usage.ts";
+export type { UsageProviderId, UsageWindow, UsageResets, UsageCredits, UsageProblem, UsageRecorder, UsageRecorded, ProviderUsage, UsageReport, MissingCommand, StatuslineState } from "./usage.ts";
 
 export type { CLIProxyStatus, CLIProxyProvider, CLIProxyLogin, CLIProxyLoginStatus } from "./cliproxy.ts";
 
@@ -713,7 +711,8 @@ export type ConversationPart =
      * What the transcript itself records of the call's outcome, never guessed from its output text.
      * Claude: `pending` until its tool_result, then `ok`, or `error` when the result is flagged so.
      * Codex: `pending` until its output record, then absent (it records no failure flag: done, outcome
-     * unknown). Absent for other agents and older servers.
+     * unknown). OpenCode: `pending` while waiting or running, then `ok` or `error` as it records the call.
+     * Absent for other agents and older servers.
      */
     state?: "pending" | "ok" | "error";
   }
@@ -785,6 +784,8 @@ export type { OmoTask, OmoRunNode, OmoRun, OmoActivity, PaneBackgroundAgentDetai
 export type { PlanStep, PanePlan } from "./plans.ts";
 
 export type { ConversationSearchMatch, ConversationSearchResponse } from "./conversation-search.ts";
+
+export type { PaneSummary, PaneSummaries } from "./pane-summary.ts";
 
 /** One page a Claude Code session published with its Artifact tool: its claude.ai URL, the title of its latest publish (else the published file's name) and when that was. */
 export interface ClaudeArtifact {
@@ -858,6 +859,16 @@ export interface ConversationResponse {
    * with the flag may help.
    */
   hint?: "copilot_ui_server";
+  /**
+   * On a scrollback answer: why the pane's conversation could not be read, where the reason is one the
+   * chat can put in plain words. `not_found`: the agent has not recorded a conversation the reader can
+   * tie to this pane (normal before its first message). `no_reader`: no reader for this pane's program
+   * (a plain shell reads so too; the chat tells them apart by the pane's agent). `unreadable`: the file it
+   * was read from is gone, or could not be read. `no_folder`: herdr gave the pane
+   * no folder. `no_integration`: an agent whose session only herdr's integration for it reports (OpenCode, Grok),
+   * and that integration is not installed on this PC. Absent for any other reason, and from older bridges.
+   */
+  unavailable?: "not_found" | "no_reader" | "unreadable" | "no_folder" | "no_integration";
   /**
    * Where the first turn sits in the transcript: pass it as `before` for the page
    * of turns before these (with `since`, never reaching back past that cursor), or
@@ -1199,7 +1210,7 @@ export interface PendingMessage {
 
 export type ClientMessage =
   /** Subscribe to this connection server's authorized machine document; requires machine-events. */
-  | { type: "machine-events"; enabled: boolean }
+  | { type: "machine-events"; enabled: boolean; compact_agents?: boolean }
   /** keep_size: the grid is covered (the chat lens), so the attach leaves the shared pty's size as it is */
   | { type: "attach"; pane_id: string; cols: number; rows: number; flow_control?: "ack"; keep_size?: boolean; /** Opaque browser UUID for device-bound presentation receipts only; never input authority. */ receipt_resume_id?: string }
   | { type: "detach"; pane_id: string }
