@@ -40,7 +40,7 @@ const roster = (): Snapshot => ({
 /** what the app shows: the hook's inputs that the tests move */
 let place: { page: "workspace" | "graph"; machineId: string; paneId: string | null; newSessionOpen: boolean; newFields: Omit<CreateDraft, "kind"> | null; sidebarCollapsed: boolean; snapshot: Snapshot; viewing: Preview | null; linkLanded: boolean; inbox: { open: boolean; enabled: boolean }; dialogMachineId?: string; rosterOut?: boolean;
   /** the inbox mode as last drawn (lib/inboxMode.ts); absent, the hook is given no mode, as before it existed */
-  mode?: boolean };
+  mode?: boolean; autoSelected?: boolean };
 /** what the handler asked of a phone's agent list */
 let inboxCalls: string[];
 /** Reopen files on return: whether a file left behind is kept on its entry */
@@ -70,6 +70,7 @@ const refs = {
 
 function Probe() {
   const { machineId, paneId, newSessionOpen, newFields, sidebarCollapsed, snapshot, viewing, linkLanded, inbox, dialogMachineId, rosterOut, mode } = place;
+  const inboxEnabled = inbox.enabled && place.page === "workspace";
   const machine = { id: machineId, name: "workstation", kind: "local", enabled: true, state: "connected", error: null, snapshot } as Machine;
   const pane = snapshot.panes.find((candidate) => candidate.pane_id === paneId) as HerdrPane;
   // the PCs are not in yet: the page has no roster to settle an entry against
@@ -79,12 +80,12 @@ function Probe() {
   useAddressBar({
     // the list stands in the pane's place while open on a phone (lib/useInbox.ts)
     inbox: {
-      shown: inbox.open && inbox.enabled, enabled: inbox.enabled,
+      shown: inbox.open && inboxEnabled, enabled: inboxEnabled,
       show: () => { inboxCalls.push("show"); place.inbox = { ...place.inbox, open: true }; draw(); },
       leave: () => { inboxCalls.push("leave"); place.inbox = { ...place.inbox, open: false }; draw(); },
     },
     // the mode an entry is in is what its address says, whatever was last drawn
-    mode: mode === undefined ? undefined : { on: mode, lands: () => new URLSearchParams(window.location.search).get("app") === "inbox" },
+    mode: mode === undefined ? undefined : { on: mode && place.page === "workspace", lands: () => new URLSearchParams(window.location.search).get("app") === "inbox" },
     // the New workspace dialog's PC: the selected one, unless it was opened for another (the list's sheet of PCs)
     newSessionOpen, newSessionMachineId: dialogMachineId ?? machineId, newFields, sidebarCollapsed, snapshot, selectedPaneId: paneId, selectedPane: pane,
     // a pane its roster does not list yet (one New workspace just made) has no workspace
@@ -94,7 +95,7 @@ function Probe() {
     viewing, leaveFile: () => { place.viewing = null; draw(); return reopenFiles; },
     restoreFile: () => {}, fileFromPop: () => 0, forgetLeftFiles: () => {}, openFile: () => {},
     page: place.page, onPage: (page: "workspace" | "graph") => { place.page = page; draw(); },
-    locked: false, linkLanded, view: "chat", wideScreen: true, autoSelected: false, newTab: null,
+    locked: false, linkLanded, view: "chat", wideScreen: true, autoSelected: place.autoSelected ?? false, newTab: null,
     settingsOpen: false, settingsPage: null, settingsLinkPage: null, settingsLinkSection: null,
     pendingFile: refs.pendingFile, pendingLink: refs.pendingLink, pendingCreate: refs.pendingCreate, newSessionPending: refs.newSessionPending, linkSince: refs.linkSince, rosterSeq: refs.rosterSeq,
     selectTargetRef: refs.selectTarget, selectionRef: refs.selection,
@@ -395,6 +396,63 @@ it("Back leaves Graph while a PC reconnects without overwriting the unread histo
   expect(place.page).toBe("graph");
   expect(addresses()).toEqual([P1, graph]);
 });
+
+it("Graph gets its own entry over an inbox thread even when the underlying pane was auto-selected", async () => {
+  const thread = `?app=inbox&${P1.slice(1)}`;
+  place = { ...place, paneId: "p1", mode: true, autoSelected: true, inbox: { open: false, enabled: true } };
+  await mount(["?app=inbox", thread]);
+  entries[1]!.state = FROM_INBOX;
+
+  await act(async () => { place.page = "graph"; draw(); });
+
+  expect(writes).toEqual([`pushState 2 ${thread}&page=graph`]);
+  expect(entries[1]!.state).toEqual(FROM_INBOX);
+  await back();
+  expect(place.page).toBe("workspace");
+  expect(addresses()).toEqual(["?app=inbox", thread, `${thread}&page=graph`]);
+});
+
+it("leaving Graph for a pane preserves Graph's entry when its file is left behind", async () => {
+  place = { ...place, page: "graph", paneId: "p1", viewing: { path: "notes.md", paneId: "p1", machineId: "local" } };
+  const graph = `${P1}&page=graph&file=notes.md`;
+  await mount([graph]);
+  reopenFiles = false;
+
+  await act(async () => { place.page = "workspace"; place.paneId = "p2"; draw(); });
+
+  expect(addresses()).toEqual([graph, P2]);
+  expect(writes).toEqual([`pushState 1 ${P2}`]);
+});
+
+for (const paneId of ["p1", null] as const) {
+  it(`keeps the inbox list under Graph with ${paneId === null ? "no underlying pane" : "a selected pane"}`, async () => {
+    const list = "?app=inbox";
+    place = { ...place, paneId, mode: true, inbox: { open: true, enabled: true },
+      ...(paneId === null ? { snapshot: { ...roster(), panes: [], workspaces: [] } } : {}) };
+    await mount([P1, list]);
+
+    await act(async () => { place.inbox.open = false; place.page = "graph"; draw(); });
+
+    expect(entries).toHaveLength(3);
+    expect(entries[1]!.url.search).toBe(list);
+    expect(readLink(window.location.search).page).toBe("graph");
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toStartWith("pushState 2 ");
+    const graph = window.location.search;
+
+    await back();
+    expect(index).toBe(1);
+    expect(place.page).toBe("workspace");
+    expect(window.location.search).toBe(list);
+    expect(inboxCalls).toContain("show");
+
+    await forward();
+    expect(index).toBe(2);
+    expect(place.page).toBe("graph");
+    expect(window.location.search).toBe(graph);
+    expect(writes).toHaveLength(1);
+  });
+}
 
 it("writes the list's place with no pane, and leaving it for the pane under it pushes one entry marked as from the list", async () => {
   // Given a phone on its list, with the app's own pick p2 under it.

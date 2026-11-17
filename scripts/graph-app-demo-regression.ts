@@ -399,6 +399,8 @@ try {
       assert.equal(await staleOpen.isEnabled(), true);
       // Let the inspected node settle, then keep the automatic poll behind this explicit source check.
       await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+      await page.waitForLoadState("networkidle");
+      assert.equal(await staleOpen.isEnabled(), true, "the paused explicit source check starts with its inspected process available");
       try {
         // Only the source changes: no roster event or Graph poll has told the browser yet.
         cliSnapshot.graph_cli.current_agents[0]!.agent_instance_id = "replacement-cli-process";

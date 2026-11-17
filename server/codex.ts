@@ -400,7 +400,6 @@ const storeUnchanged = (opened: ReturnType<typeof openCodexStore> | undefined): 
 
 export const defaultCodexHome = (): string => process.env["CODEX_HOME"] || join(homedir(), ".codex");
 
-/** What processCodexHome found, by pid and argv, and when (PROCESS_HOME_TTL_MS). */
 type CodexProcessHome = { home: string | null; store: string | null };
 const processHomes = new Map<string, CodexProcessHome & { at: number }>();
 /**
@@ -2562,7 +2561,6 @@ const VALUELESS_OPTIONS = new Set([
   "no-experimental-fetch", "harmony", "bun", "smol", "hot", "watch", "noprofile", "norc", "posix", "login",
 ]);
 
-/** A pane's Codex executables (or interpreter scripts), and their pids as one key. */
 /** The pane's first Codex process (the one paneCodexHome decides by), or null when there is none. */
 export async function paneCodexProcess(paneId: string, known?: ProcessInfo | null): Promise<{ pid: number; argv?: string[]; cwd?: string } | null> {
   return (await codexProcessesOf(paneId, known)).list[0] ?? null;

@@ -1,7 +1,7 @@
 import { type Dispatch, type RefObject, type SetStateAction, useCallback, useEffect, useRef, useState } from "react";
 import type { HerdrPane, HerdrWorkspace } from "../../shared/protocol.ts";
 import { LOCAL_MACHINE, type Machine } from "../../shared/machines.ts";
-import type { GraphPage } from "./graphPage.ts";
+import { type GraphPage, writeGraphPage } from "./graphPage.ts";
 import type { PaneView } from "./actions.ts";
 import { fileFromLink, isNavigation, linkSearch, NAV_KEY, readLink, resolveLink, slugOf, type AppLink, type LinkNote } from "./deepLink.ts";
 import { withoutFile } from "./historyKeys.ts";
@@ -160,14 +160,7 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
     if (popUnread(window.event, readPop.current)) { heldWrite.current = true; return; }
     heldWrite.current = false;
     if (machines.length === 0 || snapshot === null || !linkLanded) {
-      const search = pageSearch();
-      const current = new URLSearchParams(search);
-      const shownPage = readLink(search).page ?? "workspace";
-      if (page === shownPage) return;
-      if (page === "workspace") current.delete("page"); else current.set("page", page);
-      const query = current.toString();
-      window.history.pushState(window.history.state, "", pageAddress(window.location.pathname, query ? `?${query}` : "", window.location.hash));
-      writtenLink.current = null;
+      if (writeGraphPage(page)) writtenLink.current = null;
       return;
     }
     if (linkWorkspaceId === undefined) {
@@ -210,14 +203,15 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
     const url = pageAddress(window.location.pathname, search, window.location.hash);
     // a pane opened from the list is a move whatever was picked before it; a window widened past a
     // phone's leaves the list without one
-    const moved = leftInbox ? inboxEnabled && link.pane !== null : previous !== null && (!autoSelected || previous.page !== link.page) && isNavigation(previous, link);
+    const pageChanged = previous?.page !== link.page;
+    const moved = leftInbox ? pageChanged || (inboxEnabled && link.pane !== null) : previous !== null && (!autoSelected || pageChanged) && isNavigation(previous, link);
     if (!popped && !settingsOpen && !newSessionOpen && moved) {
       const state = leftInbox ? { [NAV_KEY]: true, [INBOX_FROM_KEY]: true } : { [NAV_KEY]: true };
       // in the inbox mode another thread takes the thread's entry, with the marks that say what lies under it
-      if (modeOn && !leftInbox && previous?.page === link.page) window.history.replaceState(fileLeft ? withoutFile(window.history.state) : window.history.state, "", url);
+      if (modeOn && !leftInbox && !pageChanged) window.history.replaceState(fileLeft ? withoutFile(window.history.state) : window.history.state, "", url);
       // a move that leaves the open file behind takes the file's entry: no entry is left between
       // leaving the list is never that: the list's own entry stays under the pane
-      else if (fileLeft && !kept && !leftInbox && previous?.page === link.page) window.history.replaceState(state, "", url);
+      else if (fileLeft && !kept && !leftInbox && !pageChanged) window.history.replaceState(state, "", url);
       else window.history.pushState(state, "", url);
       // a file left on the pane moved to opens over the move's entry, as its own (#3179)
       if (selectedPaneId !== null) restoreFileRef.current(selectedMachineId, selectedPaneId);

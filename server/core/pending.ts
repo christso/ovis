@@ -777,8 +777,8 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
       if (stranded) return { ok: false, code: "pasted_not_sent", message: PASTED_NOT_SENT_MESSAGE };
       const fault = confirmingCodexInterruption
         ? { code: "codex_interrupt_unconfirmed", message: "Sent to terminal; immediate interruption was not confirmed. Check the terminal before sending again." }
-        : error instanceof HerdrError && error.code === "submit_changed" ? pendingFault(error, options.herdrFailure)
-        : wrote ? { code: "submit_changed", message: "Pending-message delivery could not be confirmed. Check the terminal before sending again." } : pendingFault(error, options.herdrFailure);
+        : (error instanceof HerdrError && error.code === "submit_changed") || !wrote ? pendingFault(error, options.herdrFailure)
+        : { code: "submit_changed", message: "Pending-message delivery could not be confirmed. Check the terminal before sending again." };
       // a menu herdr reports ends with a status event, which drains again. One of Codex's own screens ends with none:
       // the pane is not noted blocked for it (the queue behind this message is tried too, and held the same way)
       const unannounced = !wrote && error instanceof CodexOwnScreenRefusal;

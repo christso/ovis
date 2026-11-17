@@ -1191,7 +1191,6 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
   if (path === "/api/updates/notes") return json({ revision: null, releases: [], omitted: 0 }, 200, { "cache-control": "no-store" });
   if (path === "/api/updates/installed") return json({ revision: null, version: null, previous_version: null, installed_at: null, releases: [], omitted: 0 }, 200, { "cache-control": "no-store" });
   if (path === "/api/connection-diagnostics") return new Response(null, { status: 204 });
-  // the demo is one browser: a finish read here is kept in its own storage, with no other browser to tell
   if (path === "/api/session-moves") {
     if (method === "GET") return json(DEMO_SESSION_MOVES, 200, { "cache-control": "no-store" });
     return error("demo_read_only", "Session transfers use configured PCs and are not run in the demo.", 400);

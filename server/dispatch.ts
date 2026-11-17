@@ -525,7 +525,6 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
   }
   if (pathname === "/api/connection-diagnostics") { setRequestRoute(pathname); return clientConnectionLog.handle(request, client ?? "unknown"); }
   if (pathname === "/api/telemetry") { setRequestRoute(pathname); return handleTelemetryRequest(request, options.telemetry); }
-  // what every browser of this server shares; a watching device reads it and cannot change it (above)
   if (pathname === MOVE_NODE_PATH) { setRequestRoute(MOVE_NODE_PATH); return handleMoveNode(request, moveNode, bridgeAuthorized || options.bridgeOnly === true && tokenMatched); }
   if (pathname === MOVE_PATH) return handleSessionMoves(request, sessionMoves);
   if (pathname === "/api/flock") { setRequestRoute(pathname); return handleGraphRequest(request, graphRegistry, machines?.list() ?? [], (id) => readGraphSource(machines, id, clientSnapshot, options.codexHome), browserSnapshot); }

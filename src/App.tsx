@@ -273,7 +273,7 @@ export function App() {
   const { locked, setLocked, lockReason, pairCode, consumePairCode, pairingUnconfirmed, onPaired, auth, canSignOut, security, readBridgeHealth } = useAccessState({ ui: settings.uiFontFamily, chat: settings.chatFontFamily });
   const { pairedNotices, setPairedNotices, dismissPairedNotice, relayPairings, setRelayPairings, remotePairings, setRemotePairings, removedNotices, setRemovedNotices, dismissRemovedNotice } = usePairedNotices();
   const updates = useUpdates(locked === false);
-  const { view: graphPage, setView: setGraphPage, openGraph, rows: graphRows, ...graphRegistry } = useGraphPage(locked === false && auth !== null && auth.role !== "watch", machines);
+  const { view: graphPage, setView: setGraphPage, showWorkspace, openGraph, rows: graphRows, ...graphRegistry } = useGraphPage(locked === false && auth !== null && auth.role !== "watch", machines);
   const desktopUpdate = useDesktopUpdate();
   const { selectedPaneId, setSelectedPaneId, notificationViewTarget, setNotificationViewTarget, terminalPeek, setTerminalPeek, endPeek, pendingLink, linkLanded, setLinkLanded, rosterSeq, linkSince, selectionSince, rosterTick, setRosterTick, linkTick, setLinkTick } = useSelectionState({ initialLink });
   const { otherRecheck, otherRosterTick, setOtherRosterTick } = useSplitRecheck();
@@ -426,7 +426,7 @@ export function App() {
   // by a tap outside, a swipe, Back, Escape or the named close a screen reader finds at its start
   const markInDrawer = modeOffered && !wideScreen && drawerOpen && !inMode;
   // going into the agent inbox and out of it, counted wherever a person asked
-  const { enter: enterInbox, leave: leaveMode } = useCountedInboxWays(() => { setGraphPage("workspace"); enterInboxShell(); }, leaveModeShell);
+  const { enter: enterInbox, leave: leaveMode } = useCountedInboxWays(() => { showWorkspace(); enterInboxShell(); }, leaveModeShell);
   useShownCount("inbox", modeOffered, LOCAL_MACHINE);
 
 
@@ -470,12 +470,12 @@ export function App() {
     if (reload) window.location.reload();
   }, [auth?.via, loadHealth, t]);
 
-  const { selectedMachineRef, selectTarget, selectTargetRef, picks } = useSelectTarget({ selectedMachineId, setConnected, setConnectedBefore, setSelectedMachineId, setSelectedPaneId, setAutoSelected, setDrawerOpen, setOutputStopped, setNotificationViewTarget, setTerminalPeek, pendingLink, pendingFile, setLinkLanded, selectionHint, selectionSince, rosterSeq, snapshot, selectedMachine, selectedPaneId, setHeaderNote, linkTick, movingPanes, onPick: (paneId) => { setGraphPage("workspace"); setupGuide.stepAside(); if (paneId !== null) inbox.leave(); },
+  const { selectedMachineRef, selectTarget, selectTargetRef, picks } = useSelectTarget({ selectedMachineId, setConnected, setConnectedBefore, setSelectedMachineId, setSelectedPaneId, setAutoSelected, setDrawerOpen, setOutputStopped, setNotificationViewTarget, setTerminalPeek, pendingLink, pendingFile, setLinkLanded, selectionHint, selectionSince, rosterSeq, snapshot, selectedMachine, selectedPaneId, setHeaderNote, linkTick, movingPanes, onPick: (paneId) => { showWorkspace(); setupGuide.stepAside(); if (paneId !== null) inbox.leave(); },
     // in the inbox mode a link or an alert whose pane is gone opens the list, under the header's note that says so:
     // the pane selected in its place is another agent's, whose thread nobody asked for
     onLinkMiss: () => { if (inbox.enabled) inbox.show(); } });
 
-  const { selectPane } = useSelectPane({ pendingLink, pendingFile, setLinkLanded, selectionHint, setSelectedPaneId, setNotificationViewTarget, setTerminalPeek, setAutoSelected, setDrawerOpen, onPick: () => { picks.current += 1; setGraphPage("workspace"); setupGuide.stepAside(); inbox.leave(); } });
+  const { selectPane } = useSelectPane({ pendingLink, pendingFile, setLinkLanded, selectionHint, setSelectedPaneId, setNotificationViewTarget, setTerminalPeek, setAutoSelected, setDrawerOpen, onPick: () => { picks.current += 1; showWorkspace(); setupGuide.stepAside(); inbox.leave(); } });
 
   const layoutRefused = useLayoutRefused(setLayoutNotice, t);
   const moveRefused = useMoveRefused(setLayoutNotice, t);

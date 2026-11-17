@@ -45,6 +45,12 @@ describe("the folder that runs the compiled server", () => {
     writeFileSync(real, "#!/bin/sh\nprintf 'herdr fixture\\n'\n", { mode: 0o700 });
     const installation = join(root, "shim");
     const run = Bun.spawnSync([process.execPath, shim, "install", "--real", real, "--directory", installation], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+    if (process.platform === "win32") {
+      expect(run.exitCode).toBe(1);
+      expect(run.stderr.toString()).toContain("Herdr CLI observation installation currently supports Linux and macOS");
+      expect(existsSync(installation)).toBe(false);
+      return;
+    }
     expect({ exit: run.exitCode, error: run.stderr.toString() }).toEqual({ exit: 0, error: "" });
     expect(existsSync(join(installation, "observe.js"))).toBe(true);
   });
