@@ -52,6 +52,7 @@ describe("publishedProblems", () => {
   const archives: Record<string, number> = Object.fromEntries(BUNDLE_PLATFORMS.map((platform) => [asset(platform), 214_845_782]));
 
   it("reads the manifest URL remote PCs download, for every platform the bundle workflow publishes", async () => {
+    expect(manifestUrl(Number(REMOTE_BUNDLE_VERSION))).toBe(`https://github.com/christso/ovis/releases/download/remote-v${REMOTE_BUNDLE_VERSION}/manifest.json`);
     const directory = mkdtempSync(join(tmpdir(), "hwc-bundles-"));
     made.push(directory);
     for (const platform of BUNDLE_PLATFORMS) expect(await bundleManifestSource(platform, { directory, manifest: "" })).toBe(manifestUrl(Number(REMOTE_BUNDLE_VERSION)));

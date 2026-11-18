@@ -56,6 +56,24 @@ try {
   console.log("Remote bundle startup, isolated socket and authentication passed");
 
   const headers = { authorization: `Bearer ${descriptor.token}`, "content-type": "application/json" };
+  if (!windows) {
+    const base = `http://127.0.0.1:${descriptor.port}`;
+    const agentsResponse = await fetch(`${base}/api/agents`, { headers });
+    assert.equal(agentsResponse.status, 200);
+    const { agents } = await agentsResponse.json() as { agents: { kind: string; saved_launchers?: boolean; launcher_search?: boolean; launchers?: { id: string; label: string }[] }[] };
+    for (const kind of ["claude", "codex", "omp", "pi"]) {
+      const agent = agents.find((entry) => entry.kind === kind);
+      assert.equal(agent?.saved_launchers, true, `the fork's remote bundle offers saved ${kind} launchers`);
+      assert.equal(agent?.launcher_search, true);
+    }
+    const saved = await fetch(`${base}/api/agents/launchers`, { method: "POST", headers, body: JSON.stringify({ kind: "codex", label: "Smoke launcher", executable: "/bin/sh", args: [] }) });
+    assert.equal(saved.status, 200, await saved.clone().text());
+    const { launchers } = await saved.json() as { launchers: { id: string; label: string }[] };
+    assert.equal(launchers.length, 1);
+    const offered = await (await fetch(`${base}/api/agents`, { headers })).json() as { agents: typeof agents };
+    assert.deepEqual(offered.agents.find((entry) => entry.kind === "codex")?.launchers, [{ id: launchers[0]!.id, label: "Smoke launcher" }]);
+    console.log("Remote bundle saved launcher capabilities, storage and catalog passed");
+  }
   const created = await fetch(`http://127.0.0.1:${descriptor.port}/api/workspace/create`, { method: "POST", headers, body: JSON.stringify({ cwd: home, label: "herdr-web-ui-test-bundle-smoke" }) });
   assert.equal(created.status, 200, await created.clone().text());
   const paneId = (await created.json() as { pane_id: string }).pane_id;

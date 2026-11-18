@@ -10,6 +10,9 @@ export interface BundleManifest {
   assets: Record<string, { url: string; sha256: string }>;
 }
 interface BundleSourceOptions { manifest?: string; directory?: string }
+// Upstream runtimes omit fork features, including saved agent launchers.
+export const bundleManifestUrl = (version: string | number): string => `https://github.com/christso/ovis/releases/download/remote-v${version}/manifest.json`;
+
 export async function bundleManifestSource(platform: string, options: BundleSourceOptions = {}): Promise<string> {
   if (!/^((linux|darwin)-(x64|arm64)|win32-x64)$/.test(platform)) throw new Error(`Unsupported bundle platform: ${platform}`);
   const configured = options.manifest ?? process.env["OVIS_BUNDLE_MANIFEST"];
@@ -19,7 +22,7 @@ export async function bundleManifestSource(platform: string, options: BundleSour
   const local = join(options.directory ?? join(ROOT, "remote-bundles"), `manifest-${platform}.json`);
   try { await access(local); return local; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  return `https://github.com/devswha/ovis/releases/download/remote-v${REMOTE_BUNDLE_VERSION}/manifest.json`;
+  return bundleManifestUrl(REMOTE_BUNDLE_VERSION);
 }
 export interface BundleFile { path: string; sha256: string; size: number }
 interface BundleFileOptions extends BundleSourceOptions {
