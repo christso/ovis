@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { releaseNotes } from "./release-notes.ts";
 import { SUMMARIES_FILE } from "../server/release-notes.ts";
 import { discard, readCappedJson, REMOTE_LIMITS, RemoteResponseInvalid, RemoteResponseTooLarge } from "../server/remote-json.ts";
+import { bundleManifestUrl } from "../server/remote-bundle.ts";
 
 const root = resolve(import.meta.dir, "..");
 const MACHINES = "shared/machines.ts";
@@ -52,7 +53,7 @@ export function bundleProblems({ version, published, changed, publishing }: Bund
   return [`The remote bundle's inputs changed since remote-v${version} (${shown}), so remote PCs would keep the old server. Raise REMOTE_BUNDLE_VERSION in ${MACHINES} from ${version} to ${next} in the release PR (or, when it already merged, in a follow-up PR); after it merges, push remote-v${next} on the merged commit and wait for the Remote PC bundles workflow before running Release (docs/development.md#releasing).`];
 }
 
-export const manifestUrl = (version: number): string => `https://github.com/devswha/ovis/releases/download/remote-v${version}/manifest.json`;
+export const manifestUrl = bundleManifestUrl;
 export const BUNDLE_PLATFORMS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"];
 export type Get = (url: string, init: RequestInit) => Promise<Response>;
 
