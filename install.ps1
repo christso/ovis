@@ -5,10 +5,16 @@
 # No Bun is installed. OVIS_FROM_SOURCE=1, a branch (-Ref / OVIS_REF), a plugin installed from source, or a release
 # from before the compiled server install from source instead (Bun, and herdr's plugin checkout).
 # OVIS_RELEASES_URL names another place for releases: https://, or a file:// folder laid out as GitHub's.
-param([string]$Ref = $(if ($env:OVIS_REF) { $env:OVIS_REF } else { $env:HERDR_WEB_UI_REF }))
+param(
+    [string]$Ref = $(if ($env:OVIS_REF) { $env:OVIS_REF } else { $env:HERDR_WEB_UI_REF }),
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$')]
+    [string]$PluginRepository = 'devswha/ovis'
+)
 
 & {
 $ErrorActionPreference = 'Stop'
+$fromAnotherRepository = $PluginRepository -ne 'devswha/ovis'
+if ($fromAnotherRepository -and -not $Ref) { throw 'Pass -Ref to install the plugin from another repository.' }
 if ($env:OS -ne 'Windows_NT' -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     throw 'Ovis supports Windows x64. Use install.sh on Linux or macOS.'
 }
@@ -428,7 +434,7 @@ $newInstall = $false
 $binaryDone = $false
 $ovisPlugin = Join-Path $ovisHome 'plugin'
 $listed = Find-Plugin
-$fromSource = $env:OVIS_FROM_SOURCE -eq '1' -or (Find-Plugin $legacyId) -or
+$fromSource = $fromAnotherRepository -or $env:OVIS_FROM_SOURCE -eq '1' -or (Find-Plugin $legacyId) -or
     ($listed -and -not ($listed.plugin_root -and [IO.Path]::GetFullPath($listed.plugin_root).TrimEnd('\') -ieq [IO.Path]::GetFullPath($ovisPlugin).TrimEnd('\')))
 if (-not $fromSource) {
     $releases = Get-ReleasesBase
@@ -504,7 +510,7 @@ $move = $true
 if (-not (Find-Plugin)) {
     if (-not $Ref) { $Ref = Get-LatestRef }
     $refId = try {
-        $manifest = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 "https://raw.githubusercontent.com/devswha/ovis/$Ref/herdr-plugin.toml").Content
+        $manifest = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 "https://raw.githubusercontent.com/$PluginRepository/$Ref/herdr-plugin.toml").Content
         if ($manifest -match '(?m)^id\s*=\s*"([^"]+)"') { $Matches[1] }
     } catch { $null }
     # raw.githubusercontent.com can be blocked where github.com is not: a release tag's version tells it too
@@ -605,8 +611,8 @@ if (-not $plugin) {
     # otherwise run the release binary of the branch's package.json version, and the status read below would find a
     # checkout without its packages; a release tag takes its binary, or its sources without one
     $givenSource = $env:OVIS_FROM_SOURCE
-    if ($Ref -cnotmatch '^v\d+\.\d+\.\d+$') { $env:OVIS_FROM_SOURCE = '1' }
-    try { Run-Tool herdr @('plugin', 'install', 'devswha/ovis', '--ref', $Ref, '--yes') }
+    if ($fromAnotherRepository -or $Ref -cnotmatch '^v\d+\.\d+\.\d+$') { $env:OVIS_FROM_SOURCE = '1' }
+    try { Run-Tool herdr @('plugin', 'install', $PluginRepository, '--ref', $Ref, '--yes') }
     finally { $env:OVIS_FROM_SOURCE = $givenSource }
     $newInstall = $true
     $plugin = Find-Plugin $pluginId
@@ -682,7 +688,7 @@ if (-not $plugin) {
             $objects = if ($commitId) { @(& git -C $plugin.plugin_root rev-parse "--disambiguate=$($Ref.ToLowerInvariant())") } else { @() }
             if ($installedCommit -notin $objects) {
                 # an annotated tag lists its tag object under its name and its commit under <name>^{}
-                $listed = & git ls-remote 'https://github.com/devswha/ovis.git' -- $Ref "$Ref^{}"
+                $listed = & git ls-remote "https://github.com/$PluginRepository.git" -- $Ref "$Ref^{}"
                 if ($LASTEXITCODE -ne 0) { throw "Could not ask GitHub which commit $Ref is, so $unchanged. Check your connection and run this again." }
                 $refs = @{}
                 foreach ($line in $listed) { $commit, $name = "$line" -split "`t"; $refs[$name] = $commit }
@@ -690,7 +696,7 @@ if (-not $plugin) {
                 $tips = @(@($refs["refs/heads/$Ref"], $tag) | Where-Object { $_ })
                 if ($installedCommit -notin $tips) {
                     $at = if ($tips) { "and $Ref is at $($tips[0].Substring(0, 12))" } elseif ($commitId) { "not $Ref" } else { "and GitHub has no branch or tag $Ref" }
-                    throw "The installed plugin is at commit $($installedCommit.Substring(0, 12)), $at. This installer does not move an installed plugin to another branch or commit, or to where its branch has moved since, so $unchanged. To install $Ref, stop Ovis (herdr plugin action invoke $pluginId.stop-windows), run `$env:OVIS_FROM_SOURCE = '1'; herdr plugin install devswha/ovis --ref $Ref --yes (INSTALL.md, Update: it replaces the checkout), then run this again."
+                    throw "The installed plugin is at commit $($installedCommit.Substring(0, 12)), $at. This installer does not move an installed plugin to another branch or commit, or to where its branch has moved since, so $unchanged. To install $Ref, stop Ovis (herdr plugin action invoke $pluginId.stop-windows), run `$env:OVIS_FROM_SOURCE = '1'; herdr plugin install $PluginRepository --ref $Ref --yes (INSTALL.md, Update: it replaces the checkout), then run this again."
                 }
             }
             $kept = Join-Path $plugin.plugin_root '.ovis\server\bin'
