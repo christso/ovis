@@ -144,7 +144,8 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
     } else if (linkWorkspaceId !== undefined || creation?.machineId !== selectedMachineId || creation?.paneId !== selectedPaneId) {
       workspaceCreation.current = null;
     }
-    if (linkWorkspaceId === undefined && sheetEntryActive()) return;
+    // A sheet can close without changing the selected pane again. Resume the held write when its Back lands.
+    if (linkWorkspaceId === undefined && sheetEntryActive()) { heldWrite.current = true; return; }
     if (linkWorkspaceId === undefined && workspaceCreation.current !== null) {
       // the pane New workspace made from the list is not listed yet and the dialog has closed: the list's
       // entry it was open on says the list's place again, so Back from the new pane does not open it again
