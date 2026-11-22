@@ -1,3 +1,4 @@
+/** The plan meters beside Settings, on a staged report: no real sign-in is read or sent. */
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -5,6 +6,15 @@ import type { Browser, BrowserContext, BrowserContextOptions, Page } from "playw
 import { AGENT_CATALOG, catalogRow } from "../shared/agent-catalog.ts";
 import type { UsageReport } from "../shared/protocol.ts";
 import { openSettingsPage } from "./settings-page.ts";
+
+async function openUsageDrawer(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
+  // The popover is positioned inside the drawer and inherits its slide.
+  await page.waitForFunction(() => {
+    const drawer = document.querySelector("#workspace-drawer.is-open");
+    return drawer !== null && drawer.getBoundingClientRect().left === 0 && drawer.getAnimations().length === 0;
+  });
+}
 
 const at = (hours: number): string => new Date(Date.now() + hours * 3600_000).toISOString();
 const report = (): UsageReport => ({
@@ -39,6 +49,7 @@ const RELOADED = "x-usage-qa-reloaded";
 async function staged(context: BrowserContext): Promise<{ asked: string[]; afterReload: string[] }> {
   const asked: string[] = [];
   const afterReload: string[] = [];
+  // the status-line switch reads Claude's settings on the server's PC: answered here, never by the test server
   await context.route("**/api/usage/statusline", (route) => route.fulfill({ json: { installed: false, supported: true } }));
   await context.route("**/api/usage*", (route) => {
     asked.push(new URL(route.request().url()).search);
@@ -60,6 +71,7 @@ export async function checkUsageMeters(browser: Browser, origin: string): Promis
     const settingsButton = page.locator(".sidebar-footer-row .sidebar-footer-action");
     const limits = page.locator('.segmented[aria-label="Plan limits"]');
 
+    // off until chosen: nothing is shown and no sign-in is sent anywhere
     await settingsButton.waitFor();
     assert.equal(await strip.count(), 0);
     assert.deepEqual(asked, [], "no usage request before the user turns it on");
@@ -139,6 +151,8 @@ export async function checkUsageMeters(browser: Browser, origin: string): Promis
 
     await settingsButton.click();
     await openSettingsPage(page, "Agents");
+    // The strip disappears before the shared preference's debounced save. Reload only once
+    // the server has taken OFF, or its older ON value will turn usage back on during hydration.
     const usageOffSaved = page.waitForResponse((response) => response.request().method() === "PUT"
       && new URL(response.url()).pathname === "/api/preferences" && response.ok()
       && response.request().postDataJSON()?.settings?.showUsage === false, { timeout: 10_000 });
@@ -167,6 +181,8 @@ export async function checkUsageMeters(browser: Browser, origin: string): Promis
     await context.close();
   }
 
+  // The desktop check saved OFF: seed the shared preference too, or hydration overrides
+  // this phone's local ON value before its strip can be opened.
   const usageOn = await fetch(`${origin}/api/preferences`, { method: "PUT", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ settings: { showUsage: true } }) });
   assert.equal(usageOn.status, 200, "the phone's shared usage preference is enabled");
   const phone = await usageContext(browser, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, locale: "en-US" });
@@ -175,7 +191,7 @@ export async function checkUsageMeters(browser: Browser, origin: string): Promis
     await phone.addInitScript(() => localStorage.setItem("ovis:settings", JSON.stringify({ showUsage: true })));
     const page = await phone.newPage();
     await page.goto(origin);
-    await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
+    await openUsageDrawer(page);
     await page.locator(".usage-strip").click();
     const popover = page.getByRole("dialog", { name: "Subscription usage", exact: true });
     await popover.waitFor();
@@ -242,6 +258,12 @@ const lineCounts = (target: ReturnType<Page["locator"]>): Promise<number[]> => t
   return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
 }));
 
+/**
+ * An account another tool recorded is never drawn as a reading of the server's own: its chip's bar is dotted and the
+ * popover, the strip's name and Settings say who recorded it and when. A stale one says it may have changed and loses
+ * its alarm colour. Known from the record alone, it is no sign-in of Claude Code, whose row still offers Sign in;
+ * standing in for the numbers of a sign-in this PC holds, it leaves that sign-in its plan, its problem and Sign in again.
+ */
 async function checkRecordedAccounts(browser: Browser, origin: string): Promise<void> {
   const reset = await fetch(`${origin}/api/preferences`, { method: "PUT", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ settings: { showUsage: true, usageOrder: [], usageHidden: [], usageCount: "left", usageGlance: "session" } }) });
   assert.equal(reset.status, 200);
@@ -307,6 +329,7 @@ async function checkRecordedAccounts(browser: Browser, origin: string): Promise<
     assert.deepEqual(await accountRows(row), [["Recorded by Oh My Pi · Session 69% left", "just now (record)"], ["Recorded by Oh My Pi · Session 13% left", "Old record · 3 h ago (record)"]]);
     assert.equal(await row.getByRole("button", { name: /Sign in again/ }).count(), 0);
     if (process.env.UI_EVIDENCE_DIR) await page.getByRole("tabpanel", { name: "Agents", exact: true }).screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "usage-recorded-settings.png") });
+    // removing one forgets a list entry: what stays is the tool's record, not a sign-in of this PC's
     await row.getByRole("button", { name: "Remove Claude · omp@example.com", exact: true }).click();
     const confirmation = page.getByRole("alertdialog");
     assert.match(await confirmation.locator(".confirm-body").textContent() ?? "", /Oh My Pi keeps its record of it/);
@@ -391,7 +414,7 @@ async function checkRecordedAccounts(browser: Browser, origin: string): Promise<
     await staged(phone);
     const page = await phone.newPage();
     await page.goto(origin);
-    await page.getByRole("button", { name: "Open workspace list", exact: true }).click();
+    await openUsageDrawer(page);
     await page.locator(".usage-strip").click();
     const popover = page.getByRole("dialog", { name: "Subscription usage", exact: true });
     await popover.waitFor();
@@ -415,6 +438,7 @@ async function checkRecordedAccounts(browser: Browser, origin: string): Promise<
   console.log("PASS accounts another tool recorded: dotted chip, recorder and age in the popover, strip and Settings, a stale one dimmed and no alarm, no sign-in of Claude Code from a record alone, a sign-in kept with its plan, problem and Sign in again while a record stands in, phone fit");
 }
 
+/** Only on or off is sent, and nothing reaches the test server's own home. */
 async function checkStatuslineSwitch(browser: Browser, origin: string): Promise<void> {
   const context = await usageContext(browser, { viewport: { width: 1280, height: 800 }, locale: "en-US" });
   try {
@@ -454,6 +478,7 @@ async function checkStatuslineSwitch(browser: Browser, origin: string): Promise<
   console.log("PASS a refused Claude sign-in offers the status line in place; Settings' switch shows and undoes it, sending only on or off");
 }
 
+/** An expired sign-in on this PC, one through the hub and Antigravity's, each expired: only the first can sign in again here. */
 const expiredReport = (): UsageReport => ({
   providers: [
     { id: "claude", key: "claude:u1", account: "me@example.com", plan: "max", problem: null, checked_at: at(0), windows: [{ kind: "session", scope: null, used_percent: 42, resets_at: at(2), starts_at: null }] },
@@ -463,6 +488,11 @@ const expiredReport = (): UsageReport => ({
   ],
 });
 
+/**
+ * Sign in again: offered for the expired account on this PC, in the popover and in its Settings row,
+ * never for the hub's or Antigravity's; it asks the server by the account's key and follows the login in
+ * a dialog (UsageSignInDialog), whose Open terminal hands the tab over.
+ */
 export async function checkUsageSignInAgain(browser: Browser, origin: string): Promise<void> {
   const reset = await fetch(`${origin}/api/preferences`, { method: "PUT", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ settings: { usageOrder: [] } }) });
   assert.equal(reset.status, 200, "the shared account order is cleared");
@@ -511,7 +541,7 @@ export async function checkUsageSignInAgain(browser: Browser, origin: string): P
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.goto(origin);
-      const openDrawer = async () => { if (phone) await page.getByRole("button", { name: "Open workspace list", exact: true }).click(); };
+      const openDrawer = async () => { if (phone) await openUsageDrawer(page); };
       await openDrawer();
       await page.locator(".usage-strip").click();
       const popover = page.getByRole("dialog", { name: "Subscription usage", exact: true });
@@ -568,6 +598,7 @@ export async function checkUsageSignInAgain(browser: Browser, origin: string): P
       await context.close();
     }
   }
+  // a watching device signs in to nothing: no button in either place, and the popover says how instead
   const watching = await usageContext(browser, { viewport: { width: 1280, height: 800 }, locale: "en-US" });
   try {
     await watching.route("**/api/usage*", (route) => route.fulfill({ json: expiredReport() }));

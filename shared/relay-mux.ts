@@ -1,10 +1,25 @@
 import { createScanner, ScanError, SyntaxKind } from "jsonc-parser";
+import { AccountDevicesApiError, parseBlockReceipt, parseHoldState, type BlockReceipt, type HoldState } from "./account-devices-api.ts";
 
+/** The relay wire generation: the envelope's first byte and WELCOME's `relay_protocol`. A PC on another one is refused outright. */
 export const RELAY_PROTOCOL = 1;
 export const RELAY_HINTS = "relay-hints";
+export const ACCOUNT_OPENS_ALL_FEATURE = "account-opens-all-1";
+/** Eight numbered receipts fit the existing 1 KiB session error, even with safe-integer log numbers. */
+export const AUTH_RECEIPTS_MAX = 8;
+/** The address is a hint: Noise against the pinned PC key proves the PC. */
 export const DIRECT_CARRIER = "direct-carrier";
+/**
+ * Offered beside DIRECT_CARRIER by a client that can also open a direct carrier on the PC's Tailscale
+ * address (100.64.0.0/10): only then does AUTH_OK name one. A client without it would refuse the whole
+ * AUTH_OK over an address its older isDirectCarrier does not take.
+ */
 export const DIRECT_TAILNET = "direct-tailnet";
 export const MAX_DIRECT_CARRIERS = 4;
+/**
+ * Raise it only in a PR that makes the shell need a newer server API, with a changelog line. A
+ * server below it gets the update screen (src/lib/relay/skew.ts).
+ */
 export const MIN_SERVER_VERSION = "0.4.21";
 export const MAX_FRAME_BYTES = 16384;
 export const ENVELOPE_BYTES = 8;
@@ -20,15 +35,34 @@ export const FrameType = {
   HTTP_DATA: 0x13, HTTP_END: 0x14, HTTP_STOP_REQUEST: 0x15,
   WS_OPEN: 0x20, WS_ACCEPT: 0x21, WS_DATA: 0x22, WS_CLOSE: 0x23,
   CREDIT: 0x30, RESET: 0x31,
+  // session frames again, past the stream ranges: 0x01-0x0f is full
+  KEY_CHALLENGE: 0x40, KEY_PROVE: 0x41, KEY_PENDING: 0x42,
 } as const;
 export type FrameType = typeof FrameType[keyof typeof FrameType];
 export const PAIR_SAS_FEATURE = "pair-sas";
+/** A device that offers it proves the key it pairs with over a challenge the PC makes after the key was named. */
+export const KEY_PROOF_FEATURE = "key-proof-1";
+/** A code-adding PC asks before sending PAIR; only an account-bound Step 2 target selects it. */
+export const PC_CODE_ACCOUNT_ONLY = "pc-code-account-only-1";
 export const ACCOUNT_FEATURE = "account";
 export const PAIR_INTENT_PC = "pair-intent-pc";
 export const PAIR_INTENT_ACCOUNT = "pair-intent-account";
+/**
+ * A PC's server pairing with another PC of its account, vouched for by a signed-in device's admission
+ * (docs/account.md, "Adding a PC of your account"): taken only under the account join's gates, shown to the
+ * account's members as "pair this PC", and it makes a plain row there, never an account member.
+ */
 export const PAIR_INTENT_VOUCHED = "pair-intent-pc-vouched";
 export const LARGE_WS_MESSAGES = "large-ws-messages";
+/**
+ * A phone without it refuses a
+ * header it does not list, so a PC sends it only to a phone that offered this in HELLO.
+ */
 export const SERVER_TIME_HEADER = "server-time-header";
+/**
+ * A 4 MiB outgoing queue (relay-mux-engine.ts) holds one such message and, behind it, the 1 MiB a PC's
+ * core still sends to a client while it drains (server/output-window.ts OUTPUT_HARD_BYTES).
+ */
 export const MAX_LARGE_WS_MESSAGE_BYTES = 3 * 1024 * 1024;
 export const HTTP_END_FLAGS = { STOPPED: 0x0001 } as const;
 export const WS_DATA_FLAGS = { START: 0x0001, END: 0x0002, TEXT: 0x0004 } as const;
@@ -37,6 +71,8 @@ export const SESSION_ERRORS = [
   "unsupported_version", "unsupported_extension", "unsupported_transport",
   "protocol_error", "auth_failed", "auth_revoked", "auth_changed",
   "flow_control_error", "resource_exhausted", "timeout", "internal_error",
+  // Step 2, sent only by a PC with Step 2 on to an account-joined sign-in; `held` carries its HoldState
+  "held", "not_listed", "admission",
 ] as const;
 export type SessionError = typeof SESSION_ERRORS[number];
 export const STREAM_ERRORS = [
@@ -46,7 +82,8 @@ export const STREAM_ERRORS = [
 export type StreamError = typeof STREAM_ERRORS[number];
 
 export class MuxProtocolError extends Error {
-  constructor(readonly code: SessionError, message: string) {
+  /** `hold`: the hold state a `held` refusal carries (Step 2, S25); no other code has one. */
+  constructor(readonly code: SessionError, message: string, readonly receipts?: readonly BlockReceipt[], readonly hold?: HoldState) {
     super(message);
     this.name = "MuxProtocolError";
   }
@@ -73,7 +110,9 @@ export const RESPONSE_HEADERS = [
   "content-security-policy", "x-content-type-options", "cross-origin-resource-policy", "referrer-policy",
   "x-server-time",
 ] as const;
+/** The only read-only routes a browser resource may load through a shell worker. */
 export const RELAY_RESOURCE_ROUTES = ["fs/file", "fs/favicon", "pane/conversation/image"] as const;
+/** Also stamped into the classic service worker, from this one allowlist. Never decode the query. */
 export const RELAY_RESOURCE_TARGET = `^/api/(?:machines/(?!(?:\\.|%2[eE]){1,2}/)(?:[A-Za-z0-9_!~*'().-]|%[0-9A-Fa-f]{2})+/)?(?:${RELAY_RESOURCE_ROUTES.join("|")})(?:\\?[^#\\r\\n]*)?$(?![\\s\\S])`;
 
 export function isRelayResourceTarget(target: string): boolean {
@@ -85,6 +124,7 @@ export function relayResourcePath(serverId: string, target: string): string {
   return `/s/${serverId}/~${target}`;
 }
 
+/** A path inside precisely this registration; no URL normalization or query reserialization. */
 export function relayResourceTarget(scope: string, path: string): string | null {
   if (!/^\/s\/[0-9a-f]{32}\/$/.test(scope) || !path.startsWith(`${scope}~`)) return null;
   const target = path.slice(scope.length + 1);
@@ -98,7 +138,7 @@ type Payloads = {
   readonly 0x02: { readonly protocol: "ovis-mux"; readonly version: 1; readonly features: readonly string[]; readonly limits: LimitsV1; readonly nonce: string; readonly server_version: string; readonly relay_protocol: number; readonly min_supported_client: string; readonly provisional?: true };
   readonly 0x03: { readonly scheme: "device-key"; readonly device_id: string; readonly signature: string };
   readonly 0x04: { readonly session_id: string; readonly device_id: string; readonly role: "drive" | "watch"; readonly relays?: readonly string[]; readonly direct?: readonly string[] };
-  readonly 0x05: { readonly code: SessionError; readonly message: string };
+  readonly 0x05: { readonly code: SessionError; readonly message: string; readonly hold?: HoldState; readonly receipts?: readonly BlockReceipt[] };
   readonly 0x06: { readonly code: "shutdown" | "id_exhausted"; readonly last_open_id: number; readonly drain_ms: number };
   readonly 0x07: bigint;
   readonly 0x08: bigint;
@@ -114,6 +154,9 @@ type Payloads = {
   readonly 0x13: Uint8Array;
   readonly 0x14: { readonly trailers: HeaderList };
   readonly 0x15: null;
+  readonly 0x40: { readonly challenge: string };
+  readonly 0x41: { readonly signature: string };
+  readonly 0x42: Readonly<Record<string, never>>;
   readonly 0x20: { readonly device_id: string; readonly target: string; readonly headers: HeaderList; readonly protocols: readonly string[] };
   readonly 0x21: { readonly protocol: string | null; readonly headers: HeaderList };
   readonly 0x22: { readonly data: Uint8Array; readonly total_message_bytes?: number };
@@ -159,6 +202,24 @@ function integer(value: unknown, min: number, max: number): number {
   requireProtocol(typeof value === "number" && Number.isInteger(value) && value >= min && value <= max, "Invalid integer");
   return value;
 }
+/** A SESSION_ERROR's payload: a `held` refusal names its hold state, and no other code carries one. */
+function sessionError(v: Record<string, unknown>): Payloads[0x05] {
+  const code = choice(v.code, SESSION_ERRORS);
+  const message = text(v.message, 256);
+  requireProtocol((code === "held") === ("hold" in v), "Only a held refusal carries a hold state");
+  requireProtocol(v.receipts === undefined || code === "auth_failed", "Only refused sign-ins carry receipts");
+  try {
+    return {
+      code, message,
+      ...(code === "held" ? { hold: parseHoldState(v.hold) } : {}),
+      ...(v.receipts === undefined ? {} : { receipts: list(v.receipts, AUTH_RECEIPTS_MAX, parseBlockReceipt) }),
+    };
+  } catch (error) {
+    if (error instanceof AccountDevicesApiError) throw new MuxProtocolError("protocol_error", "Invalid hold state or block receipt");
+    throw error;
+  }
+}
+
 function choice<const T extends readonly (string | number)[]>(value: unknown, choices: T): T[number] {
   for (const candidate of choices) if (value === candidate) return candidate;
   throw new MuxProtocolError("protocol_error", "Invalid value");
@@ -176,6 +237,7 @@ function base64url(value: unknown, bytes: number): string {
   return result;
 }
 
+/** DER SubjectPublicKeyInfo for id-ecPublicKey + prime256v1 + an uncompressed P-256 point. */
 function p256Spki(value: unknown): string {
   const public_key = base64url(value, 91);
   const der = atob(public_key.replace(/-/g, "+").replace(/_/g, "/"));
@@ -246,6 +308,7 @@ function feature(value: unknown): string {
 function relayOrigin(value: unknown): string {
   const result = text(value, 256);
   let origin: string | null = null;
+  // relay-offer.ts isWssOrigin, not imported: relay-offer reaches this module through relay-e2ee
   try { const url = new URL(result); origin = url.protocol === "wss:" ? url.origin : null; } catch { }
   requireProtocol(origin === result, "Invalid relay origin");
   return result;
@@ -258,6 +321,7 @@ function directOrigin(value: unknown): string {
 
 type Subnet = readonly [number, number, number];
 const PRIVATE_IPV4: readonly Subnet[] = [[10, 0, 8], [172, 16, 12], [192, 168, 16], [169, 254, 16]];
+/** Tailscale's IPv4 range (shared CGNAT space, which Tailscale assigns its nodes from). */
 const TAILNET_IPV4: readonly Subnet[] = [[100, 64, 10]];
 
 function carrierIn(text: string, subnets: readonly Subnet[]): boolean {
@@ -270,6 +334,7 @@ function carrierIn(text: string, subnets: readonly Subnet[]): boolean {
   return subnets.some(([a, b, bits]) => address >>> (32 - bits) === (((a << 24) | (b << 16)) >>> 0) >>> (32 - bits));
 }
 
+/** Exactly `ws://<Tailscale IPv4>:<port>`: an address in 100.64.0.0/10, a port written out, nothing else. */
 export function isTailnetCarrier(text: string): boolean {
   return carrierIn(text, TAILNET_IPV4);
 }
@@ -278,6 +343,10 @@ export function isTailnetAddress(address: string): boolean {
   return isTailnetCarrier(`ws://${address}:1`);
 }
 
+/**
+ * Exactly `ws://<private IPv4>:<port>`: an RFC 1918, link-local or Tailscale (isTailnetCarrier) address, a
+ * port written out, nothing else.
+ */
 export function isDirectCarrier(text: string): boolean {
   return carrierIn(text, PRIVATE_IPV4) || isTailnetCarrier(text);
 }
@@ -319,7 +388,7 @@ function envelope(type: unknown, flags: unknown, id: unknown, size: number): Fra
   const f = integer(flags, 0, 0xffff);
   const mask = t === FrameType.HTTP_END ? 1 : t === FrameType.WS_DATA ? 7 : 0;
   requireProtocol((f & ~mask) === 0 && (t !== FrameType.WS_DATA || !(f & 4) || !!(f & 1)), "Reserved flags");
-  if (t < FrameType.HTTP_OPEN) requireProtocol(id === 0, "Session frame needs stream zero");
+  if (t < FrameType.HTTP_OPEN || t >= FrameType.KEY_CHALLENGE) requireProtocol(id === 0, "Session frame needs stream zero");
   else streamId(id, false);
   return t;
 }
@@ -354,6 +423,13 @@ function metadata(type: FrameType, flags: number, stream_id: number, input: unkn
       return { ...common, type, payload: { label: pairLabel(v.label), public_key: p256Spki(v.public_key), commitment: base64url(v.commitment, 32) } };
     case FrameType.PAIR_CHALLENGE: case FrameType.PAIR_REVEAL:
       return { ...common, type, payload: { nonce: base64url(v.nonce, 32) } };
+    case FrameType.KEY_CHALLENGE:
+      return { ...common, type, payload: { challenge: base64url(v.challenge, 32) } };
+    case FrameType.KEY_PROVE:
+      return { ...common, type, payload: { signature: base64url(v.signature, 64) } };
+    // the wait names nothing: a fingerprint the PC or the relay sent could be shown for another key
+    case FrameType.KEY_PENDING:
+      return { ...common, type, payload: {} };
     case FrameType.PAIR_CONFIRM:
       requireProtocol(v.confirmed === true && Object.keys(v).length === 1, "Invalid pairing confirmation");
       return { ...common, type, payload: { confirmed: true } };
@@ -362,7 +438,7 @@ function metadata(type: FrameType, flags: number, stream_id: number, input: unkn
         ...(v.relays === undefined ? {} : { relays: list(v.relays, 2, relayOrigin) }),
         ...(v.direct === undefined ? {} : { direct: list(v.direct, MAX_DIRECT_CARRIERS, directOrigin) }) } };
     case FrameType.SESSION_ERROR:
-      return { ...common, type, payload: { code: choice(v.code, SESSION_ERRORS), message: text(v.message, 256) } };
+      return { ...common, type, payload: sessionError(v) };
     case FrameType.GOAWAY:
       return { ...common, type, payload: { code: choice(v.code, ["shutdown", "id_exhausted"]), last_open_id: streamId(v.last_open_id, true), drain_ms: integer(v.drain_ms, 0, 5000) } };
     case FrameType.HTTP_OPEN: {
@@ -400,6 +476,7 @@ function metadata(type: FrameType, flags: number, stream_id: number, input: unkn
 
 function wsFragment(flags: number, data: Uint8Array, total: unknown): Payloads[0x22] {
   if (flags & WS_DATA_FLAGS.START) {
+    // the engine holds each message to what its peer takes (LARGE_WS_MESSAGES) before this
     const length = integer(total, 0, MAX_LARGE_WS_MESSAGE_BYTES);
     requireProtocol(data.byteLength <= length && (!!(flags & WS_DATA_FLAGS.END) ? data.byteLength === length : data.byteLength < length), "Invalid first fragment length");
     requireProtocol(data.byteLength > 0 || ((flags & 3) === 3 && length === 0), "Empty nonfinal fragment");
@@ -409,6 +486,7 @@ function wsFragment(flags: number, data: Uint8Array, total: unknown): Payloads[0
   return { data };
 }
 
+/** Iterative scan catches escaped duplicate keys, including unknown nested metadata. */
 function parseMetadata(bytes: Uint8Array): unknown {
   let source: string;
   try { source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
@@ -445,6 +523,7 @@ function parseMetadata(bytes: Uint8Array): unknown {
 }
 
 export function decodeFrame(bytes: Uint8Array, filterRequestHeaders = false): MuxFrame {
+  // These gates precede views, slices, UTF-8 decoding and JSON parsing.
   requireProtocol(bytes instanceof Uint8Array && bytes.byteLength >= ENVELOPE_BYTES && bytes.byteLength <= MAX_FRAME_BYTES, "Invalid frame length");
   if (bytes[0] !== RELAY_PROTOCOL) throw new MuxProtocolError("unsupported_version", "Unsupported envelope version");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

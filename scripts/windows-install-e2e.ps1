@@ -3,6 +3,7 @@
 param(
     [string]$Installer = (Join-Path $PSScriptRoot '..\install.ps1'),
     [string]$Ref = '',
+    [string]$PluginRepository = 'devswha/ovis',
     [switch]$Update,
     [switch]$Fresh
 )
@@ -43,7 +44,7 @@ function Invoke-Installer([string]$InstallRef) {
         $env:OVIS_REF = $InstallRef
         try { Invoke-RestMethod $Installer | Invoke-Expression }
         finally { Remove-Item Env:\OVIS_REF -ErrorAction SilentlyContinue }
-    } else { & $Installer -Ref $InstallRef }
+    } else { & $Installer -Ref $InstallRef -PluginRepository $PluginRepository }
 }
 function Assert-App([string]$Expected) {
     $health = Wait-Until { $answer = Get-Json '/api/health'; if ($answer.ok) { $answer } } 60 'the app to answer'

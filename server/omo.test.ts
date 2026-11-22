@@ -258,6 +258,30 @@ it("does not turn an ordinary pi into OmO or borrow another pane's OmO", () => {
   expect(withOmoDescendants(null, launcherRows)).toBeNull();
 });
 
+it("takes an OmO a shell or package runner started, not one another agent started as its tool", () => {
+  const shellOnly: ProcessInfo = { process_info: { shell_pid: 10, foreground_processes: [{ pid: 10, argv: ["C:\\pwsh.exe"] }] } };
+  const shell = { pid: 10, parent: 1, path: "C:\\pwsh.exe", commandLine: "pwsh.exe" };
+  const omo = (pid: number, parent: number): ProcessRow => ({ pid, parent, path: "C:\\node.exe", commandLine: 'node.exe "C:\\npm\\node_modules\\omo-ai\\bin\\omo.js"' });
+  const added = (rows: ProcessRow[]): number[] =>
+    (withOmoDescendants(shellOnly, rows)?.process_info?.foreground_processes ?? []).map((entry) => entry.pid).filter((pid) => pid !== 10);
+  expect(added([shell, { pid: 20, parent: 10, path: "C:\\Windows\\System32\\cmd.exe", commandLine: 'cmd.exe /d /s /c "omo.cmd"' }, omo(21, 20)])).toEqual([21]);
+  expect(added([shell, { pid: 30, parent: 10, path: "C:\\node.exe", commandLine: 'node.exe "C:\\npm\\node_modules\\npm\\bin\\npx-cli.js" omo-ai' }, omo(31, 30)])).toEqual([31]);
+  expect(added([shell, { pid: 40, parent: 10, path: "C:\\claude.exe", commandLine: "claude.exe" }, { pid: 41, parent: 40, path: "C:\\Windows\\System32\\cmd.exe", commandLine: "cmd.exe /c omo --print hi" }, omo(42, 41)])).toEqual([]);
+  expect(added([shell, { pid: 50, parent: 10, path: "C:\\node.exe", commandLine: 'node.exe "C:\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js"' }, omo(51, 50)])).toEqual([]);
+  // `Start-Process omo` from the pane's shell: the OmO runs in a console window of its own
+  const host = (pid: number, parent: number): ProcessRow => ({ pid, parent, path: "C:\\WINDOWS\\system32\\conhost.exe", commandLine: "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0xffffffff -ForceV1" });
+  expect(added([shell, omo(60, 10), host(61, 60)])).toEqual([]);
+  expect(added([shell, { pid: 70, parent: 10, path: "C:\\Windows\\System32\\cmd.exe", commandLine: "cmd.exe /c start omo" }, host(71, 70), omo(72, 70)])).toEqual([]);
+  expect(added([shell, omo(80, 10), { pid: 81, parent: 80, path: null, commandLine: "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4" }])).toEqual([]);
+  expect(added([shell, omo(90, 10)])).toEqual([90]);
+  // a host left by an earlier process that held the OmO's number is not the OmO's own console
+  expect(added([shell, { ...omo(95, 10), started: 2000 }, { ...host(96, 95), started: 1000 }])).toEqual([95]);
+  // herdr naming another agent as the pane's program does not make the OmO it runs as a tool the pane's
+  const claudeNamed: ProcessInfo = { process_info: { shell_pid: 10, foreground_processes: [{ pid: 40, argv: ["C:\\claude.exe"] }] } };
+  const rows = [shell, { pid: 40, parent: 10, path: "C:\\claude.exe", commandLine: "claude.exe" }, { pid: 41, parent: 40, path: "C:\\Windows\\System32\\cmd.exe", commandLine: "cmd.exe /c omo" }, omo(42, 41)];
+  expect(withOmoDescendants(claudeNamed, rows)).toEqual(claudeNamed);
+});
+
 it("does not list an OmO process twice when herdr already names it", () => {
   const once = withOmoDescendants(launcherInfo, launcherRows);
   expect(withOmoDescendants(once, launcherRows)).toEqual(once);
@@ -314,6 +338,7 @@ it("counts an omo's holder as held only while the process's start is readable", 
     try {
       holdRecord(join(home, ".omo", "agent", "sessions", omoSessionFolder(cwd)), "sess-1", pid, { pid, processStartedAtMs: 1_792_000_000_000, cwd });
       expect(omoProcessIdentity({ pid, argv: ["omo"], cwd }, cwd, home, () => null)).toMatchObject({ heldIds: ["sess-1"], held: true });
+      // no readable start (Windows, a gone pid): the record may name a reused pid, so nothing is held
       start.mockReturnValue(null);
       expect(omoProcessIdentity({ pid, argv: ["omo"], cwd }, cwd, home, () => null)).toMatchObject({ custom: false, held: false });
     } finally { start.mockRestore(); }
@@ -332,6 +357,8 @@ it("never takes an env marker, an argv mention, a wrong cwd or a stale start for
     const neutral = ["/opt/team-ai/bin/run"];
     const env = [`OMO_CODING_AGENT_DIR=${agentDir}`];
     expect(omoProcessIdentity({ pid, argv: neutral, cwd }, cwd, home, () => env)).toBeNull();
+    // a holder another pid wrote, a foreign cwd and a start that is not this
+    // process's own each fail closed
     holdRecord(dir, "other-pid", pid, { pid: pid + 1, processStartedAtMs: processStartedAt(pid), cwd });
     expect(omoProcessIdentity({ pid, argv: neutral, cwd }, cwd, home, () => env)).toBeNull();
     rmSync(join(dir, "session-holders", "other-pid"), { recursive: true });
@@ -378,6 +405,7 @@ it("binds same-id sessions in different stores to the pane that owns each store"
     const second = omoTranscriptsOfCwd(cwd, panes, infos, home, envOf);
     expect(second.get("w:p1")?.path).toBe(realpathSync(fileA));
     expect(second.get("w:p2")?.path).toBe(realpathSync(fileB));
+    // an escaped symlink inside a store is still no candidate
     const outside = join(root, "outside.jsonl");
     writeFileSync(outside, JSON.stringify({ type: "session", id: "dup", cwd, timestamp: "2026-10-02T16:47:10.905Z" }) + "\n");
     symlinkSync(outside, join(dirB, "escaped.jsonl"));
@@ -446,6 +474,8 @@ it("keeps a scoped runtime's inference and launch-id guard inside its own store"
   expect(selectOmoTranscript("a", [foreignFresh], [a], 20_000)).toBeNull();
   expect(selectOmoTranscript("a", [ownFresh], [a], 20_000)).toBe("/a/fresh.jsonl");
   expect(selectOmoTranscript("a", [{ path: "/unstored.jsonl", id: "fresh", createdAt: 10_000 }], [a], 20_000)).toBeNull();
+  // the /new ambiguity guard of a launch-id hint looks only inside the owned store:
+  // a newer foreign file leaves the hint alone, a newer own one unsettles it
   const hinted = { ...a, ids: ["old-session"] };
   const old = { path: "/a/old.jsonl", id: "old-session", createdAt: 1_000, store: "/a/sessions" };
   const foreignNewer = { path: "/b/new.jsonl", id: "new", createdAt: 15_000, store: "/b/sessions" };

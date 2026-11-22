@@ -36,11 +36,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      # no setup-bun: a PC that has neither herdr nor Bun is the case under test
       - name: Install this commit
         if: github.event_name == 'pull_request'
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-install-e2e.ps1 -Ref $env:HEAD_SHA -Fresh
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-install-e2e.ps1 -Ref $env:HEAD_SHA -PluginRepository $env:HEAD_REPO -Fresh
       - name: Install the latest release with the README's command
         if: github.event_name != 'pull_request'
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-install-e2e.ps1 -Installer https://herdrweb.dev/install.ps1 -Fresh

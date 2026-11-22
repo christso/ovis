@@ -24,6 +24,7 @@ describe("the runtime a ping names", () => {
   it("says nothing for herdr's TUI server, whose ping names none", () => {
     expect(runtimeIdentity(undefined)).toEqual({});
     expect(runtimeIdentity({ direct_terminal_attach: true })).toEqual({});
+    // layout flags without a runtime are no one's: herdr's layout is its own
     expect(runtimeIdentity({ layout: { rename: true } })).toEqual({});
   });
 

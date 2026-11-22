@@ -10,7 +10,8 @@ import { graphHerdrEndpointKey } from "../../shared/graph-relationships.ts";
 import { processAgent } from "../agent-identity.ts";
 import { darwinStartTime } from "../darwin-process.ts";
 import { finishHerdrIdentity, herdrLifetime } from "../finishes.ts";
-import { herdrRpc, herdrSocketPath, sameSocket } from "./client.ts";
+import { herdrRpc, herdrSocketPath } from "./client.ts";
+import { sameSocket } from "./test-session.ts";
 import { linuxStartTicks } from "../process-owner.ts";
 import { graphCliObservationMetadata, graphCliObservationValue } from "../../shared/graph-cli.ts";
 

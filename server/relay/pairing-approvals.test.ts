@@ -28,12 +28,14 @@ function fixture() {
 describe("the pairing window across a restart", () => {
   it("is still open, and still local-only, for a server started on the same state", () => {
     const f = fixture();
-    f.open().openWindow(f.clock.at, { localOnly: true });
-    expect(f.saved()).toEqual({ v: 1, window_until: f.clock.at + PAIRING_WINDOW_MS, local_only_until: f.clock.at + PAIRING_WINDOW_MS });
+    const windowId = f.open().openWindow(f.clock.at, { localOnly: true });
+    expect(f.saved()).toEqual({ v: 1, window_until: f.clock.at + PAIRING_WINDOW_MS, local_only_until: f.clock.at + PAIRING_WINDOW_MS, window_id: windowId });
     f.clock.at += 60_000;
     const restarted = f.open();
     expect(restarted.windowOpen()).toBe(true);
     expect(restarted.localOnlyOpen()).toBe(true);
+    expect(restarted.closeWindow(windowId)).toBe(true);
+    expect(restarted.windowOpen()).toBe(false);
   });
 
   it("ends at the deadline it was opened with, not ten minutes after the restart", () => {
@@ -63,6 +65,7 @@ describe("the pairing window across a restart", () => {
       expect(restarted.windowOpen()).toBe(false);
       expect(restarted.localOnlyOpen()).toBe(false);
       expect(f.saved()).toEqual({ v: 1, window_until: 0, local_only_until: 0 });
+      // so no later start gets a window from it either, as a clamp to "now" gave at every restart
       f.clock.at += 365 * 86_400_000 - 60_000;
       expect(f.open().windowOpen()).toBe(false);
     }
@@ -72,6 +75,7 @@ describe("the pairing window across a restart", () => {
     const f = fixture();
     f.open().openWindow(f.clock.at, { localOnly: true });
     const opened = f.clock.at;
+    // a start with a clock earlier than the open sees a deadline more than one window ahead
     f.clock.at = opened - 60_000;
     expect(f.open().windowOpen()).toBe(false);
     f.clock.at = opened + 1;
@@ -103,8 +107,8 @@ describe("the pairing window across a restart", () => {
 
   it("stays not local-only when it was opened without it", () => {
     const f = fixture();
-    f.open().openWindow(f.clock.at);
-    expect(f.saved()).toEqual({ v: 1, window_until: f.clock.at + PAIRING_WINDOW_MS, local_only_until: 0 });
+    const windowId = f.open().openWindow(f.clock.at);
+    expect(f.saved()).toEqual({ v: 1, window_until: f.clock.at + PAIRING_WINDOW_MS, local_only_until: 0, window_id: windowId });
     const restarted = f.open();
     expect(restarted.windowOpen()).toBe(true);
     expect(restarted.localOnlyOpen()).toBe(false);
@@ -115,8 +119,8 @@ describe("the pairing window across a restart", () => {
     const approvals = f.open();
     approvals.openWindow(f.clock.at, { localOnly: true });
     f.clock.at += 60_000;
-    approvals.openWindow(f.clock.at);
-    expect(f.saved()).toEqual({ v: 1, window_until: f.clock.at + PAIRING_WINDOW_MS, local_only_until: f.clock.at - 60_000 + PAIRING_WINDOW_MS });
+    const windowId = approvals.openWindow(f.clock.at);
+    expect(f.saved()).toEqual({ v: 1, window_until: f.clock.at + PAIRING_WINDOW_MS, local_only_until: f.clock.at - 60_000 + PAIRING_WINDOW_MS, window_id: windowId });
   });
 
   it.each([
@@ -219,6 +223,7 @@ describe("the pairing window across a restart", () => {
     const approvals = new RelayPairingApprovals({ path: f.path, now: () => f.clock.at, setTimer: (run, ms) => { timers.push({ run, ms }); return () => {}; } });
     approvals.openWindow(f.clock.at, { localOnly: true });
     expect(timers.at(-1)!.ms).toBe(PAIRING_WINDOW_MS);
+    // fired early (a timer is not a clock): it waits for the rest
     f.clock.at += PAIRING_WINDOW_MS - 1_000;
     timers.at(-1)!.run();
     expect(timers.at(-1)!.ms).toBe(1_000);
@@ -316,6 +321,7 @@ describe("what the PC's own windows are told of a waiting request", () => {
     approvals.ask("phone", "123456", f.clock.at + 90_000, device);
     approvals.ask("tablet", "654321", f.clock.at + 90_000, { ...device, localOnly: true });
     expect(approvals.list().map(({ label, local_only }) => [label, local_only])).toEqual([["phone", true], ["tablet", true]]);
+    // account members are not shown it at all
     expect(approvals.remoteList()).toEqual([]);
   });
 
@@ -344,10 +350,13 @@ describe("what the PC's own windows are told of a waiting request", () => {
     approvals.ask("phone", "123456", f.clock.at + 90_000, { ...device, membersOnly: true, localOnly: true });
     expect(approvals.list()).toEqual([]);
     expect(seen.at(-1)).toEqual([]);
+    // what members are told carries no such field either
     expect(approvals.remoteList()).toHaveLength(1);
     expect("local_only" in approvals.remoteList()[0]!).toBe(false);
   });
 
+  // nothing here tells which device shows digits and which takes them typed: the mark is the PC's
+  // window, and a plain link asked meanwhile must not hand what the add-me screen waits for to members
   it("keeps the mark, and the request off members' screens, when an ordinary link is asked for meanwhile", () => {
     const f = fixture();
     const approvals = f.open();
@@ -373,5 +382,52 @@ describe("what the PC's own windows are told of a waiting request", () => {
     expect(seen[0]![0]!.expires_at).toBe(new Date(f.clock.at + 59_500).toISOString());
     f.clock.at += 120_000;
     expect(approvals.list()[0]!.left_ms).toBe(0);
+  });
+});
+
+describe("an account join on this PC's own window", () => {
+  const join = (approvals: RelayPairingApprovals, at: number) => approvals.ask("Tablet", "654321", at + 90_000, { intent: "account", key: "k2", deviceId: "d2", membersOnly: true })!;
+
+  it("is listed without its digits, apart from the window's own list", () => {
+    const f = fixture();
+    const approvals = f.open();
+    join(approvals, f.clock.at);
+    expect(approvals.list()).toEqual([]);
+    const [listed] = approvals.ownJoins(f.clock.at + 1_000);
+    expect(listed).toEqual({ id: expect.any(String), label: "Tablet", asked_at: new Date(f.clock.at).toISOString(), left_ms: 89_000 });
+    expect(JSON.stringify(approvals.ownJoins())).not.toContain("654321");
+  });
+
+  it("lets in only with the digits typed, and one wrong entry ends it for good", async () => {
+    const f = fixture();
+    const approvals = f.open();
+    const right = join(approvals, f.clock.at);
+    expect(approvals.decideTyped(approvals.ownJoins()[0]!.id, "654321")).toBe("decided");
+    expect(await right.decision).toEqual({ approved: true });
+    const wrong = join(approvals, f.clock.at);
+    const id = approvals.ownJoins()[0]!.id;
+    expect(approvals.decideTyped(id, "123456")).toBe("wrong_digits");
+    expect(await wrong.decision).toEqual({ approved: false });
+    expect(approvals.decideTyped(id, "654321")).toBe("gone");
+  });
+
+  it("never decides a comparison the window itself shows", () => {
+    const f = fixture();
+    const approvals = f.open();
+    approvals.openWindow(f.clock.at);
+    approvals.ask("Phone", "111111", f.clock.at + 90_000, { intent: "pc", key: "k", deviceId: "d" });
+    expect(approvals.decideTyped(approvals.list()[0]!.id, "111111")).toBe("gone");
+    expect(approvals.list()).toHaveLength(1);
+  });
+});
+
+describe("what this PC's own window may decide", () => {
+  it("is never a vouched PC or a plain pairing, even one taken outside the window", () => {
+    const f = fixture();
+    const approvals = f.open();
+    approvals.ask("Other PC", "111111", f.clock.at + 90_000, { intent: "pc", key: "k1", deviceId: "d1", membersOnly: true, vouched: true });
+    approvals.ask("Plain", "222222", f.clock.at + 90_000, { intent: "pc", key: "k2", deviceId: "d2", membersOnly: true });
+    expect(approvals.ownJoins()).toEqual([]);
+    for (const { id } of approvals.remoteList()) expect(approvals.decideTyped(id, "111111")).toBe("gone");
   });
 });
