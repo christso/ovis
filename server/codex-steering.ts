@@ -10,6 +10,10 @@ interface SteeringIO {
   wait?: (ms: number) => Promise<void>;
 }
 
+const EMPTY_COMPOSER = /^[›»](?:\s+Ask Codex to do anything)?$/;
+const WORKING = /^[•◦]\s*(?:Working|Reconnecting(?:\.{3}|…)?(?: waiting for network)?)\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\)$/;
+const BACKGROUND_WORKING = /^(?:[•◦]\s*)?Working\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\) · \d+ background terminals? running · \/ps to view · \/stop to close$/;
+const workingStatus = (line: string) => WORKING.test(line) || BACKGROUND_WORKING.test(line);
 const STEERING_HINT = "Messages to be submitted after next tool call (press esc to interrupt and send immediately)";
 const compact = (text: string) => text.replace(/\s/g, "");
 function lastLine<T>(lines: T[], matches: (line: T) => boolean): number {
@@ -32,11 +36,11 @@ export function codexSteeringPending(screen: string, text: string): boolean {
     return { indent: line.length - line.trimStart().length, text: line.trim() };
   }).filter((row) => row.text);
   const lines = rows.map((row) => row.text);
-  const composer = lastLine(lines, (line) => /^[›»](?:\s+Ask Codex to do anything)?$/.test(line));
+  const composer = lastLine(lines, (line) => EMPTY_COMPOSER.test(line));
   if (composer < 0) return false;
   const footer = lines.slice(composer + 1);
   if (footer.length > 4 || footer.some((line) => !FOOTER.test(line))) return false;
-  const status = lastLine(lines.slice(0, composer), (line) => /^[•◦]\s*(?:Working|Reconnecting(?:\.{3}|…)?(?: waiting for network)?)\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\)$/.test(line));
+  const status = lastLine(lines.slice(0, composer), workingStatus);
   if (status < 0) return false;
   const panel = rows.slice(status + 1, composer);
   const isEntry = (row: { text: string }) => /^↳\s*\S/.test(row.text);
@@ -80,6 +84,20 @@ const SEND_NOW: Record<string, { pending: (screen: string, text: string) => bool
   agy: { pending: agySteeringPending, key: "alt+m", restart: false },
 };
 
+/** A complete native user row above the live status is sent text. The input below it may still be a draft. */
+function acceptedUserRows(screen: string, text: string, allowDraft = false): number | null {
+  const lines = stripVTControlCharacters(screen).split(/\r?\n/).map((line) => line.trimEnd());
+  const composer = lastLine(lines, (line) => /^[›»](?:\s|$)/.test(line));
+  if (composer < 0 || (!allowDraft && !EMPTY_COMPOSER.test(lines[composer]!))) return null;
+  const status = lastLine(lines.slice(0, composer), (line) => workingStatus(line.trim()));
+  const footer = lines.slice(composer + 1).filter((line) => line.trim());
+  if (status < 0 || footer.length === 0 || footer.length > 4 || footer.some((line) => !FOOTER.test(line.trim()))) return null;
+  return lines.slice(0, status).filter((line, index) =>
+    (line === `› ${text}` || line === `» ${text}`) &&
+    index > 0 && lines[index - 1] === "" && lines[index + 1] === "",
+  ).length;
+}
+
 /** Enter can leave steering pending until a tool boundary. Only Send now may send it at once, and only for `text`. */
 export async function interruptCodexSteering(explicit: boolean, text: string, submitted: CodexSteeringContext, io: SteeringIO): Promise<void> {
   const agent = submitted.agent;
@@ -88,6 +106,8 @@ export async function interruptCodexSteering(explicit: boolean, text: string, su
   const now = io.now ?? Date.now;
   const wait = io.wait ?? Bun.sleep;
   const deadline = now() + 1500;
+  const sent = text.trimEnd();
+  const before = agent === "codex" && sent && !/[\r\n]/.test(sent) ? acceptedUserRows(submitted.screen, sent, true) : null;
   const unconfirmed = () => new Error("Immediate delivery was not confirmed. Check the terminal before sending again.");
   while (now() < deadline) {
     // The caller rechecks live identity, lease, authority and interactive prompts in this read.
@@ -101,6 +121,8 @@ export async function interruptCodexSteering(explicit: boolean, text: string, su
       await io.press(steer.key, () => now() < deadline);
       return;
     }
+    // Codex can consume Enter into the active turn before the pending panel is drawn.
+    if (before !== null && acceptedUserRows(current.screen, sent) === before + 1) return;
     await wait(Math.min(50, deadline - now()));
   }
   // agy draws no queued row for a message it took straight away (e.g. its turn ended before the status
