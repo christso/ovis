@@ -144,10 +144,6 @@ function makeWaiting(): void {
   for (const id of [...waiting]) { waiting.delete(id); if (open.has(id)) write(id); else stranded.delete(id); }
 }
 
-export function sheetEntryActive(): boolean {
-  return owned(window.history.state);
-}
-
 export function sheetSteppedOff(): boolean {
   return steppedOff;
 }

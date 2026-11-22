@@ -751,19 +751,19 @@ it("Back from the shown list onto an entry that names only an absolute file befo
 });
 
 
-it("writes a worktree pane before its workspace is listed, then fills in its workspace on the same entry", async () => {
+it("writes a worktree pane once its workspace is listed", async () => {
   await mount([P2]);
 
   await act(async () => { place.paneId = "p3"; draw(); });
 
-  expect(addresses()).toEqual([P2, "?pane=p3&view=chat"]);
-  expect(entries[1]!.state).toEqual({ [NAV_KEY]: true });
+  expect(addresses()).toEqual([P2]);
 
   const listed = roster();
   listed.panes.push({ pane_id: "p3", workspace_id: "w1", focused: false } as unknown as HerdrPane);
   await act(async () => { place.snapshot = listed; draw(); });
 
   expect(addresses()).toEqual([P2, "?ws=w1-api&pane=p3&view=chat"]);
+  expect(entries[1]!.state).toEqual({ [NAV_KEY]: true });
   await back();
   expect(place.paneId).toBe("p2");
   await forward();
@@ -772,23 +772,16 @@ it("writes a worktree pane before its workspace is listed, then fills in its wor
 });
 
 
-it("writes a worktree opened from the inbox list before its workspace is listed", async () => {
+it("keeps the inbox as the Back destination while a worktree waits for its workspace", async () => {
   place = { ...place, inbox: { open: true, enabled: true }, mode: true };
   await mount(["?app=inbox"]);
   await act(async () => { place.paneId = "p3"; place.inbox = { ...place.inbox, open: false }; draw(); });
-  expect(addresses()).toEqual(["?app=inbox", "?app=inbox&pane=p3&view=chat"]);
-  expect(entries[1]!.state).toEqual(FROM_INBOX);
-});
+  expect(addresses()).toEqual(["?app=inbox"]);
 
+  const listed = roster();
+  listed.panes.push({ pane_id: "p3", workspace_id: "w1", focused: false } as unknown as HerdrPane);
+  await act(async () => { place.snapshot = listed; draw(); });
 
-it("releases a pending New workspace hold when another unlisted pane is selected", async () => {
-  place = { ...place, newSessionOpen: true, newFields: { cwd: null, name: "New", agent: null }, inbox: { open: true, enabled: true } };
-  await mount([""]);
-  await act(async () => { place.newSessionOpen = false; place.newFields = null; place.paneId = "p3"; place.inbox = { ...place.inbox, open: false }; draw(); });
-  expect(addresses()).toEqual([""]);
-
-  await act(async () => { place.paneId = "p4"; draw(); });
-
-  expect(addresses()).toEqual(["", "?pane=p4&view=chat"]);
+  expect(addresses()).toEqual(["?app=inbox", "?app=inbox&ws=w1-api&pane=p3&view=chat"]);
   expect(entries[1]!.state).toEqual(FROM_INBOX);
 });

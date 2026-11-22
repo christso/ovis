@@ -9,7 +9,7 @@ import { INBOX_FROM_KEY, type useInbox } from "./useInbox.ts";
 import { pageAddress, pageSearch } from "./pageQuery.ts";
 import type { SelectionMark } from "./selectionMark.ts";
 import { settingsEntry, settingsSteppedOff } from "./settingsHistory.ts";
-import { onSheetTraversalOver, sheetEntryActive, sheetSteppedOff, sheetTraversalPending } from "./sheetHistory.ts";
+import { onSheetTraversalOver, sheetSteppedOff, sheetTraversalPending } from "./sheetHistory.ts";
 import type { useFilePanels } from "./useFilePanels.ts";
 import type { useNewSessionState } from "./useNewSessionDialog.ts";
 import type { usePaneLens } from "./usePaneLens.ts";
@@ -34,7 +34,7 @@ export function popUnread(dispatching: Event | undefined, read: Event | null): b
  * mode (lib/inboxMode.ts) the list is the floor and a thread one entry above it: a move from one
  * thread to another takes the thread's entry, so rows opened one after another never pile up.
  */
-export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, mode, newSessionOpen, newSessionMachineId, selectedPane, selectedPaneId, selectedWorkspace, viewing, selectedMachineId, leaveFile, restoreFile, fileFromPop, forgetLeftFiles, locked, machines, snapshot, linkLanded, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, wideScreen, sidebarCollapsed, newTab, newFields, autoSelected, pendingFile, selectedMachine, openFile, machinesRef, selectTargetRef, pendingLink, setLinkLanded, linkSince, rosterSeq, setNewSessionOpen, pendingCreate, newSessionPending, setHeaderNote, selectionRef }: {
+export function useAddressBar({ page = "workspace", onPage, inbox, mode, newSessionOpen, newSessionMachineId, selectedPane, selectedPaneId, selectedWorkspace, viewing, selectedMachineId, leaveFile, restoreFile, fileFromPop, forgetLeftFiles, locked, machines, snapshot, linkLanded, view, settingsOpen, settingsPage, settingsLinkPage, settingsLinkSection, wideScreen, sidebarCollapsed, newTab, newFields, autoSelected, pendingFile, selectedMachine, openFile, machinesRef, selectTargetRef, pendingLink, setLinkLanded, linkSince, rosterSeq, setNewSessionOpen, pendingCreate, newSessionPending, setHeaderNote, selectionRef }: {
   page?: GraphPage;
   onPage?(page: GraphPage): void;
   inbox: Pick<ReturnType<typeof useInbox>, "shown" | "enabled" | "show" | "leave">;
@@ -78,12 +78,10 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
   newSessionPending: ReturnType<typeof useNewSessionState>["newSessionPending"];
   setHeaderNote: Dispatch<SetStateAction<LinkNote | "copied" | null>>;
   selectionRef: RefObject<SelectionMark>;
-  setLinkTick: Dispatch<SetStateAction<number>>;
 }): void {
   // Nothing is written while locked or before the roster is in, so a
   // link survives the access gate and a slow first read.
   const writtenLink = useRef<AppLink | null>(null);
-  const workspaceCreation = useRef<{ open: boolean; machineId: string; paneId: string | null } | null>(null);
   const onPageRef = useRef(onPage); onPageRef.current = onPage;
   // Back or Forward landed somewhere other than its entry said: that place is written over the entry
   const poppedTo = useRef(false);
@@ -137,16 +135,7 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
       if (writeGraphPage(page)) writtenLink.current = null;
       return;
     }
-    // Only the creation dialog keeps an unlisted pane waiting; a worktree can leave the list too.
-    const creation = workspaceCreation.current;
-    if (newSessionOpen || (creation?.open && linkWorkspaceId === undefined)) {
-      workspaceCreation.current = { open: newSessionOpen, machineId: selectedMachineId, paneId: selectedPaneId };
-    } else if (linkWorkspaceId !== undefined || creation?.machineId !== selectedMachineId || creation?.paneId !== selectedPaneId) {
-      workspaceCreation.current = null;
-    }
-    // A sheet can close without changing the selected pane again. Resume the held write when its Back lands.
-    if (linkWorkspaceId === undefined && sheetEntryActive()) { heldWrite.current = true; return; }
-    if (linkWorkspaceId === undefined && workspaceCreation.current !== null) {
+    if (linkWorkspaceId === undefined) {
       // the pane New workspace made from the list is not listed yet and the dialog has closed: the list's
       // entry it was open on says the list's place again, so Back from the new pane does not open it again
       const written = writtenLink.current;
@@ -163,7 +152,7 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
     const link: AppLink = {
       ...(page === "workspace" ? {} : { page }),
       // the list's place names no PC (above); the dialog opened over it names its own PC, which the list may not have selected
-      machine: inboxShown ? (newSessionOpen ? newSessionMachineId : LOCAL_MACHINE) : selectedMachineId, workspace: linkWorkspaceId ?? null, workspaceSlug: linkSlug, pane: linkPaneId, view: linkPaneId ? view : null, file: inboxShown ? null : linkFile,
+      machine: inboxShown ? (newSessionOpen ? newSessionMachineId : LOCAL_MACHINE) : selectedMachineId, workspace: linkWorkspaceId, workspaceSlug: linkSlug, pane: linkPaneId, view: linkPaneId ? view : null, file: inboxShown ? null : linkFile,
       settings: settingsOpen ? settingsPage : null, section: settingsOpen && settingsPage === settingsLinkPage ? settingsLinkSection : null,
       sidebar: wideScreen && sidebarCollapsed ? "hidden" : null,
       create: newSessionOpen ? { kind: newTab ? "tab" : "workspace", cwd: newFields?.cwd ?? null, name: newFields?.name ?? null, agent: newFields?.agent ?? null } : null,
@@ -248,14 +237,6 @@ export function useAddressBar({ page = "workspace", onPage, setLinkTick, inbox, 
       else {
         const pane = machine?.snapshot ? resolveLink(machine.snapshot, link).pane : link.pane;
         if (pane === null) {
-          if (link.pane) {
-            selectTargetRef.current(link.machine, link.pane, link.view ?? undefined);
-            pendingLink.current = link; pendingFile.current = null; setLinkLanded(false);
-            linkSince.current = rosterSeq.current;
-            poppedTo.current = true; popMoving.current = true;
-            setLinkTick((tick) => tick + 1);
-            return;
-          }
           // the dialog opens over the pane already shown on its PC; another PC's fallback pane is picked
           if (link.create && selectionRef.current.machineId !== link.machine) { poppedTo.current = true; popMoving.current = true; selectTargetRef.current(link.machine, null); }
           if (fileFromLink(link) !== null) { if (inboxRef.current.shown) { inboxRef.current.leave(); poppedTo.current = true; } }
