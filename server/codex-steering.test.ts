@@ -111,14 +111,14 @@ describe("explicit Codex Send now", () => {
     }
   });
 
-  it("interrupts a native pending message while Codex shows a background terminal", async () => {
+  it("does not widen the Escape check to a background-terminal status", async () => {
     const background = { ...working, screen: frame().replace(
       "• Working (2s • esc to interrupt)",
       "• Working (2s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close",
     ) };
     const f = fixture([background]);
-    await interruptCodexSteering(true, "send this now", working, f.io);
-    expect(f.effects).toEqual(["restart gate", "Escape"]);
+    await expect(interruptCodexSteering(true, "send this now", working, f.io)).rejects.toThrow("not confirmed");
+    expect(f.effects).toEqual([]);
   });
 
   const liveStatus = "Working (5s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close";
@@ -137,7 +137,14 @@ describe("explicit Codex Send now", () => {
 
   it("does not confirm the draft or an unchanged earlier occurrence of the same message", async () => {
     const submitted = live("› send this now", liveComposer.replace("Ask Codex to do anything", "send this now"));
-    for (const current of [submitted, live("› send this now"), live("› send this now\n\n  › send this now")]) {
+    const otherDraft = liveComposer.replace("Ask Codex to do anything", "another draft");
+    for (const current of [
+      submitted,
+      live("› send this now"),
+      live("› send this now\n\n  › send this now"),
+      live("› send this now\n\n› send this now", otherDraft),
+      live("› send this now\n\n› send this now\n\n› send this now"),
+    ]) {
       const f = fixture([current]);
       await expect(interruptCodexSteering(true, "send this now", submitted, f.io)).rejects.toThrow("not confirmed");
       expect(f.effects).toEqual([]);

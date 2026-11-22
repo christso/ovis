@@ -10,7 +10,8 @@ interface SteeringIO {
   wait?: (ms: number) => Promise<void>;
 }
 
-const WORKING = /^(?:[•◦]\s*)?(?:Working|Reconnecting(?:\.{3}|…)?(?: waiting for network)?)\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\)(?:\s+·\s+\d+ background terminals? running\s+·\s+\/ps to view\s+·\s+\/stop to close)?$/;
+const EMPTY_COMPOSER = /^[›»](?:\s+Ask Codex to do anything)?$/;
+const LIVE_WORKING = /^(?:[•◦]\s*)?Working\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\)(?:\s+·\s+\d+ background terminals? running\s+·\s+\/ps to view\s+·\s+\/stop to close)?$/;
 const STEERING_HINT = "Messages to be submitted after next tool call (press esc to interrupt and send immediately)";
 const compact = (text: string) => text.replace(/\s/g, "");
 function lastLine<T>(lines: T[], matches: (line: T) => boolean): number {
@@ -33,11 +34,11 @@ export function codexSteeringPending(screen: string, text: string): boolean {
     return { indent: line.length - line.trimStart().length, text: line.trim() };
   }).filter((row) => row.text);
   const lines = rows.map((row) => row.text);
-  const composer = lastLine(lines, (line) => /^[›»](?:\s+Ask Codex to do anything)?$/.test(line));
+  const composer = lastLine(lines, (line) => EMPTY_COMPOSER.test(line));
   if (composer < 0) return false;
   const footer = lines.slice(composer + 1);
   if (footer.length > 4 || footer.some((line) => !FOOTER.test(line))) return false;
-  const status = lastLine(lines.slice(0, composer), (line) => WORKING.test(line));
+  const status = lastLine(lines.slice(0, composer), (line) => /^[•◦]\s*(?:Working|Reconnecting(?:\.{3}|…)?(?: waiting for network)?)\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\)$/.test(line));
   if (status < 0) return false;
   const panel = rows.slice(status + 1, composer);
   const isEntry = (row: { text: string }) => /^↳\s*\S/.test(row.text);
@@ -59,12 +60,13 @@ export function codexSteeringPending(screen: string, text: string): boolean {
 }
 
 /** A complete native user row above the live status is sent text. The input below it may still be a draft. */
-function acceptedUserRows(screen: string, text: string): number | null {
+function acceptedUserRows(screen: string, text: string, allowDraft = false): number | null {
   const lines = stripVTControlCharacters(screen).split(/\r?\n/).map((line) => line.trimEnd());
   const composer = lastLine(lines, (line) => /^[›»](?:\s|$)/.test(line));
-  const status = lastLine(lines.slice(0, composer), (line) => WORKING.test(line.trim()));
+  if (composer < 0 || (!allowDraft && !EMPTY_COMPOSER.test(lines[composer]!))) return null;
+  const status = lastLine(lines.slice(0, composer), (line) => LIVE_WORKING.test(line.trim()));
   const footer = lines.slice(composer + 1).filter((line) => line.trim());
-  if (composer < 0 || status < 0 || footer.length === 0 || footer.length > 4 || footer.some((line) => !FOOTER.test(line.trim()))) return null;
+  if (status < 0 || footer.length === 0 || footer.length > 4 || footer.some((line) => !FOOTER.test(line.trim()))) return null;
   return lines.slice(0, status).filter((line, index) =>
     (line === `› ${text}` || line === `» ${text}`) &&
     index > 0 && lines[index - 1] === "" && lines[index + 1] === "",
@@ -78,21 +80,21 @@ export async function interruptCodexSteering(explicit: boolean, text: string, su
   const wait = io.wait ?? Bun.sleep;
   const deadline = now() + 1500;
   const sent = text.trimEnd();
-  const before = sent && !/[\r\n]/.test(sent) ? acceptedUserRows(submitted.screen, sent) : null;
+  const before = sent && !/[\r\n]/.test(sent) ? acceptedUserRows(submitted.screen, sent, true) : null;
   const unconfirmed = () => new Error("Codex immediate delivery was not confirmed. Check the terminal before sending again.");
   while (now() < deadline) {
     // The caller rechecks live identity, lease, authority and interactive prompts in this read.
     const current = await io.read();
     if (now() >= deadline || current.agent !== "codex") throw unconfirmed();
     if (!current.working) return;
-    // Codex can consume Enter into the active turn before the pending panel is drawn.
-    if (before !== null && (acceptedUserRows(current.screen, sent) ?? 0) > before) return;
     if (codexSteeringPending(current.screen, text)) {
       io.restarting();
       // the RPC's connect is awaited: by the time herdr is written to, the deadline may have passed
       await io.escape(() => now() < deadline);
       return;
     }
+    // Codex can consume Enter into the active turn before the pending panel is drawn.
+    if (before !== null && acceptedUserRows(current.screen, sent) === before + 1) return;
     await wait(Math.min(50, deadline - now()));
   }
   throw unconfirmed();
