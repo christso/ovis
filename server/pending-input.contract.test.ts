@@ -1181,7 +1181,7 @@ describe("connection-owned pending input", () => {
     await f.waitBytes("barrier\r");
     expect(f.bytes().split("held cross tab").length - 1).toBe(1);
   }, 30_000);
-  it("reconciles a late Codex native append through the production conversation watcher", async () => {
+  it.each(["legacy user event", "completed user item"] as const)("reconciles a late Codex %s through the production conversation watcher", async (format) => {
     const transcript = join(root, "codex-native-receipt.jsonl");
     writeFileSync(transcript, JSON.stringify({ type: "session_meta", timestamp: new Date().toISOString(), payload: { id: "receipt-session", cwd: root } }) + "\n");
     const f = await setup("codex-native-receipt", "codex", "• Working (2s • esc to interrupt)\n› Ask Codex to do anything\n");
@@ -1193,7 +1193,12 @@ describe("connection-owned pending input", () => {
     f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: row.id, action: "steer" });
     expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "codex_interrupt_unconfirmed" });
     const before = f.bytes();
-    appendFileSync(transcript, JSON.stringify({ type: "event_msg", timestamp: new Date().toISOString(), payload: { type: "user_message", message: row.text } }) + "\n");
+    const timestamp = new Date().toISOString();
+    const payload = format === "legacy user event" ? { type: "user_message", message: row.text } : {
+      type: "item_completed", thread_id: "receipt-session", turn_id: "active-turn",
+      item: { type: "UserMessage", id: "accepted-user-item", content: [{ type: "text", text: row.text, text_elements: [] }] },
+    };
+    appendFileSync(transcript, JSON.stringify({ type: "event_msg", timestamp, payload }) + "\n");
     const confirmed = await f.removed(row.id, "consumed");
     expect(confirmed.messages).toMatchObject([{ id: follower.id, state: "held" }]);
     expect(confirmed.messages.some((message: PendingMessage) => message.id === row.id)).toBe(false);
