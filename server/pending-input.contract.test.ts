@@ -1240,6 +1240,21 @@ describe("connection-owned pending input", () => {
     expect(f.bytes()).toBe(paste("send this now"));
   }, 30_000);
 
+  it("clears Send now after Codex adds the message to its active turn without a steering panel", async () => {
+    const composer = "› Ask Codex to do anything";
+    const status = "Working (5s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close";
+    const footer = "  GPT-6.2-Sol default · /workspace\n  ← for agents · ? for shortcuts";
+    const before = `› earlier input\n\n${status}\n\n${composer}\n${footer}\n`;
+    const f = await setup("codex-send-now-already-accepted", "codex", before);
+    const message = await f.queue(1, "send this now");
+    f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: message.id, action: "steer" });
+    await f.waitBytes("\r");
+    await f.showScreen(before.replace(status, `› ${message.text}\n\n${status}`));
+    expect(await f.socket.action(10)).toMatchObject({ ok: true });
+    await f.removed(message.id);
+    expect(f.bytes()).toBe(`${paste(message.text)}\r`);
+  }, 30_000);
+
   it("interrupts an explicit Codex Send now only after its native steering panel appears", async () => {
     const f = await setup("codex-send-now", "codex"); const message = await f.queue(1, "send this now");
     f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: message.id, action: "steer" });
