@@ -1,8 +1,9 @@
+/** The core and its terminals keep running, as for every hc client. */
 import { app, autoUpdater as squirrel, BrowserWindow, ipcMain, Menu, nativeImage, Notification, powerMonitor, powerSaveBlocker, session, shell, Tray, type MenuItemConstructorOptions } from "electron";
-import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileSync, rmSync, type WriteStream } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, mkdirSync, readFileSync, rmSync, watch, type FSWatcher, type WriteStream } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { choosePort, coreEnv, endLeftover, installCore, isFile, layout, openLog, processCommand, processStartSync, readSaved, serverEnv, startCore, startServer, stopServer, writeSaved, type RunningServer } from "./children.ts";
 import { accountServiceOf, startLoopbackSignIn, type LoopbackSignIn } from "./accountSignIn.ts";
 import { awakeLabel, DESKTOP_ACTIVITY_FILE, holdAwake, readAwakeSettings, readWorking, writeAwakeSettings, type AwakeSettings } from "./awake.ts";
@@ -11,6 +12,13 @@ import { extractedAppDir, othersRunFrom } from "./appimage.ts";
 import { desktopLocale, desktopText } from "./text.ts";
 import { hideWindow } from "./windowClose.ts";
 import { argvLinkQuery, LINK_SCHEME, openLinkQuery, tellsLink } from "./openLink.ts";
+import { openOutside } from "./openOutside.ts";
+import { findBrowsers, readLinkBrowser, webAddress, writeLinkBrowser, type FoundBrowsers, type LinkBrowser } from "./browsers.ts";
+import { BrowserTabs, type BrowserBounds } from "./browserTabs.ts";
+import { debuggingSwitch, ownAddresses, readBrowserState } from "./browserState.ts";
+import { networkInterfaces } from "node:os";
+import { BrowserBroker, brokerPath } from "./browserBroker.ts";
+import { BROWSER_TOKENS_DIR } from "../../../shared/browser-broker.ts";
 
 type StepState = "pending" | "ok" | "failed";
 export interface Status {
@@ -34,6 +42,7 @@ const versions = (() => {
 const logs = join(app.getPath("userData"), "logs");
 const savedPath = join(app.getPath("userData"), "desktop.json");
 const stateDir = process.env["OVIS_STATE_DIR"] || join(app.getPath("userData"), "server");
+// from the app's root (this folder, or app.asar): the bundler fixes __dirname to where it was built
 const connectPage = join(app.getAppPath(), "renderer", "connect.html");
 const connectPageUrl = pathToFileURL(connectPage).href;
 const preload = join(app.getAppPath(), "out", "preload.js");
@@ -60,9 +69,19 @@ const awakePath = join(app.getPath("userData"), "awake.json");
 let awake = readAwakeSettings(awakePath);
 let awakeBlocker: number | null = null;
 let awakeWorking = 0;
+const linkBrowserPath = join(app.getPath("userData"), "link-browser.json");
+let linkBrowser = readLinkBrowser(linkBrowserPath);
+let browsersFound: Promise<FoundBrowsers> | null = null;
 let text = desktopText("en");
 /** the pane an `ovis://open` link names (openLink.ts), as its query: told to the server's page once it shows */
 let pendingLink: string | null = null;
+/** the built-in browser while its setting is on (browserTabs.ts), and the port of the server it keeps out */
+let browser: BrowserTabs | null = null;
+let browserPort: number | null = null;
+let stateWatch: FSWatcher | null = null;
+/** the agents' way into it (browserBroker.ts), open only while it is on; none where there is no local-only socket (Windows) */
+const brokerSocket = brokerPath(app.getPath("userData"), process.platform);
+const broker = brokerSocket === null ? null : new BrowserBroker(() => browser, join(stateDir, BROWSER_TOKENS_DIR), brokerSocket);
 
 const accountService = accountServiceOf(process.env);
 
@@ -76,10 +95,12 @@ function ours(url: string): boolean {
   try { return new URL(url).origin === serverOrigin(); } catch { return false; }
 }
 
-function openOutside(url: string): void {
-  try {
-    if (["http:", "https:", "mailto:"].includes(new URL(url).protocol)) void shell.openExternal(url);
-  } catch {}
+/**
+ * The server's own page, by its frame's real origin, not its address: the server also shows a file's HTML at its
+ * own address, in an opaque origin.
+ */
+function serverPage(frame: Electron.WebFrameMain | null | undefined): boolean {
+  return frame != null && frame.parent === null && frame.origin === serverOrigin() && ours(frame.url);
 }
 
 function setStatus(next: Partial<Status>): void {
@@ -89,7 +110,52 @@ function setStatus(next: Partial<Status>): void {
 }
 
 function showConnect(): void {
+  browser?.hide();
   if (window && !window.webContents.getURL().startsWith("file:")) void window.loadFile(connectPage);
+}
+
+/**
+ * The built-in browser follows its setting in the server's state folder, read again on each change
+ * there: off, it has no tab and no profile in use; on, a new block list closes the tabs it refuses.
+ */
+function updateBrowser(): void {
+  const state = readBrowserState(stateDir, browserPort, debuggingSwitch((name) => app.commandLine.hasSwitch(name)));
+  const was = browser !== null;
+  if (!state.enabled) {
+    if (browser) broker?.stop();
+    browser?.closeAll();
+    browser = null;
+  } else if (browser) {
+    browser.setPolicy(state.policy);
+    // a quit that did not happen (a refused update) stopped the socket: it listens again once that quit is over (start
+    // is a no-op while it listens); never while the app is on its way out
+    if (!quitting) broker?.start().catch((error: unknown) => console.error(`The built-in browser's agent socket did not open: ${message(error)}`));
+  } else {
+    browser = new BrowserTabs(() => window, state.policy, join(app.getPath("userData"), "browser-downloads"), tellBrowser, () => ownAddresses(networkInterfaces()));
+    broker?.start().catch((error: unknown) => console.error(`The built-in browser's agent socket did not open: ${message(error)}`));
+  }
+  if (was !== (browser !== null)) tellBrowser();
+}
+
+function watchState(): void {
+  if (stateWatch) return;
+  try {
+    stateWatch = watch(stateDir, (_event, name) => {
+      if (name === null || name === "preferences.json" || name === "address-pcs.json") updateBrowser();
+    });
+  } catch (error) {
+    console.error(`Watching ${stateDir} failed: ${message(error)}`);
+  }
+}
+
+function browserView(): { tabs: ReturnType<BrowserTabs["list"]>; results: ReturnType<BrowserTabs["results"]> } | null {
+  return browser ? { tabs: browser.list(), results: browser.results() } : null;
+}
+
+/** to the server's own page alone */
+function tellBrowser(): void {
+  const contents = window?.webContents;
+  if (contents && serverPage(contents.mainFrame)) contents.send("ovis:tabs", browserView());
 }
 
 function showWindow(): void {
@@ -108,6 +174,7 @@ function openLink(query: string): void {
   tellLink();
 }
 
+/** To the server's page alone, once it has loaded (openLink.ts tellsLink); preload.ts holds it until the page listens. */
 function tellLink(loaded = false): void {
   const contents = window?.webContents;
   const page = contents ? { ours: ours(contents.getURL()), loadingMainFrame: contents.isLoadingMainFrame() } : null;
@@ -159,6 +226,7 @@ async function launch(): Promise<void> {
     const port = await choosePort(saved.port);
     if (quitting) return;
     try {
+      // recorded as soon as it runs, so a crash of the app before it listens still leaves its pid behind
       const running = await startServer(programs, serverEnv(process.env, { hc, stateDir, port }), log, 60_000, (child) => {
         spawning = child;
         writeSaved(savedPath, { port, server: { pid: child.pid!, bun: programs.serverBinary, started: processStartSync(child.pid!) } });
@@ -170,6 +238,9 @@ async function launch(): Promise<void> {
         return;
       }
       server = running;
+      browserPort = port;
+      watchState();
+      updateBrowser();
       const runLog = log;
       void running.exited.then((code) => {
         runLog.end();
@@ -202,6 +273,7 @@ async function waitUntilEnded(pid: number, timeoutMs: number): Promise<void> {
 
 async function stopForQuit(): Promise<void> {
   quitting = true;
+  broker?.stop(true);
   spawning?.kill("SIGTERM");
   await busy;
   const running = server;
@@ -236,9 +308,15 @@ function createWindow(): void {
   window.on("closed", () => { window = null; cancelHide = null; });
   guard(window.webContents);
   window.webContents.on("did-finish-load", () => tellLink(true));
+  window.webContents.on("did-start-navigation", (details) => { if (details.isMainFrame && !details.isSameDocument) browser?.hide(); });
   void window.loadFile(connectPage);
 }
 
+/**
+ * The server's own pages may open more Ovis windows; any other address goes to the default browser.
+ * A blank window a page opens to send somewhere next (a sign-in) is allowed: once it heads for
+ * another address, that address opens in the default browser and the window closes.
+ */
 function guard(contents: Electron.WebContents, blank?: BrowserWindow): void {
   contents.setWindowOpenHandler(({ url }) => {
     if (ours(url) || (url === "about:blank" && ours(contents.getURL()))) {
@@ -254,6 +332,48 @@ function guard(contents: Electron.WebContents, blank?: BrowserWindow): void {
     openOutside(url);
     blank?.close();
   });
+}
+
+/** the browsers as last found, or found now: Settings finds them again each time it lists them */
+function browsers(again = false): Promise<FoundBrowsers> {
+  if (again || browsersFound === null) browsersFound = findBrowsers();
+  return browsersFound;
+}
+
+/**
+ * A web link of the server's page, in the browser chosen in Settings. When that browser is gone or
+ * cannot start (or quits within two seconds with an error), the system browser opens it and a notification says so.
+ */
+async function openWebLink(url: string): Promise<void> {
+  const address = webAddress(url);
+  const chosen = linkBrowser;
+  if (address === null || chosen === null) return openOutside(url);
+  const browser = (await browsers()).browsers.find((found) => found.id === chosen);
+  if (browser === undefined) return openInstead(null, address);
+  const [program, ...args] = browser.command(address);
+  const started = Date.now();
+  let failed = false;
+  const fail = () => {
+    if (failed) return;
+    failed = true;
+    openInstead(browser, address);
+  };
+  try {
+    const child = spawn(program!, args, { detached: true, stdio: "ignore", windowsHide: true });
+    child.once("error", fail);
+    // a launcher that hands the link to a running browser exits at once with 0; one that cannot start fails (or crashes) within a moment
+    child.once("exit", (code, signal) => { if ((code !== 0 || signal !== null) && Date.now() - started < 2_000) fail(); });
+    child.unref();
+  } catch {
+    fail();
+  }
+}
+
+function openInstead(browser: LinkBrowser | null, address: string): void {
+  openOutside(address);
+  updateLog(`The browser chosen for links (${browser?.name ?? linkBrowser}) could not open a link: the system browser opened it.`);
+  if (!Notification.isSupported()) return;
+  new Notification({ title: text("The link opened in the system browser"), body: browser ? text("{name} could not open it.", { name: browser.name }) : text("The browser chosen for links is no longer on this computer."), silent: true }).show();
 }
 
 function updateAwake(): void {
@@ -332,6 +452,7 @@ function createMenu(): void {
 }
 
 function allowPermissions(): void {
+  // the Ovis page may use the microphone (dictation, never the camera), the clipboard and notifications; nothing else asks
   const allowed = new Set(["clipboard-sanitized-write", "clipboard-read", "notifications", "fullscreen"]);
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
     if (!ours(details.requestingUrl)) return callback(false);
@@ -362,6 +483,7 @@ function updateLine(): UpdateLine | null {
   return { version, closed: !updateNotice(version, notices).line, text: text("Ovis {version} is ready", { version }), action: text("Restart to Update") };
 }
 
+/** to the app's window: the windows a page opens carry no preload, and so no line */
 function sendUpdateLine(): void {
   window?.webContents.send("ovis:update", updateLine());
 }
@@ -381,6 +503,10 @@ function saveNotices(next: UpdateNotices): void {
   try { writeUpdateNotices(noticesPath, next); } catch (error) { console.error(`Saving ${noticesPath} failed: ${message(error)}`); }
 }
 
+/**
+ * A version counts as announced once the system showed it, so one that could not be shown (no
+ * notification service, an unsigned Mac build) is tried again by the next start.
+ */
 function announceUpdate(): void {
   sendUpdateLine();
   if (!offer.ready) return;
@@ -402,11 +528,22 @@ function announceUpdate(): void {
   notification.show();
 }
 
+/**
+ * Once the app is on its way out (this already pressed, or a quit) another press is dropped, and so
+ * is one for an update whose file is gone: installing stops the server first, and would then find
+ * nothing to install.
+ */
 function installUpdate(): void {
   if (quitting || heldUpdate() === null) return;
   installOffer?.();
 }
 
+/**
+ * Restart to Update where the app is replaced as it runs (the AppImage, Windows, a Mac): the
+ * server stops first, since the new copy starts at once. An install that then cannot go ahead
+ * (the held file gone while the server stopped, an installer that fails at once) starts Ovis
+ * again as it was, instead of leaving the window on a server that is gone.
+ */
 async function stopAndInstall(updater: { quitAndInstall(): void; once(event: "error", listener: () => void): unknown; removeListener(event: "error", listener: () => void): unknown }): Promise<void> {
   await stopForQuit();
   let refused = heldUpdate() === null;
@@ -466,6 +603,7 @@ async function startUpdates(): Promise<void> {
   autoUpdater.allowDowngrade = false;
   autoUpdater.autoDownload = false;
   updateLog(`Updates: ${plan.channel} channel.`);
+  // a .deb installs behind a password prompt: only when asked for (the tray's or a line's Restart to Update), never on a plain quit
   if (plan.installer === "deb") autoUpdater.autoInstallOnAppQuit = false;
   let failed = false;
   const told = (event: UpdaterEvent) => {
@@ -479,8 +617,12 @@ async function startUpdates(): Promise<void> {
     failed = true;
     updateLog(`Update failed: ${message(error)}`);
     told({ is: "error" });
+    // a download that failed emptied the updater's folder, the update held until now with it
     heldUpdate();
   });
+  // the .deb installs first and the app quits (stopping the server) only once it did, then starts again;
+  // a cancelled prompt leaves the app and its server running. The AppImage starts its new copy at
+  // once, so the server stops before.
   installOffer = plan.installer === "deb" ? () => autoUpdater.quitAndInstall() : () => void stopAndInstall(autoUpdater);
   const mac = process.platform === "darwin";
   autoUpdater.on("update-downloaded", (downloaded) => {
@@ -488,6 +630,7 @@ async function startUpdates(): Promise<void> {
     updateLog(`Update ${downloaded.version} is downloaded: ${mac ? "the system's updater takes it now" : "Restart to Update installs it"}.`);
     told({ is: "downloaded", update: { version: downloaded.version, file: downloaded.downloadedFile } });
   });
+  // a Mac: the update is offered once Squirrel says it holds it (updates.ts UpdateOffer)
   if (mac) {
     squirrel.on("update-downloaded", () => {
       if (offer.staging) updateLog(`Update ${offer.staging.version} is ready: Restart to Update installs it.`);
@@ -495,6 +638,7 @@ async function startUpdates(): Promise<void> {
     });
   }
   const check = () => {
+    // not once the app is on its way out: a download that fails then empties the folder the install reads
     if (quitting) return;
     void checkForUpdates(autoUpdater, updateLog, (version) => !quitting && downloadsUpdate({ found: version, held: offer.staging ?? heldUpdate(), failed, exists: existsSync }));
   };
@@ -525,11 +669,14 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on("ovis:logs", (event) => {
     if (event.senderFrame?.url.startsWith("file:")) void shell.openPath(logs);
   });
+  // the downloaded update's line: for the connection screen and the server's own pages, nothing else
   const ownPage = (url: string | undefined) => url !== undefined && (url.startsWith("file:") || ours(url));
   ipcMain.handle("ovis:update", (event) => ownPage(event.senderFrame?.url) ? updateLine() : null);
   ipcMain.handle("ovis:update-install", (event) => {
     if (!ownPage(event.senderFrame?.url)) return undefined;
     installUpdate();
+    // Answered at once when the install returned: a .deb's prompt
+    // cancelled, with Ovis running on (or a .deb installed, a moment before it quits)
     return quitting ? new Promise<void>((answer) => { installWaiters.push(answer); }) : undefined;
   });
   ipcMain.on("ovis:update-close", (event, version: unknown) => {
@@ -537,6 +684,7 @@ if (!app.requestSingleInstanceLock()) {
     saveNotices({ ...notices, closed: offer.ready.version });
     sendUpdateLine();
   });
+  // signing in to the account (accountSignIn.ts): only the server's own pages may, and only to the account service named
   let signIn: LoopbackSignIn | null = null;
   ipcMain.on("ovis:account-service", (event) => {
     event.returnValue = ours(event.senderFrame?.url ?? "") && accountService !== null ? { service: accountService, providers: accountProviders } : null;
@@ -556,12 +704,70 @@ if (!app.requestSingleInstanceLock()) {
     openOutside(url);
     try { return await waiting.returned; } finally { if (signIn === waiting) signIn = null; }
   });
+  // Settings → Browser for links: the server's own page lists the browsers, chooses one by its id and opens its web links in it.
+  ipcMain.handle("ovis:browsers", async (event) => {
+    if (!serverPage(event.senderFrame)) return null;
+    const found = await browsers(true);
+    return { browsers: found.browsers.map(({ id, name }) => ({ id, name })), systemDefault: found.systemDefault, chosen: linkBrowser };
+  });
+  ipcMain.handle("ovis:browser-choose", async (event, id: unknown) => {
+    if (!serverPage(event.senderFrame)) throw new Error("Choosing a browser is not offered here");
+    if (id !== null && (typeof id !== "string" || !(await browsers()).browsers.some((browser) => browser.id === id))) throw new Error("That browser is not on this computer");
+    writeLinkBrowser(linkBrowserPath, id);
+    linkBrowser = id;
+  });
+  ipcMain.on("ovis:browser-open", (event, url: unknown) => {
+    if (serverPage(event.senderFrame) && typeof url === "string") void openWebLink(url);
+  });
+
+  // the built-in browser (browserTabs.ts): only the server's own page reaches it, and only while its setting is on.
+  // The page opens tabs of the person's own profile; it steers an agent's tab only while the person holds it
+  const browserFor = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) => serverPage(event.senderFrame) ? browser : null;
+  const tabId = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+  const steered = (tabs: BrowserTabs, id: number | null) => id !== null && tabs.list().some((tab) => tab.id === id && (tab.profile === "mine" || tab.held));
+  ipcMain.handle("ovis:tabs", (event) => browserFor(event) ? browserView() : null);
+  ipcMain.handle("ovis:tabs-open", (event, url: unknown) => typeof url === "string" ? browserFor(event)?.open(url, "mine") ?? null : null);
+  ipcMain.on("ovis:tabs-show", (event, id: unknown, bounds: unknown) => {
+    const box = bounds as Partial<BrowserBounds> | null;
+    const numbers = box !== null && typeof box === "object" && [box.x, box.y, box.width, box.height].every((value) => typeof value === "number" && Number.isFinite(value));
+    const tabs = browserFor(event), tab = tabId(id);
+    if (tabs && tab !== null && numbers) tabs.show(tab, box as BrowserBounds);
+  });
+  ipcMain.on("ovis:tabs-hide", (event) => browserFor(event)?.hide());
+  ipcMain.handle("ovis:tabs-thumbnail", (event, id: unknown) => {
+    const tab = tabId(id);
+    return tab === null ? null : browserFor(event)?.thumbnail(tab) ?? null;
+  });
+  // shows a kept download in its folder; main never opens it
+  ipcMain.on("ovis:tabs-reveal", (event, id: unknown) => {
+    const path = typeof id === "string" ? browserFor(event)?.resultPath(id) ?? null : null;
+    if (path !== null) shell.showItemInFolder(path);
+  });
+  ipcMain.on("ovis:tabs-close", (event, id: unknown) => {
+    const tab = tabId(id);
+    if (tab !== null) browserFor(event)?.close(tab);
+  });
+  ipcMain.handle("ovis:tabs-navigate", (event, id: unknown, url: unknown) => {
+    const tabs = browserFor(event), tab = tabId(id);
+    return tabs !== null && tab !== null && typeof url === "string" && steered(tabs, tab) && tabs.navigate(tab, url);
+  });
+  ipcMain.on("ovis:tabs-go", (event, id: unknown, step: unknown) => {
+    const tabs = browserFor(event), tab = tabId(id);
+    if (tabs && tab !== null && steered(tabs, tab) && (step === "back" || step === "forward" || step === "reload" || step === "stop")) tabs.go(tab, step);
+  });
+  ipcMain.on("ovis:tabs-hold", (event, id: unknown, held: unknown) => {
+    const tab = tabId(id);
+    if (tab !== null && typeof held === "boolean") browserFor(event)?.hold(tab, held);
+  });
   app.on("before-quit", (event) => {
     if (stopped) return;
     event.preventDefault();
     // quit again only once this cancelled quit is over: a quit asked for inside it is dropped
     if (!quitting) void stopForQuit().then(() => setImmediate(() => app.quit()));
   });
+  // an AppImage run unpacked (no FUSE) leaves its folder in the temporary folder: the server, the
+  // last user of its files, has stopped by now (the core runs from its own copy). Another copy of the
+  // same AppImage runs from the same folder: then it stays
   const unpacked = process.platform === "linux" ? extractedAppDir(process.env, process.execPath) : null;
   if (unpacked) {
     app.on("quit", () => {
@@ -586,6 +792,8 @@ if (!app.requestSingleInstanceLock()) {
       app.setAsDefaultProtocolClient(LINK_SCHEME, process.execPath, ["--"]);
     }
     pendingLink ??= argvLinkQuery(process.argv);
+    // found before the first link: on Windows that takes several registry reads
+    if (linkBrowser !== null) void browsers();
     allowPermissions();
     createMenu();
     createWindow();

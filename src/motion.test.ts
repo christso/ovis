@@ -5,7 +5,6 @@ import { join } from "node:path";
 const stylesheets = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
   entry.isDirectory() ? stylesheets(join(dir, entry.name)) : entry.name.endsWith(".css") ? [join(dir, entry.name)] : []);
 
-/** The endless `animation` declarations that are not stepped, whole and on one line. */
 function smoothEndless(css: string): string[] {
   return css.replace(/\/\*[\s\S]*?\*\//g, "").split(/[;{}]/).map((declaration) => declaration.replace(/\s+/g, " ").trim())
     .filter((declaration) => /^animation\s*:/.test(declaration) && /\binfinite\b/.test(declaration)

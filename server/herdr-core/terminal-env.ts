@@ -1,7 +1,8 @@
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { loginEnvProbe, loginShell } from "../shell-agent.ts";
-import { SERVER_ENV, type HcConnection } from "./connection.ts";
+import type { HcConnection } from "./connection.ts";
+import { SERVER_ENV } from "./hc-connect.ts";
 
 type Env = Record<string, string>;
 type SourceEnv = Record<string, string | undefined>;
@@ -15,7 +16,10 @@ type SourceEnv = Record<string, string | undefined>;
  */
 const SESSION_ENV = /^(?:HOME|USER|LOGNAME|SHELL|PATH|LANG|LC_[A-Z_]+|TZ|TMPDIR|XDG_RUNTIME_DIR|DBUS_SESSION_BUS_ADDRESS|SSH_AUTH_SOCK|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|ZDOTDIR|XDG_CONFIG_HOME)$/;
 
-// a pane that had BUN_BE_BUN would run every Bun-compiled program (an agent's CLI, this server) as bare Bun
+/**
+ * BUN_BE_BUN is the compiled server's own: it sets it to run the probe as Bun (server/shell-agent.ts), the probe prints it back
+ * with the rest, and a pane that had it would run every Bun-compiled program (an agent's CLI, this server) as bare Bun.
+ */
 const NOT_SETTINGS = /^(?:PWD|OLDPWD|SHLVL|_|TERM|COLORTERM|BUN_BE_BUN|HC_.*|HERDR_.*)$/;
 
 /**
@@ -60,9 +64,9 @@ function homeFolder(home: string | undefined): string {
 }
 
 /**
- * NO_COLOR set empty turns colour back on where the core has one (hc cannot drop one). An empty one
- * where there is none would turn colour off in libraries that only ask whether the name is there
- * (consola, colorette, kleur).
+ * NO_COLOR set empty, which turns colour back on, only where the core has a NO_COLOR the login
+ * does not set (hc cannot drop one). An empty one where there is none would turn colour off in
+ * libraries that only ask whether the name is there (consola, colorette, kleur).
  */
 export function forCore(terminal: Env, core: SourceEnv): Env {
   const env = { ...terminal };
@@ -150,6 +154,11 @@ export function terminalEnvFor(hc: Pick<HcConnection, "call">, terminal: Env | P
 
 const read = new Map<string, Env>();
 
+/**
+ * loginTerminalEnv for `env` (this process's), kept per user and shell once it was read, for the
+ * server's life, as a core keeps its own: a token the profile changes reaches new panes after a
+ * restart.
+ */
 export async function userTerminalEnv(env: SourceEnv = process.env): Promise<Env> {
   const key = `${env["HOME"] ?? ""}\0${env["SHELL"] ?? ""}`;
   const kept = read.get(key);
@@ -159,6 +168,11 @@ export async function userTerminalEnv(env: SourceEnv = process.env): Promise<Env
   return found.env;
 }
 
+/**
+ * What `hc connect` runs in: `base` with the terminal environment, fitted to `base` (a core it
+ * starts has that environment), over it; a core it starts is found where `base` says: HOME, HC_*
+ * and XDG_* are base's alone, also where base has none.
+ */
 export function coreStartEnv(base: SourceEnv, terminal: Env): SourceEnv {
   return { ...base, ...Object.fromEntries(Object.entries(forCore(terminal, base)).filter(([name]) => !CORE_PLACE.test(name))) };
 }

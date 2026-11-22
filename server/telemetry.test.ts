@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -119,6 +120,7 @@ describe("telemetry events", () => {
   });
 
   test("the first event of an install updated from before telemetry is an update that names no replaced version", async () => {
+    // the updater's record of the version it replaced is from before this state file: not sent
     const { telemetry, sent } = setup({ previous: "0.4.0" });
     telemetry.change({ notice_seen: true, notice_version: NOTICE_VERSION });
     await telemetry.report();
@@ -228,6 +230,7 @@ describe("telemetry events", () => {
     const { telemetry, sent } = setup({ stateDir: join(parent, "file", "state") });
     await telemetry.report();
     expect(sent).toEqual([]);
+    // no state directory to tell whether the counts were turned off reads as off (offMarked fails closed)
     expect(telemetry.status().enabled).toBe(false);
   });
 
@@ -240,6 +243,7 @@ describe("telemetry events", () => {
       usageHidden: ["private-account-key"],
     });
     const { telemetry, sent, stateDir } = setup();
+    // told before the notice: not kept (the page sends its settings with the acknowledgement)
     telemetry.change({ settings });
     expect(telemetry.status().next?.settings).toBeNull();
     await telemetry.report();
@@ -272,6 +276,7 @@ describe("telemetry events", () => {
   });
 
   test("invalid settings cannot be persisted or sent, and changing settings after a counted version adds no event", async () => {
+    // the grace holds the install event, so its preview can be read after the acknowledgement
     const { telemetry, sent, stateDir, clock } = setup({ grace: 600_000 });
     const safe = settingsSnapshot();
     const submitted = { ...safe };
@@ -384,6 +389,7 @@ describe("daily active message", () => {
     await older.telemetry.active(["claude"]);
     expect(older.actives).toEqual([]);
 
+    // a visit made while off is not kept: turning the switch on again sends nothing for it
     off.telemetry.change({ enabled: true });
     await settled();
     expect(off.actives).toEqual([]);
@@ -407,6 +413,7 @@ describe("daily active message", () => {
     seen(telemetry);
     await telemetry.active(["claude"]);
     expect(actives).toHaveLength(1);
+    // refused, the message still went on the wire: the hour counts from it
     expect(savedFile(stateDir).active).toEqual([{ day: "2026-10-08", harnesses: ["claude"], sent: null, visited: true, usage: emptyUsage(), sent_usage: null, wire_usage: emptyUsage(), sent_at: expect.any(Number) }]);
     answer.status = 204;
     await telemetry.active([]);
@@ -437,6 +444,7 @@ describe("daily active message", () => {
   });
 
   test("(h) every supported agent kind is a telemetry harness, or other until the Worker lists it", () => {
+    // the deployed Worker refuses a harness it does not list, so these count as other until a deploy adds them
     const undeployed = new Set(["letta", "copilot", "dsh-tui"]);
     for (const kind of undeployed) expect(harnessOf(kind)).toBe("other");
     const missing = [...SUPPORTED_AGENT_KINDS].filter((kind) => !undeployed.has(kind) && !(TELEMETRY_HARNESSES as readonly string[]).includes(kind));
@@ -456,12 +464,15 @@ describe("daily active message", () => {
   });
 
   test("nothing is kept before the current notice: a new install, and one whose older notice did not name it", async () => {
+    // a new install: a visit, its usage and the settings told before the acknowledgement are not kept
     const fresh = setup({ grace: 600_000 });
     await fresh.telemetry.active(["claude"], { surface: "ios-app", ingress: "tailscale" });
     fresh.telemetry.tally("prompt_answers");
     expect((await handleTelemetryRequest(telemetryPost({ settings: settingsSnapshot() }), fresh.telemetry)).status).toBe(200);
     expect(fresh.telemetry.status()).toMatchObject({ notice_seen: false, active: { harnesses: [], usage: emptyUsage() }, next: { settings: null } });
     expect(existsSync(join(fresh.stateDir, "telemetry.json")) ? savedFile(fresh.stateDir) : { active: [], settings: null }).toMatchObject({ active: [], settings: null });
+    // an older build may have kept a visit day or a settings snapshot from before its notice: from a file without the mark
+    // neither is kept, whatever notice it saw
     const day = { day: "2026-10-07", harnesses: ["claude"], sent: null, visited: true, usage: { ...emptyUsage(), prompt_answers: 2 }, sent_usage: null, sent_at: null };
     const cases: [number, { active: (typeof day)[]; settings: TelemetrySettings | null }][] = [[2, { active: [], settings: null }], [3, { active: [], settings: null }], [4, { active: [], settings: null }]];
     for (const [older, kept] of cases) {
@@ -639,6 +650,7 @@ describe("daily active message", () => {
     });
     await telemetry.report();
     expect(sent.map((event) => [event.event, event.previous_version])).toEqual([["update", "0.4.0"]]);
+    // still owed, and now from the state after the off: no version it replaced
     expect(savedFile(stateDir)).toMatchObject({ reported_version: "0.4.0", replaced_forgotten: true });
     expect(telemetry.status().next).toMatchObject({ event: "update", previous_version: null });
   });
@@ -688,6 +700,7 @@ describe("daily active message", () => {
     expect((await handleTelemetryRequest(telemetryPost({ settings: settingsSnapshot({ theme: "light" }), generation: 0 }), telemetry)).status).toBe(200);
     expect((await handleTelemetryRequest(telemetryPost({ settings: settingsSnapshot({ theme: "light" }) }), telemetry)).status).toBe(200);
     expect(savedFile(stateDir).settings).toBeNull();
+    // told with the generation as it is now: kept
     const now = telemetry.status().counts_generation;
     expect((await handleTelemetryRequest(telemetryPost({ settings: settingsSnapshot({ theme: "light" }), generation: now }), telemetry)).status).toBe(200);
     expect(savedFile(stateDir).settings).toEqual(settingsSnapshot({ theme: "light" }));
@@ -724,6 +737,7 @@ describe("daily active message", () => {
         return Date.parse("2026-10-08T12:00:00Z");
       },
     });
+    // the other server's off cannot get this server's lock: it goes without it, as an off does
     const errors = spyOn(console, "error").mockImplementation(() => {});
     try {
       offAtClock = true;
@@ -743,6 +757,7 @@ describe("daily active message", () => {
       telemetry.tally("prompt_answers");
       expect(savedFile(stateDir).active[0].usage.prompt_answers).toBe(0);
       expect(errors.mock.calls.some(([line]) => String(line).includes("telemetry.lock"))).toBe(true);
+      // the off does not wait for it to be let go: marked, and what was not sent deleted
       telemetry.change({ enabled: false });
       expect(existsSync(join(stateDir, "telemetry-off"))).toBe(true);
       expect(savedFile(stateDir)).toMatchObject({ enabled: false, active: [] });
@@ -977,12 +992,15 @@ describe("daily usage", () => {
     telemetry.tally("prompt_answers");
     telemetry.tally("prompt_answers");
     telemetry.tally("alerts_delivered");
+    // a second later a new kind of screen and way in send nothing: they wait with the counts
     await telemetry.active(["claude"], { surface: "ios-app", ingress: "tailscale" });
     expect(actives).toHaveLength(1);
     expect(telemetry.status().active.usage).toEqual({ surfaces: ["browser", "ios-app"], ingress: ["local", "tailscale"], prompt_answers: 2, alerts_delivered: 1, alerts_opened: 0 });
+    // a new kind of agent still goes at once, as it did before usage, but with the usage already sent
     await telemetry.active(["codex"]);
     const first: TelemetryUsage = { ...emptyUsage(), surfaces: ["browser"], ingress: ["local"] };
     expect(actives.map((active) => [active.harnesses, active.usage])).toEqual([[["claude"], first], [["claude", "codex"], first]]);
+    // past the hour a tapped alert is counted but sends nothing by itself; the next visit takes it all
     clock.now += USAGE_RESEND_MS;
     expect((await handleTelemetryRequest(tap(), telemetry)).status).toBe(200);
     await settled();
@@ -1083,6 +1101,7 @@ describe("daily usage", () => {
       before.telemetry.tally("alerts_delivered");
       expect((await handleTelemetryRequest(tap(), before.telemetry)).status).toBe(200);
       expect(existsSync(join(stateDir, "telemetry.json")) ? savedFile(stateDir).active : []).toEqual([]);
+      // after a restart and the notice, the day goes out without anything counted before it
       const after = setup({ stateDir });
       seen(after.telemetry);
       await after.telemetry.active(["claude"]);
@@ -1202,6 +1221,218 @@ describe("daily usage", () => {
 });
 
 describe("another server on the same state directory", () => {
+  test.each(["active", "install", "update"] as const)("an off first seen on the final re-read stops the %s POST", async (event) => {
+    const { telemetry, sent, actives, clock, stateDir, fireTimer } = setup({
+      grace: 60_000, previous: event === "update" ? "0.4.0" : null,
+    });
+    const other = setup({ stateDir, grace: 60_000 });
+    seen(telemetry);
+    if (event === "active") await telemetry.active(["claude"]);
+    clock.now += 60_000;
+
+    const accessSync = fs.accessSync;
+    let readsBeforeMark = event === "active" ? 1 : 2;
+    const access = spyOn(fs, "accessSync").mockImplementation((path, mode) => {
+      accessSync(path, mode);
+      if (path === stateDir && !existsSync(join(stateDir, "telemetry.lock")) && --readsBeforeMark === 0) {
+        // The other server has marked off and is paused before updating telemetry.json.
+        writeFileSync(join(stateDir, "telemetry-off"), "");
+      }
+    });
+    try {
+      if (event === "active") fireTimer();
+      else await telemetry.report();
+      await settled();
+    } finally { access.mockRestore(); telemetry.stop(); }
+    expect(other.telemetry.status().enabled).toBe(false);
+    expect(event === "active" ? actives : sent).toEqual([]);
+  });
+
+  test("an off marked while the final check lets go of the lock stops the install POST", async () => {
+    const lock = (stateDir: string) => join(stateDir, "telemetry.lock");
+    const releasesBeforeSend = async (offAt?: number) => {
+      const { telemetry, sent, clock, stateDir } = setup({ grace: 60_000 });
+      const other = setup({ stateDir, grace: 60_000 });
+      seen(telemetry);
+      clock.now += 60_000;
+      const rmSync = fs.rmSync;
+      let releases = 0;
+      let atSend = -1;
+      const remove = spyOn(fs, "rmSync").mockImplementation((path, options) => {
+        rmSync(path, options);
+        if (path !== lock(stateDir)) return;
+        releases += 1;
+        // the other server's off, between this one letting go of the lock and starting its POST
+        if (releases === offAt) other.telemetry.change({ enabled: false });
+      });
+      const before = sent.length;
+      try {
+        const going = telemetry.report();
+        atSend = releases;
+        await going;
+        await settled();
+      } finally { remove.mockRestore(); telemetry.stop(); }
+      return { atSend, sent: sent.slice(before), off: other.telemetry.status().enabled === false };
+    };
+    const control = await releasesBeforeSend();
+    expect(control.sent).toHaveLength(1);
+    const raced = await releasesBeforeSend(control.atSend);
+    expect(raced.off).toBe(true);
+    expect(raced.sent).toEqual([]);
+  });
+
+  test("an on told while another server's off is marked but not written keeps no settings", () => {
+    const { telemetry, stateDir } = setup();
+    seen(telemetry);
+    const generation = telemetry.status().counts_generation;
+    // the other server's off has marked, and is paused before it writes telemetry.json
+    writeFileSync(join(stateDir, "telemetry-off"), "paused off");
+    const browser = setup({ stateDir });
+    browser.telemetry.change({ enabled: true, settings: settingsSnapshot({ theme: "light" }), generation });
+    expect(savedFile(stateDir).settings).toBeNull();
+  });
+
+  test("an on asked before a status read marks an older build's off still turns the counts on", () => {
+    const { telemetry, stateDir } = setup();
+    const other = setup({ stateDir });
+    const file = join(stateDir, "telemetry.json");
+    // an older build turned the counts off: FILE alone says so, with no mark
+    writeFileSync(file, JSON.stringify({ ...savedFile(stateDir), enabled: false }));
+    rmSync(join(stateDir, "telemetry-off"), { force: true });
+    const off = join(stateDir, "telemetry-off");
+    const lstatSync = fs.lstatSync;
+    let read = false;
+    const lstat = spyOn(fs, "lstatSync").mockImplementation(((path: fs.PathLike, options?: fs.StatSyncOptions) => {
+      try { return lstatSync(path, options); } finally {
+        if (path === off && !read) {
+          read = true;
+          // the on has looked at the mark (there is none); another server's read marks the older off before the on gets the lock
+          other.telemetry.counting();
+        }
+      }
+    }) as typeof fs.lstatSync);
+    try { expect(telemetry.change({ enabled: true }).enabled).toBe(true); }
+    finally { lstat.mockRestore(); }
+    expect(read).toBe(true);
+    expect(existsSync(off)).toBe(true);
+  });
+
+  test("an on cannot erase an off marked after its last observation of the old mark", () => {
+    const { telemetry, stateDir } = setup();
+    const other = setup({ stateDir });
+    telemetry.change({ enabled: false });
+    const off = join(stateDir, "telemetry-off");
+    const file = join(stateDir, "telemetry.json");
+    const statSync = fs.statSync;
+    const lstatSync = fs.lstatSync;
+    const renameSync = fs.renameSync;
+    let persisted = false;
+    let marked = false;
+    const rename = spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      renameSync(from, to);
+      if (to === file) persisted = true;
+    });
+    const interleave: ProxyHandler<fs.StatSyncFn> = {
+      apply(target, receiver, args) {
+        const result = Reflect.apply(target, receiver, args);
+        if (args[0] === off && persisted && !marked) {
+          marked = true;
+          // The other server has written a fresh off mark and has not taken the state lock yet.
+          writeFileSync(off, "a newer off");
+        }
+        return result;
+      },
+    };
+    const stat = spyOn(fs, "statSync").mockImplementation(new Proxy(statSync, interleave));
+    const lstat = spyOn(fs, "lstatSync").mockImplementation(new Proxy(lstatSync, interleave));
+    try { telemetry.change({ enabled: true }); }
+    finally { lstat.mockRestore(); stat.mockRestore(); rename.mockRestore(); }
+    expect(marked).toBe(true);
+    expect(other.telemetry.status().enabled).toBe(false);
+  });
+
+  test("an off marked after an on was asked wins over it, also once the on holds the lock", () => {
+    const { telemetry, stateDir } = setup();
+    const other = setup({ stateDir });
+    telemetry.change({ enabled: false });
+    telemetry.change({ enabled: true });
+    const off = join(stateDir, "telemetry-off");
+    const lock = join(stateDir, "telemetry.lock");
+    const lstatSync = fs.lstatSync;
+    let offDone = false;
+    const interleave: ProxyHandler<typeof fs.lstatSync> = {
+      apply(target, receiver, args) {
+        if (args[0] === off && !offDone && fs.existsSync(lock)) {
+          offDone = true;
+          // the other server's off, between this on taking the lock and reading the mark: it cannot wait for the lock
+          other.telemetry.change({ enabled: false });
+        }
+        return Reflect.apply(target, receiver, args);
+      },
+    };
+    const lstat = spyOn(fs, "lstatSync").mockImplementation(new Proxy(lstatSync, interleave));
+    try { telemetry.change({ enabled: true }); }
+    finally { lstat.mockRestore(); }
+    expect(offDone).toBe(true);
+    expect([telemetry.status().enabled, other.telemetry.status().enabled]).toEqual([false, false]);
+  });
+
+  test("each active POST uses the usage re-read under the lock for that day", async () => {
+    const held = Promise.withResolvers<Response>();
+    const started = Promise.withResolvers<void>();
+    const actives: TelemetryActive[] = [];
+    const first = setup({
+      grace: 2 * 86_400_000,
+      fetch: Object.assign(async (url: string | URL | Request, init?: RequestInit) => {
+        if (String(url) === TEST_ACTIVE_URL) {
+          actives.push(JSON.parse(String(init?.body)));
+          if (actives.length === 1) { started.resolve(); return held.promise; }
+        }
+        return new Response(null, { status: 204 });
+      }, { preconnect: fetch.preconnect }),
+    });
+    const other = setup({ stateDir: first.stateDir, now: "2026-10-09T12:00:00Z" });
+    seen(first.telemetry);
+    await first.telemetry.active(["claude"]);
+    first.clock.now += 86_400_000;
+    await first.telemetry.active(["claude"]);
+    first.clock.now += 86_400_000;
+
+    first.fireTimer();
+    await started.promise;
+    other.telemetry.tally("prompt_answers");
+    held.resolve(new Response(null, { status: 204 }));
+    await settled();
+    expect(actives.map(({ day, usage }) => [day, usage.prompt_answers])).toEqual([
+      ["2026-10-08", 0], ["2026-10-09", 1],
+    ]);
+  });
+
+  test("another server waits for an active POST and can retry the sample after refusal", async () => {
+    const held = Promise.withResolvers<Response>();
+    const started = Promise.withResolvers<void>();
+    const first = setup({
+      fetch: Object.assign(async (url: string | URL | Request) => {
+        if (String(url) === TEST_ACTIVE_URL) { started.resolve(); return held.promise; }
+        return new Response(null, { status: 204 });
+      }, { preconnect: fetch.preconnect }),
+    });
+    seen(first.telemetry);
+    const other = setup({ stateDir: first.stateDir });
+    const sending = first.telemetry.active(["claude"]);
+    await started.promise;
+    try {
+      await other.telemetry.active(["claude"]);
+      expect(other.actives).toEqual([]);
+    } finally {
+      held.resolve(new Response(null, { status: 503 }));
+      await sending;
+    }
+    await other.telemetry.active(["claude"]);
+    expect(other.actives).toHaveLength(1);
+  });
+
+  /** Its lines are written synchronously: a buffered write might never leave before the blocking read. */
   async function pausedWriter(stateDir: string, call: string) {
     const script = `
       const { readSync, writeSync } = require("node:fs");
@@ -1402,6 +1633,31 @@ describe("another server on the same state directory", () => {
 });
 
 describe("/api/telemetry", () => {
+  test("POST reports 503 if another server takes over the lock before the change is saved", async () => {
+    const { telemetry, stateDir } = setup();
+    const other = setup({ stateDir });
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) => handleTelemetryRequest(request, telemetry) });
+    const lock = join(stateDir, "telemetry.lock");
+    const temp = join(stateDir, `telemetry.json.${process.pid}.tmp`);
+    const writeFileSync = fs.writeFileSync;
+    const write = spyOn(fs, "writeFileSync").mockImplementation((path, data, options) => {
+      writeFileSync(path, data, options);
+      if (path === temp) {
+        write.mockRestore();
+        const stale = new Date(Date.now() - 10 * 60_000);
+        utimesSync(lock, stale, stale);
+        other.telemetry.change({ enabled: false });
+      }
+    });
+    try {
+      const request = telemetryPost({ notice_seen: true, notice_version: NOTICE_VERSION });
+      const response = await fetch(new URL("/api/telemetry", server.url), request);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ error: { code: "file_busy" } });
+      expect(other.telemetry.status()).toMatchObject({ enabled: false, notice_seen: false });
+    } finally { write.mockRestore(); server.stop(true); }
+  });
+
   const post = (body: unknown, headers: Record<string, string> = { "x-herdr-update": "1" }) =>
     new Request("http://localhost/api/telemetry", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
 
@@ -1433,6 +1689,7 @@ describe("/api/telemetry", () => {
     expect(JSON.parse(readFileSync(join(stateDir, "telemetry.json"), "utf8")).settings).toBeNull();
     expect(sent).toEqual([]);
 
+    // settings told with an off are not kept: nothing captured while off goes after the on
     const response = await handleTelemetryRequest(post({ enabled: false, notice_seen: true, notice_version: NOTICE_VERSION, settings }), telemetry);
     expect(await response.json()).toMatchObject({ enabled: false, notice_seen: true, next: { settings: null } });
     expect(JSON.parse(readFileSync(join(stateDir, "telemetry.json"), "utf8")).settings).toBeNull();
@@ -1458,6 +1715,61 @@ describe("/api/telemetry", () => {
 });
 
 describe("telemetry counts", () => {
+  test("a counts POST completed after an off and on leaves the new generation's batch for the same day", async () => {
+    const held = Promise.withResolvers<Response>();
+    const started = Promise.withResolvers<void>();
+    const first = setup({
+      countsOn: true,
+      fetch: Object.assign(async (url: string | URL | Request) => {
+        if (String(url) === TEST_COUNTS_URL) { started.resolve(); return held.promise; }
+        return new Response(null, { status: 204 });
+      }, { preconnect: fetch.preconnect }),
+    });
+    const other = setup({ stateDir: first.stateDir, countsOn: true });
+    seen(first.telemetry);
+    first.telemetry.tallyCounts({ width: "wide", add: { chat_send: 1 }, shown: [], generation: 0 });
+    first.clock.now += 86_400_000;
+    await first.telemetry.active([]);
+    await started.promise;
+
+    other.telemetry.change({ enabled: false });
+    const { counts_generation: generation } = other.telemetry.change({ enabled: true });
+    other.telemetry.tallyCounts({ width: "wide", add: { chat_send: 5 }, shown: [], generation });
+    held.resolve(new Response(null, { status: 204 }));
+    await settled();
+    other.clock.now += 86_400_000;
+    await other.telemetry.active([]);
+    expect(other.counts.map(({ day, wide }) => [day, wide?.counts])).toEqual([["2026-10-08", { chat_send: 2 }]]);
+  });
+
+  test("another server does not send a counts day while its POST is in flight", async () => {
+    const held = Promise.withResolvers<Response>();
+    const started = Promise.withResolvers<void>();
+    const first = setup({
+      countsOn: true,
+      fetch: Object.assign(async (url: string | URL | Request) => {
+        if (String(url) === TEST_COUNTS_URL) { started.resolve(); return held.promise; }
+        return new Response(null, { status: 204 });
+      }, { preconnect: fetch.preconnect }),
+    });
+    const other = setup({ stateDir: first.stateDir, countsOn: true });
+    seen(first.telemetry);
+    first.telemetry.tallyCounts({ width: "wide", add: { chat_send: 1 }, shown: [], generation: 0 });
+    first.clock.now += 86_400_000;
+    other.clock.now = first.clock.now;
+    await first.telemetry.active([]);
+    await started.promise;
+    try {
+      await other.telemetry.active([]);
+      expect(other.counts).toEqual([]);
+    } finally {
+      held.resolve(new Response(null, { status: 503 }));
+      await settled();
+    }
+    await other.telemetry.active([]);
+    expect(other.counts).toHaveLength(1);
+  });
+
   test("a day still waiting is not sent once another server on the same state turned the counts off and on again", async () => {
     const stateDir = mkdtempSync(join(tmpdir(), "telemetry-"));
     dirs.push(stateDir);
@@ -1491,6 +1803,7 @@ describe("telemetry counts", () => {
     await telemetry.active([]);
     await settled();
     expect(counts).toEqual([]);
+    // the tab's batch from before midnight arrives within its minute
     clock.now = Date.parse("2026-11-16T00:00:50Z");
     telemetry.change({ counts: { width: "wide", add: { chat_send: 1 }, shown: [], generation: 0, day: "2026-11-15" } });
     clock.now = Date.parse("2026-11-16T00:00:00Z") + COUNTS_SETTLE_MS;
@@ -1593,6 +1906,7 @@ describe("telemetry counts", () => {
     clock.now += 86_400_000;
     await telemetry.active([]);
     await settled();
+    // 6 is the notice whose wording says buttons are counted: below it, nothing is kept, previewed or sent
     const on = NOTICE_VERSION >= 6;
     expect([counts.length > 0, telemetry.status().counts !== undefined, savedFile(stateDir).counts.length > 0 || counts.length > 0]).toEqual([on, on, on]);
   });
@@ -1621,6 +1935,7 @@ describe("telemetry counts", () => {
     expect(telemetry.status().counts?.narrow).toEqual({ counts: { chat_send: 1 }, shown: [] });
     await settled();
     expect(counts).toEqual([]);
+    // the next day, a browser's counts still send nothing by themselves: only a visit or a start does
     clock.now += DAY_MS;
     telemetry.change(narrow({ chat_send: 1 }));
     await settled();
@@ -1634,6 +1949,7 @@ describe("telemetry counts", () => {
     telemetry.change(narrow({ chat_send: 2, view_terminal_claude: 3, view_terminal_by_header: 3 }, ["view_switch_header", "composer"]));
     telemetry.change(narrow({ chat_send: 8 }, ["composer"]));
     telemetry.change({ counts: { width: "wide", add: { composer_voice: 30, inbox_enter: 9 }, shown: ["composer_voice"], generation: 0 } });
+    // today's counts are exact here and stay here
     expect(savedFile(stateDir).counts[0].narrow.counts).toEqual({ chat_send: 10, view_terminal_by_header: 3, view_terminal_claude: 3 });
     await telemetry.active([]);
     expect(counts).toEqual([]);

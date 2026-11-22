@@ -10,7 +10,7 @@ import * as fsp from "node:fs/promises";
 import * as cmd from "./cmd.ts";
 import * as piTree from "./pi-tree.ts";
 import type { HerdrPane, SessionSnapshot } from "../shared/protocol.ts";
-import { MAX_TURNS, parseOmpTranscript } from "./transcript-records.ts";
+import { MAX_TURNS, parseOmpTranscript, withHcNotes } from "./transcript-records.ts";
 import { turnStarts } from "./transcript-turns.ts";
 import { claudeImageType } from "./claude-transcript.ts";
 import { toolVerb } from "../src/lib/toolVerbs.ts";
@@ -28,12 +28,62 @@ import { DevinHistoryChanged } from "./devin.ts";
 import * as devinSession from "./devin-session.ts";
 import * as omo from "./omo.ts";
 import * as gjcRuntime from "./gjc-runtime.ts";
+import * as processStart from "./process-start.ts";
 import * as runtime from "./herdr-core/runtime.ts";
 import * as served from "./runtime/capabilities.ts";
 import { HERDR_CORE } from "./runtime/capabilities.ts";
 import { claudeProjectDir } from "./claude-store.ts";
 import { launchedAgents } from "./launched-agents.ts";
-import { agyTranscriptPage, claudePanePid, claudePaneSession, ConversationReadPending, ConversationUnavailable, devinSessionForPane, forgetPaneTranscriptState, forgetTranscriptState, gjcTranscriptPath, HistoryChanged, isDevinProcess, isOmoProcess, ompSessionStore, paneConversation, paneProcessRoots, paneTranscript, parseClaudeTranscript, stoppedAgentJob, unwrapPastes, toolOutput, transcriptImage, transcriptImageAsync, transcriptPage, transcriptToolOutput, TRANSCRIPT_WINDOW_BYTES } from "./conversation.ts";
+import { agyTranscriptPage, claudePanePid, claudePaneSession, ConversationReadPending, ConversationUnavailable, devinSessionForPane, forgetPaneTranscriptState, forgetTranscriptState, gjcTranscriptPath, HistoryChanged, isDevinProcess, isOmoProcess, ompSessionStore, paneConversation, paneProcessRoots, paneRunsOmo, paneTranscript, parseClaudeTranscript, stoppedAgentJob, unwrapPastes, toolOutput, transcriptImage, transcriptImageAsync, transcriptPage, transcriptToolOutput, TRANSCRIPT_WINDOW_BYTES } from "./conversation.ts";
+
+it("sees an OmO below its own Windows pane shell, not below another pane's, with or without a supplied list", async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  // herdr on Windows names only the pane's shell
+  const shellOnly = { pane_id: "own-pane", shell_pid: 100, foreground_processes: [{ pid: 100, name: "powershell.exe", argv: ["powershell.exe"] }] };
+  const rpc = spyOn(herdr, "herdrRpc").mockResolvedValue({ process_info: shellOnly });
+  const shell = (pid: number) => ({ pid, parent: 1, path: "C:\\Windows\\powershell.exe", commandLine: "powershell.exe" });
+  const omo = (pid: number, parent: number) => ({ pid, parent, path: "C:\\node.exe", commandLine: "node.exe C:\\node_modules\\omo-ai\\bin\\omo.js" });
+  const table = spyOn(gjcRuntime, "recentProcessTable").mockResolvedValue([shell(100), omo(101, 100), shell(200), omo(201, 200)]);
+  const alive = spyOn(processStart, "processAlive").mockReturnValue(true);
+  const born = spyOn(processStart, "processStartedAt").mockReturnValue(null);
+  const home = mkdtempSync(join(tmpdir(), "herdr-omo-win-home-"));
+  const env = { HOME: process.env["HOME"], USERPROFILE: process.env["USERPROFILE"] };
+  process.env["HOME"] = home;
+  process.env["USERPROFILE"] = home;
+  Object.defineProperty(process, "platform", { value: "win32" });
+  try {
+    expect(await paneRunsOmo("own-pane")).toBe(true);
+    expect(await paneRunsOmo("own-pane", shellOnly)).toBe(true);
+    table.mockResolvedValue([shell(100), shell(200), omo(201, 200)]);
+    expect(await paneRunsOmo("own-pane")).toBe(false);
+    expect(await paneRunsOmo("own-pane", shellOnly)).toBe(false);
+    // an OmO a Claude in this pane runs as its tool is not the pane's agent
+    table.mockResolvedValue([shell(100), { pid: 101, parent: 100, path: "C:\\claude.exe", commandLine: "claude.exe" }, omo(102, 101)]);
+    expect(await paneRunsOmo("own-pane")).toBe(false);
+    // the process table is a few seconds old: an OmO that exited since is no longer the pane's
+    table.mockResolvedValue([shell(100), omo(101, 100)]);
+    expect(await paneRunsOmo("own-pane")).toBe(true);
+    alive.mockImplementation((pid: number) => pid !== 101);
+    expect(await paneRunsOmo("own-pane")).toBe(false);
+    expect(await paneRunsOmo("own-pane", shellOnly)).toBe(false);
+    // herdr is asked about this pane by its id: given `target`, it answers for the focused pane
+    expect(rpc.mock.calls.map(([method, params]) => [method, params])).toContainEqual(["pane.process_info", { pane_id: "own-pane" }]);
+    expect(rpc.mock.calls.every(([, params]) => (params as { pane_id?: string }).pane_id === "own-pane")).toBe(true);
+    // a supplied sample is used as it is, herdr not asked again
+    alive.mockReturnValue(true);
+    rpc.mockClear();
+    expect(await paneRunsOmo("own-pane", shellOnly)).toBe(true);
+    expect(rpc).not.toHaveBeenCalled();
+  } finally {
+    Object.defineProperty(process, "platform", platform);
+    for (const [key, value] of Object.entries(env)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    rmSync(home, { recursive: true, force: true });
+    table.mockRestore();
+    alive.mockRestore();
+    born.mockRestore();
+    rpc.mockRestore();
+  }
+});
 
 it("labels only Claude's explicit end_turn text as final-answer evidence", () => {
   const entry = (stop_reason: string | null) => JSON.stringify({ type: "assistant", message: { role: "assistant", stop_reason, content: [{ type: "text", text: "Answer" }] } });
@@ -233,6 +283,23 @@ describe("pane process roots", () => {
       }
     });
   }
+
+  it("reads the environment of the bundled pi gentle-shell runs under node (#4198)", async () => {
+    const recorded = JSON.parse(readFileSync(join(import.meta.dir, "fixtures", "herdr-0.9.5-gentle-shell-pane.json"), "utf8"));
+    const front = recorded["pane.process_info"].process_info.foreground_processes[0];
+    const rpc = spyOn(herdr, "herdrRpc").mockResolvedValue(recorded["pane.process_info"]);
+    const identity = spyOn(omo, "omoProcessIdentity").mockReturnValue(null);
+    const environ = spyOn(omo, "processEnviron").mockReturnValue(["PI_CODING_AGENT_DIR=/home/user/.gentle-shell/agent"]);
+    try {
+      expect(await paneProcessRoots("gentle-shell-fixture", "pi")).toMatchObject({
+        omo: null, environ: ["PI_CODING_AGENT_DIR=/home/user/.gentle-shell/agent"], pid: front.pid, cwd: front.cwd,
+      });
+    } finally {
+      environ.mockRestore();
+      identity.mockRestore();
+      rpc.mockRestore();
+    }
+  });
 
   it("matches a runtime launcher but never an agent name in unrelated arguments", async () => {
     const rpc = spyOn(herdr, "herdrRpc").mockResolvedValue({
@@ -574,7 +641,7 @@ describe("Devin pane identity", () => {
       mockedProcesses = [];
       rmSync(root, { recursive: true, force: true });
     }
-  }, 15_000);
+  }, 15_000); // Seven awaited pane reads, including three complete ancestry/cache builds.
 });
 
 const lines = [
@@ -967,6 +1034,8 @@ describe("parseClaudeTranscript", () => {
 
   it("strips escapes in work linear in a malformed answer's length", () => {
     const local = (n: number, unit: string) => JSON.stringify({ type: "system", subtype: "local_command", timestamp: "2026-10-07T19:00:00.000Z", content: `<local-command-stdout>${unit.repeat(n)}</local-command-stdout>` });
+    // Counted, not timed: the parse takes well under a millisecond, and two such timings divide
+    // into noise.
     const work = (line: string): number => {
       let steps = 0;
       const text = String.prototype;
@@ -1006,6 +1075,8 @@ describe("parseClaudeTranscript", () => {
       return steps;
     };
     for (const unit of ["\u001b]x", "</local-command-stdout> x"]) {
+      // doubling the input doubles the work (2.00 measured for both); a rescan from every
+      // unterminated opener, or from every closing tag, quadruples it.
       expect(work(local(40_000, unit)) / work(local(20_000, unit))).toBeLessThan(2.5);
     }
   });
@@ -1149,6 +1220,9 @@ describe("parseClaudeTranscript", () => {
   });
 
   it("hides the cancelled prompt on the live page too once its re-send arrives", () => {
+    // Live records: user a35be47b parented on 07055903, cancelled before any reply (only
+    // attachment/last-prompt bookkeeping after it), then re-send 7477aa61 on the same
+    // parent and the answer.
     const root = mkdtempSync(join(tmpdir(), "herdr-resend-page-"));
     try {
       const path = join(root, "session.jsonl");
@@ -1980,6 +2054,38 @@ describe("transcript pages", () => {
     ]);
   });
 
+  it("shows hc's notes (a child's report, hc's word on a child that exited) as notices in any agent's chat, not as the person's prompt", () => {
+    const path = join(temp(), "hc-notes.jsonl");
+    const say = (text: string) => ({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text }] } });
+    const human = { kind: "human" };
+    writeFileSync(path, `${[
+      { type: "user", timestamp: "2026-11-17T03:04:00.000Z", origin: human, permissionMode: "bypassPermissions", message: { role: "user", content: "<hc>t3m hub-repair-hc exited (signal 1). Read: hc read t3m</hc>" } },
+      say("reading t3m"),
+      { type: "attachment", timestamp: "2026-11-17T03:05:00.000Z", attachment: { type: "queued_command", commandMode: "prompt", prompt: "<hc from=\"t2q try2-cmd\">done: /tmp/x.md</hc>", origin: human } },
+      say("noted"),
+      // the person quoting a note, with words of their own, is still their prompt
+      { type: "user", timestamp: "2026-11-17T03:06:00.000Z", origin: human, permissionMode: "bypassPermissions", message: { role: "user", content: "<hc>t3m exited</hc> why this format?" } },
+    ].map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    // any agent's prompt that is only a note, as a codex worker's task from its lead
+    const codex: ConversationTurn[] = [
+      { role: "user", ts: null, parts: [{ kind: "text", text: "<hc from=\"t45 lead\" reach=\"hc send t45 when done or stuck\">\nReview x.rs\n</hc>" }] },
+      // a report that quotes a note is still one note; two notes with words between them are not
+      { role: "user", ts: null, parts: [{ kind: "text", text: "<hc from=\"t7 review\">The prompt was <hc>hello</hc></hc>" }] },
+      { role: "user", ts: null, parts: [{ kind: "text", text: "<hc>a</hc> and <hc>b</hc>" }] },
+      // hc types its own notes on children at once as one paste, a line each: one notice each
+      { role: "user", ts: null, parts: [{ kind: "text", text: "<hc>t3 exited (signal 1)</hc>\n<hc>t4 is blocked (waiting)</hc>" }] },
+      // hc types a report as it is: one that closes its note and opens another with a sender is no batch of notes
+      { role: "user", ts: null, parts: [{ kind: "text", text: "<hc from=\"t7 review\">Example: </hc>\n<hc from=\"t4 docs\">done</hc>" }] },
+      { role: "user", ts: null, parts: [{ kind: "text", text: "<hc from=\"t7 review\">see <hc>hello</hc bogus></hc>" }] },
+    ];
+    const turns = withHcNotes([...transcriptPage("claude-transcript", path).turns, ...codex]);
+    expect(turns.map((turn) => turn.parts.map((part) => part.kind === "notice" ? `${part.source}|${part.text}` : part.kind === "text" ? part.text : part.kind).join(" "))).toEqual([
+      "hc|t3m hub-repair-hc exited (signal 1). Read: hc read t3m", "reading t3m", "peer:t2q try2-cmd|done: /tmp/x.md", "noted", "<hc>t3m exited</hc> why this format?",
+      "peer:t45 lead|Review x.rs", "peer:t7 review|The prompt was <hc>hello</hc>", "<hc>a</hc> and <hc>b</hc>",
+      "hc|t3 exited (signal 1)", "hc|t4 is blocked (waiting)", "<hc from=\"t7 review\">Example: </hc>\n<hc from=\"t4 docs\">done</hc>", "peer:t7 review|see <hc>hello</hc bogus>",
+    ]);
+  });
+
   it("shows one notice for a delivery Claude recorded twice, and says 'another session' for an unnamed sender", () => {
     const path = join(temp(), "peer-echo.jsonl");
     const origin = { kind: "peer", from: "uds:x", msg_id: "m7", name: "FUSION", body: "R18 is ready" };
@@ -2524,6 +2630,7 @@ describe("transcriptImage", () => {
       const tool = parseClaudeTranscript(readFileSync(path, "utf8")).flatMap((turn) => turn.parts).find((part) => part.kind === "tool");
       expect(tool?.kind === "tool" ? tool.images : null).toEqual([{ media_type: "image/png", ref: `${uuid}:1:1` }]);
       for (const ref of [`${uuid}:1:0`, `${uuid}:0:0`, `${uuid}:1:9`, `${uuid}:1`, `${uuid}:1:2`, `${uuid}:1:3`, `${uuid}:1:1:0`, `${uuid}:1:x`]) expect(transcriptImage(path, ref)).toBeNull();
+      // a /clear puts the pictures before it out of reach, as it does their page
       appendFileSync(path, `\n${JSON.stringify({ type: "user", message: { role: "user", content: "<command-name>/clear</command-name>" } })}\n`);
       expect(transcriptImage(path, `${uuid}:1:1`)).toBeNull();
     } finally { rmSync(dir, { recursive: true, force: true }); forgetTranscriptState(); }
@@ -3214,6 +3321,8 @@ describe("a page read that settles its transcript's revision off the event loop"
     const foreign = fs.statSync(join(elsewhere, "session.jsonl")).ino;
     restores.push(spyOn(cmd, "cmdTranscriptPath").mockResolvedValue({ path }));
     const base = await paneConversation(pane.pane_id);
+    // the first call off the event loop for the path after the pane's transcript was authorized swaps
+    // the folder for another agent's; the page read's own stat puts it back
     let swapped = false;
     let swaps = 0;
     const swap = () => {
@@ -3293,6 +3402,8 @@ describe("a page read that settles its transcript's revision off the event loop"
     writeFileSync(path, JSON.stringify({ type: "session", id: "cmd-ownses", version: 3 }) + "\n" + message("u1", null, "the pane's own words"));
     writeFileSync(join(elsewhere, "session.jsonl"), JSON.stringify({ type: "session", id: "cmd-foreig", version: 3 }) + "\n" + message("u1", null, "PI FOREIGN SECRET..."));
     restores.push(spyOn(cmd, "cmdTranscriptPath").mockResolvedValue({ path }));
+    // no page of it is cached: every synchronous open of the path is made with the other agent's folder swapped in, put back
+    // right after: the identity checks around the page read see only the pane's own
     let swaps = 0;
     const { openSync } = fs;
     restores.push(spyOn(fs, "openSync").mockImplementation(((...args: Parameters<typeof fs.openSync>) => {
@@ -3355,6 +3466,7 @@ describe("a page read that settles its transcript's revision off the event loop"
 
   it.skipIf(process.platform !== "linux")("is pending, never waits, where a folder swap puts a FIFO at the path for an open after the verified one", async () => {
     folders(JSON.stringify({ type: "session", id: "cmd-ownses", version: 3 }) + "\n" + message("u1", null, "own words"), "");
+    // the other folder holds a FIFO no one writes: a blocking open of it never returns
     rmSync(join(root, "elsewhere", "session.jsonl"));
     execFileSync("mkfifo", [join(root, "elsewhere", "session.jsonl")]);
     const counts = swapOpens((open) => open > 0);
@@ -3965,6 +4077,123 @@ describe("Agy native ledger through shared paging", () => {
       expect(await paneConversation(pane.pane_id).catch((error: unknown) => error)).toMatchObject({ name: "ConversationUnavailable", message: "transcript_missing" });
     } finally { snapshot.mockRestore(); store.mockRestore(); rpc.mockRestore(); }
   });
+  it("records nothing for a pane forgotten while its status row was read", async () => {
+    const session = "00000000-0000-4000-8000-000000000001";
+    add(0, "USER_INPUT", "one");
+    const pane = { pane_id: "agy-forgotten", cwd: root, agent: "agy", agent_status: "idle" } as HerdrPane;
+    const snapshot = spyOn(herdr, "sessionSnapshot").mockImplementation(async () => ({ panes: [pane], agents: [] }) as unknown as SessionSnapshot);
+    const store = spyOn(agyStore, "resolveAgyStore").mockResolvedValue({ root, session, path, pid: 2, started: "test" });
+    const rpc = spyOn(herdr, "herdrRpc").mockImplementation(async (method: string) => (method === "pane.get"
+      ? { pane: { ...pane, scroll: { offset_from_bottom: 0, max_offset_from_bottom: 10, viewport_rows: 40 } } }
+      : { process_info: { foreground_processes: [] } }) as never);
+    let forget = true;
+    const read = spyOn(herdr, "paneRead").mockImplementation(async () => {
+      if (forget) forgetPaneTranscriptState(pane.pane_id);
+      return { text: " ? for shortcuts   Gemini 3.8 Flash \u00b7 high\n" } as never;
+    });
+    try {
+      expect(await paneConversation(pane.pane_id).catch((error: unknown) => error)).toMatchObject({ name: "ConversationUnavailable", message: "no_session_id" });
+      // the refused read left no mark that this session was written: agy starting it afresh greets
+      forget = false;
+      db.exec("DELETE FROM steps");
+      rmSync(path);
+      expect(await paneConversation(pane.pane_id)).toMatchObject({ history_id: `unwritten:${session}`, turns: [] });
+    } finally { snapshot.mockRestore(); store.mockRestore(); rpc.mockRestore(); read.mockRestore(); }
+  });
+  it("names no model on an unwritten conversation's greeting, whose screen may already show another conversation", async () => {
+    const session = "00000000-0000-4000-8000-000000000001";
+    rmSync(path);
+    const other = join(root, "other.jsonl");
+    writeFileSync(other, row(0, "USER_INPUT", "other session"));
+    const pane = { pane_id: "agy-unwritten-switch", cwd: root, agent: "agy", agent_status: "idle" } as HerdrPane;
+    const snapshot = spyOn(herdr, "sessionSnapshot").mockImplementation(async () => ({ panes: [pane], agents: [] }) as unknown as SessionSnapshot);
+    const store = spyOn(agyStore, "resolveAgyStore").mockResolvedValue({ root, session, path, pid: 2, started: "test" });
+    const rpc = spyOn(herdr, "herdrRpc").mockImplementation(async (method: string) => (method === "pane.get"
+      ? { pane: { ...pane, scroll: { offset_from_bottom: 0, max_offset_from_bottom: 10, viewport_rows: 40 } } }
+      : { process_info: { foreground_processes: [] } }) as never);
+    // agy moves the pane to another conversation as its screen is read
+    const read = spyOn(herdr, "paneRead").mockImplementation(async () => {
+      store.mockResolvedValue({ root, session: "other", path: other, pid: 3, started: "other" });
+      return { text: " ? for shortcuts   Gemini 4 Hydrogen \u00b7 medium\n" } as never;
+    });
+    try {
+      const greeting = await paneConversation(pane.pane_id);
+      expect(greeting).toMatchObject({ history_id: `unwritten:${session}`, turns: [], screen: true, metadata: { model: null, reasoning_effort: null } });
+      expect(JSON.stringify(greeting)).not.toContain("Gemini 4 Hydrogen");
+    } finally { snapshot.mockRestore(); store.mockRestore(); rpc.mockRestore(); read.mockRestore(); }
+  });
+  it("reads the live status row after a conversation exists, and not a scrolled frame", async () => {
+    const session = "00000000-0000-4000-8000-000000000001";
+    add(0, "USER_INPUT", "one");
+    const pane = { pane_id: "agy-model", cwd: root, agent: "agy", agent_status: "idle" } as HerdrPane;
+    const footer = " ? for shortcuts   Gemini 3.8 Flash · high\n";
+    let offset = 0;
+    const snapshot = spyOn(herdr, "sessionSnapshot").mockImplementation(async () => ({ panes: [pane], agents: [] }) as unknown as SessionSnapshot);
+    const store = spyOn(agyStore, "resolveAgyStore").mockResolvedValue({ root, session, path, pid: 2, started: "test" });
+    const rpc = spyOn(herdr, "herdrRpc").mockImplementation(async (method: string) => (method === "pane.get"
+      ? { pane: { ...pane, scroll: { offset_from_bottom: offset, max_offset_from_bottom: 10, viewport_rows: 40 } } }
+      : { process_info: { foreground_processes: [] } }) as never);
+    const read = spyOn(herdr, "paneRead").mockImplementation(async () => ({ text: footer }) as never);
+    try {
+      const shown = await paneConversation(pane.pane_id);
+      expect(shown.turns).toHaveLength(1);
+      expect(shown.metadata).toMatchObject({ model: "Gemini 3.8 Flash", reasoning_effort: "high" });
+      expect(shown.screen).toBe(true);
+      offset = 4;
+      const scrolled = await paneConversation(pane.pane_id);
+      expect(scrolled.screen).toBe(true);
+      expect(scrolled.metadata?.model ?? null).toBeNull();
+      expect(scrolled.metadata?.reasoning_effort ?? null).toBeNull();
+    } finally { snapshot.mockRestore(); store.mockRestore(); rpc.mockRestore(); read.mockRestore(); }
+  });
+  it("refuses a conversation whose pane was forgotten or rebound while its status row was read", async () => {
+    const session = "00000000-0000-4000-8000-000000000001";
+    add(0, "USER_INPUT", "one");
+    const pane = { pane_id: "agy-model-closed", cwd: root, agent: "agy", agent_status: "idle" } as HerdrPane;
+    const footer = " ? for shortcuts   Gemini 3.8 Flash \u00b7 high\n";
+    const other = join(root, "other.jsonl");
+    writeFileSync(other, row(0, "USER_INPUT", "other session"));
+    const snapshot = spyOn(herdr, "sessionSnapshot").mockImplementation(async () => ({ panes: [pane], agents: [] }) as unknown as SessionSnapshot);
+    const store = spyOn(agyStore, "resolveAgyStore").mockResolvedValue({ root, session, path, pid: 2, started: "test" });
+    const rpc = spyOn(herdr, "herdrRpc").mockImplementation(async (method: string) => (method === "pane.get"
+      ? { pane: { ...pane, scroll: { offset_from_bottom: 0, max_offset_from_bottom: 10, viewport_rows: 40 } } }
+      : { process_info: { foreground_processes: [] } }) as never);
+    let during: "show" | "forget" | "rebind" | "switch" = "show";
+    const read = spyOn(herdr, "paneRead").mockImplementation(async () => {
+      if (during === "forget") forgetPaneTranscriptState(pane.pane_id);
+      if (during === "rebind") {
+        store.mockResolvedValue({ root, session: "other", path: other, pid: 3, started: "other" });
+        await paneTranscript(pane.pane_id);
+      }
+      if (during === "switch") {
+        store.mockResolvedValue({ root, session: "other", path: other, pid: 3, started: "other" });
+        return { text: " ? for shortcuts   Gemini 4 Hydrogen \u00b7 medium\n" } as never;
+      }
+      return { text: footer } as never;
+    });
+    const refused = async (message: string, model: string) => {
+      const error = await paneConversation(pane.pane_id).catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ name: "ConversationUnavailable", message });
+      expect(JSON.stringify(error)).not.toContain(model);
+    };
+    const reset = () => {
+      forgetTranscriptState();
+      store.mockResolvedValue({ root, session, path, pid: 2, started: "test" });
+    };
+    try {
+      expect((await paneConversation(pane.pane_id)).metadata).toMatchObject({ model: "Gemini 3.8 Flash", reasoning_effort: "high" });
+      during = "forget";
+      await refused("no_session_id", "Gemini 3.8 Flash");
+      reset();
+      during = "rebind";
+      await refused("no_session_path", "Gemini 3.8 Flash");
+      // agy's store moved the pane to another conversation during the read, and nothing else
+      // resolved the pane meanwhile: the old turns never go out with the new model
+      reset();
+      during = "switch";
+      await refused("no_session_path", "Gemini 4 Hydrogen");
+    } finally { snapshot.mockRestore(); store.mockRestore(); rpc.mockRestore(); read.mockRestore(); }
+  });
   it("retries a transient mid-turn catalog race and answers 503 ConversationReadPending instead of dropping chat", async () => {
     const session = "00000000-0000-4000-8000-000000000001";
     add(0, "USER_INPUT", "one");
@@ -4056,11 +4285,25 @@ describe("Agy native ledger through shared paging", () => {
     const rpc = spyOn(herdr, "herdrRpc").mockImplementation(async (method: string) => (method === "pane.get"
       ? { pane: { ...pane, scroll: { offset_from_bottom: scrolledUp, max_offset_from_bottom: 10, viewport_rows: 40 } } }
       : { process_info: { foreground_processes: [{ pid: process.pid, name: "agy", argv }] } }) as never);
-    const read = spyOn(herdr, "paneRead").mockImplementation(async () => ({ text: currentScreen }) as never);
+    let afterFirstRead: string | null = null;
+    const read = spyOn(herdr, "paneRead").mockImplementation(async () => {
+      const text = currentScreen;
+      if (afterFirstRead !== null) currentScreen = afterFirstRead;
+      return { text } as never;
+    });
     try {
       const greeting = await paneConversation(pane.pane_id);
-      expect(greeting).toMatchObject({ source: "agy-transcript", turns: [], cursor: null });
+      expect(greeting).toMatchObject({
+        source: "agy-transcript", turns: [], cursor: null, screen: true,
+        metadata: { model: "Gemini 3.8 Flash", reasoning_effort: "high" },
+      });
       expect(greeting.history_id).toStartWith(`unwritten:agy:${pane.pane_id}:${process.pid}:`);
+      // the model comes from the frame proven to be the unused start screen, not a later one that
+      // may already show another conversation
+      afterFirstRead = screen.replace(" >", " > hello\n\n \u2726 Hi there\n\n \u2500\u2500\u2500\u2500\n >").replace("Gemini 3.8 Flash \u00b7 high", "Gemini 4 Hydrogen \u00b7 medium");
+      expect((await paneConversation(pane.pane_id)).metadata).toMatchObject({ model: "Gemini 3.8 Flash", reasoning_effort: "high" });
+      afterFirstRead = null;
+      currentScreen = screen;
       argv = ["agy", "--continue"];
       await expect(paneConversation(pane.pane_id)).rejects.toBeInstanceOf(ConversationUnavailable);
       argv = ["agy"];
@@ -4301,6 +4544,9 @@ describe("a model drawn only in the history above the live screen", () => {
     for (const [name, value] of Object.entries(homes)) if (value === undefined) delete process.env[name]; else process.env[name] = value;
     rmSync(root, { recursive: true, force: true });
   });
+  /** A pane whose viewport (at the bottom) shows `live`, and whose detection read also reaches `history`;
+   * each scroll position herdr reports in turn (offset from the bottom, rows of history; null for none,
+   * as herdr's scroll is optional; "fail" for a lookup that fails), the last one from then on. */
   const shown = (agent: string, status: string, history: string, live: string, scrolls: ([number, number] | null | "fail")[] = [[0, 30]]): string => {
     const pane = { pane_id: `screen-history-${agent}`, cwd: root, foreground_cwd: root, agent, agent_status: status } as HerdrPane;
     mocks.push(spyOn(herdr, "sessionSnapshot").mockResolvedValue({ panes: [pane] } as SessionSnapshot));
@@ -4399,6 +4645,7 @@ it("finds the Claude below a Windows pane's shell and its session by the PID rec
     { pid: 3244, parent: 900, path: "C:\\Program Files\\PowerShell\\7\\pwsh.exe", commandLine: "pwsh.exe", started: started - 60_000 },
     { pid: 10108, parent: 3244, path: "C:\\Users\\demo\\.local\\bin\\claude.exe", commandLine: "claude", started },
   ]);
+  // Windows reads the home from USERPROFILE first (user-home.ts)
   process.env["HOME"] = home;
   process.env["USERPROFILE"] = home;
   Object.defineProperty(process, "platform", { value: "win32" });
@@ -4457,6 +4704,68 @@ function claudeHome(pid: number, procStart: string): { home: string; cwd: string
     },
   };
 }
+
+/**
+ * A sandbox wrapper in front of Claude (#3931): `bwrap --new-session` runs Claude in a session of its own, so
+ * no process in the pane's job is Claude. The wrapper's processes carry herdr's agent hint, HERDR_AGENT=claude,
+ * and the store they hand Claude; herdr has the session the wrapper's hook reported.
+ */
+describe.skipIf(process.platform !== "linux")("a Claude a sandbox wrapper runs outside the pane's job (#3931)", () => {
+  const SESSION = "6d1f2e3a-4b5c-4d6e-8f70-81a2b3c4d5e6";
+
+  /** Wrapper stand-ins, one per store, each with the hint and that store in its environment, waiting on the test's stdin. */
+  async function wrapped(stores: string[], reported: string | null, runtime = served.HERDR) {
+    const home = mkdtempSync(join(tmpdir(), "claude-wrapped-"));
+    const cwd = join(home, "work");
+    const store = join(home, "project-store");
+    const transcript = join(store, "projects", claudeProjectDir(cwd), `${SESSION}.jsonl`);
+    mkdirSync(join(transcript, ".."), { recursive: true });
+    writeFileSync(transcript, "");
+    const wrappers: ReturnType<typeof Bun.spawn>[] = [];
+    const restores: (() => void)[] = [];
+    const previousHome = process.env["HOME"];
+    const previousDir = process.env["CLAUDE_CONFIG_DIR"];
+    try {
+      for (const dir of stores) {
+        mkdirSync(join(home, dir), { recursive: true });
+        wrappers.push(Bun.spawn(["bash", "-c", "echo; read -r line"], { env: { PATH: process.env["PATH"] ?? "", HOME: home, HERDR_AGENT: "claude", CLAUDE_CONFIG_DIR: join(home, dir) }, stdin: "pipe", stdout: "pipe", stderr: "ignore" }));
+      }
+      for (const wrapper of wrappers) if ((await (wrapper.stdout as ReadableStream<Uint8Array>).getReader().read()).done) throw new Error("the wrapper stand-in ended early");
+      process.env["HOME"] = home;
+      delete process.env["CLAUDE_CONFIG_DIR"];
+      const rpc = spyOn(herdr, "herdrRpc").mockImplementation((async (method: string) => method === "agent.get"
+        ? { agent: reported === null ? {} : { agent_session: { agent: "claude", source: "herdr:claude", kind: "id", value: reported } } }
+        : { process_info: { pane_id: "w1:p1", shell_pid: 1, foreground_processes: wrappers.map((wrapper) => ({ pid: wrapper.pid, name: "bash", argv: ["bash", "/opt/sandbox/claude-wrapped"] })) } }) as unknown as typeof herdr.herdrRpc);
+      restores.push(() => rpc.mockRestore());
+      const serving = spyOn(served, "capabilities").mockReturnValue(runtime);
+      restores.push(() => serving.mockRestore());
+      return { found: (await claudePaneSession({ pane_id: "w1:p1", cwd, foreground_cwd: cwd } as HerdrPane))?.path ?? null, transcript };
+    } finally {
+      for (const restore of restores.reverse()) restore();
+      for (const wrapper of wrappers) wrapper.kill("SIGKILL");
+      if (previousHome === undefined) delete process.env["HOME"]; else process.env["HOME"] = previousHome;
+      if (previousDir !== undefined) process.env["CLAUDE_CONFIG_DIR"] = previousDir;
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  it("reads the reported session in the store the hinted wrapper hands Claude", async () => {
+    const { found, transcript } = await wrapped(["project-store", "project-store"], SESSION);
+    expect(found).toBe(transcript);
+  });
+
+  it("binds none when the hinted processes name two stores: either could be a guess", async () => {
+    expect((await wrapped(["project-store", "other-store"], SESSION)).found).toBeNull();
+  });
+
+  it("binds none when herdr has no session reported: the wrapper is no Claude whose PID record could say", async () => {
+    expect((await wrapped(["project-store"], null)).found).toBeNull();
+  });
+
+  it("takes no hint on herdr-core, which names the job's leader alone: a process below it may name another store", async () => {
+    expect((await wrapped(["project-store"], SESSION, HERDR_CORE)).found).toBeNull();
+  });
+});
 
 // herdr-core names only the first process of the foreground job: a launcher in front of Claude hid it (#3009)
 describe.skipIf(process.platform !== "linux")("a Claude herdr-core does not name in front (#3009)", () => {
@@ -4536,6 +4845,7 @@ it("finds a Windows pane's session by the child claude.exe holding the PID recor
   const home = mkdtempSync(join(tmpdir(), "claude-win32-launcher-"));
   const previousHome = process.env["HOME"];
   const previousProfile = process.env["USERPROFILE"];
+  // or the lookup reads the developer's own store too
   const previousConfig = process.env["CLAUDE_CONFIG_DIR"];
   delete process.env["CLAUDE_CONFIG_DIR"];
   const session = "7d9f3a52-4e2c-4b1a-9c5d-8e7f6a5b4c32";
@@ -4600,6 +4910,8 @@ it("reads a Claude pane's process start from the kernel on macOS, with no ps for
     ? { agent: { agent_session: { value: session } } }
     : { process_info: { foreground_processes: [{ pid: 4242, name: "claude", argv: ["claude"] }] } }) as unknown as typeof herdr.herdrRpc);
   const blocking = spyOn(Bun, "spawnSync");
+  // the kernel's process record answers the start; no ps asks it, awaited or not (#1404). Claude's own
+  // store may still ask an awaited ps for the process's environment on a real Mac.
   const kernel = spyOn(darwinProcess, "darwinStartTime").mockReturnValue(1_000_000n);
   const awaited = spyOn(Bun, "spawn");
   process.env["HOME"] = home;

@@ -8,7 +8,9 @@ import { PEEK_CLOSE_MS, PEEK_OPEN_MS } from "../src/lib/sidebarPeek.ts";
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
 import { openSettingsPage } from "./settings-page.ts";
+import { serveDemo } from "./demo-server.ts";
 
+// Only the disposable demo build is served; no live session is read.
 const app = mkdtempSync(join(tmpdir(), "herdr-sidebar-peek-"));
 const evidence = process.env["UI_EVIDENCE_DIR"];
 
@@ -33,15 +35,7 @@ try {
   await buildDemoApp(app);
   const index = join(app, "index.html");
   writeFileSync(index, readFileSync(index, "utf8").replace(/<script type="module"/, '<script src="./demo-transport.js"></script><script type="module"'));
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
-    const path = new URL(request.url).pathname;
-    let file: string;
-    try { file = decodeURIComponent(path.slice(1)); } catch { return new Response("bad path", { status: 400 }); }
-    if (!file || file.endsWith("/")) file += "index.html";
-    if (file.split("/").includes("..") || file.includes("\\")) return new Response("bad path", { status: 400 });
-    const body = Bun.file(join(app, file));
-    return await body.exists() ? new Response(body) : new Response("not found", { status: 404 });
-  } });
+  const server = serveDemo(app, { prefix: "/" });
   const url = (sidebarParam: string) => `http://127.0.0.1:${server.port}/?pane=${encodeURIComponent(panes.shell)}${sidebarParam}`;
   try {
     const browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
@@ -55,6 +49,8 @@ try {
             page.on("pageerror", (error) => errors.push(error.message));
             await page.clock.install();
             await context.addInitScript((value) => { if (localStorage.getItem("ovis:settings") === null) { localStorage.setItem("ovis:settings", JSON.stringify({ language: "en", theme: value })); localStorage.setItem("ovis:sidebar-filter-shown", "true"); } }, theme);
+            // the row opened from the peek is the Claude pane's: its turn stays at work, or on a slow runner
+            // the end the demo times 4.5s in folds that row away first
             await context.addInitScript(() => Reflect.set(window, "__ovisDemoHoldTurn", true));
 
             await page.goto(url("&sidebar=hidden"));

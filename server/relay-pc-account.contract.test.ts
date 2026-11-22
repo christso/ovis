@@ -19,6 +19,10 @@ import { rotateRelayIdentity } from "./relay/identity.ts";
 import type { RelayPcKey } from "./relay-pc.ts";
 import { bounded, deferred, relayConnection } from "./relay/test-helpers.ts";
 
+// Add a connection → Ovis relay → Add, between two real servers on a local relay (docs/account.md, "Adding a PC of
+// your account"): PC A's server pairs with PC B of the same account, vouched for by an admission its page posted, and
+// B lets it in only once a drive member of the account picked the digits A shows.
+
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
 
@@ -30,7 +34,7 @@ function stateDir(): string {
 
 const ACCOUNT = "acct_1";
 
-async function accountPcs(options: { clock?: () => number; aIdentity?: boolean } = {}) {
+async function accountPcs(options: { clock?: () => number; aIdentity?: boolean; accountOpensAll?: boolean } = {}) {
   const relay = startBunRelay({ port: 0, limiters: {
     perAddress: { async limit() { return { success: true }; } },
     global: { async limit() { return { success: true }; } },
@@ -48,15 +52,19 @@ async function accountPcs(options: { clock?: () => number; aIdentity?: boolean }
     return socket;
   };
   const service = new FakeAccountService(options.clock ?? Date.now);
+  const accountOpensAll = options.accountOpensAll ?? false;
+  service.opensAll = accountOpensAll;
   const token = service.issueToken(ACCOUNT);
   const bState = stateDir();
   const keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, false, ["sign", "verify"]);
   const memberKey = Buffer.from(await crypto.subtle.exportKey("spki", keys.publicKey)).toString("base64url");
+  if (accountOpensAll) service.registerDevice(ACCOUNT, memberKey, "Owner's phone");
   const member = { id: randomBytes(8).toString("hex"), label: "Owner's phone", role: "drive", token_hash: randomBytes(32).toString("hex"),
     relay_public_key: memberKey, account: ACCOUNT, created_at: new Date().toISOString(), last_seen_at: null };
   writeFileSync(join(bState, "devices.json"), JSON.stringify({ gate_closed_at: member.created_at, devices: [member] }), { mode: 0o600 });
   const relayService = new RelayService({ stateDir: bState, relay: `wss://127.0.0.1:${relay.port}`, connect: local });
-  const b = createServer({ port: 0, hostname: "127.0.0.1", stateDir: bState, token: "", tailscaleOwner: null, sidecar: false, registerBridge: false, relay: relayService,
+  // This fixture puts a released Step 1 member on B and uses its account-vouched comparison.
+  const b = createServer({ port: 0, hostname: "127.0.0.1", stateDir: bState, token: "", tailscaleOwner: null, sidecar: false, registerBridge: false, relay: relayService, accountOpensAll, platform: "linux",
     accountService: { url: "https://account.test", fetch: service.fetch } });
   cleanup.push(async () => { await relayService.shutdown(); b.stop(); });
   const bBase = `http://127.0.0.1:${b.port}`;
@@ -66,11 +74,13 @@ async function accountPcs(options: { clock?: () => number; aIdentity?: boolean }
   const { code: _code, ...offer } = decodeOffer((await offered.json() as { url: string }).url)!;
   await service.fetch(new Request(`https://account.test/v1/pcs/${offer.server_id}`, { method: "PUT", headers: { authorization: `Bearer ${token}` },
     body: JSON.stringify({ label: "Desk", public_key: bytesToHex(importPublicKey(offer.server_public_key)), relay: offer.relay }) }));
+  if (accountOpensAll) expect(await b.context.services.accountMailbox.readSnapshot()).toMatchObject({ committed: true });
   const aState = stateDir();
   const aRelayIdentity = options.aIdentity ? rotateRelayIdentity(aState) : undefined;
-  const a = createServer({ port: 0, hostname: "127.0.0.1", stateDir: aState, token: "", tailscaleOwner: null, sidecar: false, registerBridge: false, relayPcSocket: local });
+  const a = createServer({ port: 0, hostname: "127.0.0.1", stateDir: aState, token: "", tailscaleOwner: null, sidecar: false, registerBridge: false, relayPcSocket: local, accountOpensAll, platform: "linux" });
   cleanup.push(() => a.stop());
   const aBase = `http://127.0.0.1:${a.port}`;
+  /** the member, signed in to B over a session of B's own, that may approve through the relay */
   const approver = async () => {
     const holder = { app: b, closes: [] as (() => void)[], stateDir: bState, close() {} };
     cleanup.push(() => { for (const close of holder.closes) close(); });
@@ -84,6 +94,7 @@ async function accountPcs(options: { clock?: () => number; aIdentity?: boolean }
       },
     };
   };
+  /** what A's page would post: an admission naming `key` at B, under this account's sign-in */
   const admit = (key: string, serverId = offer.server_id) => service.fetch(new Request("https://account.test/v1/admissions", {
     method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ server_id: serverId, label: "Ovis on A", key }),
   }));
@@ -124,12 +135,13 @@ async function start(base: string, pc: unknown) {
   return { status: response.status, body: await response.json() as { ticket: string; key: string; label: string; error?: { code: string } } };
 }
 
-it("adds a PC of the account once a member there picked the digits: a plain row on B, the PC in A's list after a restart, and no add anywhere", async () => {
-  const { a, aBase, aState, b, bState, member, service, pc, approver, admit } = await accountPcs();
+it.each([false, true])("adds a PC of the account once a member there picked the digits, persists after restart (Step 2: %s)", async accountOpensAll => {
+  const { a, aBase, aState, b, bState, member, service, pc, approver, admit } = await accountPcs({ accountOpensAll });
   const checked = await post(aBase, "check", { pcs: [pc] });
   expect(await checked.json()).toEqual({ pcs: [{ server_id: pc.server_id, state: "ready" }] });
   const started = await start(aBase, pc);
   expect(started.status).toBe(200);
+  // a key in memory only, until B admits it
   expect(relayKeys(aState)).toEqual([]);
   expect((await admit(started.body.key)).status).toBe(200);
   const member0 = await approver();
@@ -138,6 +150,7 @@ it("adds a PC of the account once a member there picked the digits: a plain row 
   const { digits } = await next();
   expect(digits).toMatch(/^\d{6}$/);
   const [request] = await prompted;
+  // asked of the account's members as "pair this PC", with the digits among three, never on B's own screen
   expect(request).toMatchObject({ intent: "pc", vouched: true, key: started.body.key, label: started.body.label });
   expect(request!.choices).toContain(digits!);
   expect(b.context.services.relay.approvals.list()).toEqual([]);
@@ -150,6 +163,7 @@ it("adds a PC of the account once a member there picked the digits: a plain row 
   expect(row).toMatchObject({ role: "drive", added_by: member.id });
   expect(row).not.toHaveProperty("account");
   expect(row).not.toHaveProperty("account_add");
+  // nothing was signed for the account: no record waits for B or for any PC, and A never joined it
   expect(service.mailbox(pc.server_id, ACCOUNT)).toEqual([]);
   expect(existsSync(join(aState, "account-pending.json"))).toBe(false);
 
@@ -159,7 +173,7 @@ it("adds a PC of the account once a member there picked the digits: a plain row 
   expect(listed.machines.some((m) => m.id === machine!.id && m.kind === "relay")).toBe(true);
   expect((await start(aBase, pc)).body.error?.code).toBe("account_pc_added");
   a.stop();
-  const again = createServer({ port: 0, hostname: "127.0.0.1", stateDir: aState, token: "", tailscaleOwner: null, sidecar: false, registerBridge: false });
+  const again = createServer({ port: 0, hostname: "127.0.0.1", stateDir: aState, token: "", tailscaleOwner: null, sidecar: false, registerBridge: false, accountOpensAll });
   cleanup.push(() => again.stop());
   const restarted = await (await fetch(`http://127.0.0.1:${again.port}/api/machines`, { headers: { origin: `http://127.0.0.1:${again.port}` } })).json() as { machines: Machine[] };
   expect(restarted.machines.some((m) => m.id === machine!.id && m.kind === "relay")).toBe(true);
@@ -202,6 +216,7 @@ it("is refused before any prompt without an admission, with a stale one, or with
     expect([kind, answer.error?.code, answer.digits]).toEqual([kind, "account_pc_refused", undefined]);
     expect(prompted).toBe(false);
     expect(relayKeys(aState)).toEqual([]);
+    // no person was asked: nothing counted against B's pairings by these PCs
     expect(() => b.context.services.devices.assertRelayPairing("vouched")).not.toThrow();
   }
 }, 120_000);
@@ -221,6 +236,7 @@ it("cancelling while it waits ends the comparison on B and keeps nothing on A", 
   const listed = await (await fetch(`${aBase}/api/machines`, { headers: { origin: aBase } })).json() as { machines: Machine[] };
   expect(listed.machines.some((machine) => machine.kind === "relay")).toBe(false);
   expect(relayKeys(aState)).toEqual([]);
+  // a ticket is good for one comparison
   expect((await lines(await post(aBase, "pair", { ticket: started.body.ticket }))()).error?.code).toBe("account_pc_gone");
 }, 60_000);
 
@@ -236,6 +252,7 @@ it("adds a PC on an Add right after a cancelled one: the key that PC was asked f
   const withdrawn = remotePrompt(b, (list) => list.length === 0);
   abort.abort();
   await withdrawn;
+  // at once: well within the 10 s that PC waits between two reads of the account's admissions
   const again = await start(aBase, pc);
   expect(again.status).toBe(200);
   expect((await admit(again.body.key)).status).toBe(200);
@@ -248,6 +265,7 @@ it("adds a PC on an Add right after a cancelled one: the key that PC was asked f
   expect(await member.decide(request!.id, "approve", digits)).toBe(200);
   const { machine } = await next();
   expect(machine).toMatchObject({ kind: "relay", relay: { server_id: pc.server_id } });
+  // the same key, under a ticket of its own: the first ticket was spent on the cancelled comparison
   expect(again.body.key).toBe(first.body.key);
   expect(again.body.ticket).not.toBe(first.body.ticket);
   expect(relayKeys(aState)).toEqual([`${machine!.id}.json`]);
@@ -328,6 +346,7 @@ it("writes the key it made for a PC only while that PC's comparison runs, or onc
   const { a, aBase, aState, pc } = await accountPcs();
   const started = await start(aBase, pc);
   const held = (a.context.services.core.machines as unknown as { accountPcTickets: Map<string, { key: RelayPcKey }> }).accountPcTickets.get(started.body.ticket)!;
+  // admitted, as far as the key can tell, by no comparison of this PC's: it must not reach the disk
   await expect(held.key.update(pc.server_id, (current) => ({ ...(current ?? { server_id: pc.server_id, server_public_key: pc.server_public_key, relay: pc.relay, label: "x", public_spki: started.body.key, private_key: undefined as unknown as CryptoKey, device_id: null }), device_id: "0011223344556677" }))).rejects.toThrow("removed");
   expect(relayKeys(aState)).toEqual([]);
 }, 60_000);

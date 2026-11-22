@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, jest } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it, jest, setSystemTime } from "bun:test";
+import { closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { HerdrError, herdrRpc, paneGet, paneProcessInfo, paneRead, paneSendKeys, paneSendText, sessionSnapshot, subscribeEvents, type EventFrame, paneClose, paneMoveBeside, paneMoveToNewTab, tabClose, tabCreate, tabRename, workspaceClose, workspaceCreate, workspaceRename, agentManifests, agentStart, ping, worktreeCreate, worktreeList, worktreeOpen, worktreeRemove } from "../herdr/client.ts";
+import { HerdrError, herdrRpc, paneGet, paneProcessInfo, paneRead, paneSendKeys, paneSendText, sessionSnapshot, subscribeEvents, type EventFrame, paneClose, paneMoveBeside, paneMoveToNewTab, tabClose, tabCreate, tabMove, tabRename, workspaceClose, workspaceCreate, workspaceRename, agentManifests, agentStart, ping, worktreeCreate, worktreeList, worktreeOpen, worktreeRemove } from "../herdr/client.ts";
 import { claudeInputDraft, viewportShowsLive } from "../claude-input.ts";
 import { type AdapterOptions, paintedScreen, type SeenObserver, sessionLabeler, startHerdrCoreAdapter } from "./adapter.ts";
 import { SeenMarker } from "./seen-label.ts";
@@ -53,6 +53,7 @@ class FakeCore implements HcTransport {
     this.endExited();
   }
 
+  /** A notification on a stream channel, as hc sends events. */
   notify(channel: number, method: string, params: Record<string, unknown>): void {
     this.data(channel, `${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`);
   }
@@ -175,6 +176,7 @@ describe("herdr-core adapter", () => {
   it("offers Ovis's own layout calls only on a core whose Herdr app document was never written", async () => {
     const { socket } = await setup([terminal("t1")], { "doc.get": () => ({ value: null, version: 0 }) });
     expect((await ping(socket)).layout).toEqual({ rename: true, split: false, move: true, arrange: false, worktrees: true });
+    // splits, zoom and order need a core that writes documents, as its hello says
     const writes = await setup([terminal("t1")], { "doc.get": () => ({ value: null, version: 0 }), "doc.set": () => ({ version: 1 }) });
     expect((await ping(writes.socket)).layout).toEqual({ rename: true, split: true, move: true, arrange: true, worktrees: true });
   });
@@ -220,6 +222,7 @@ describe("herdr-core adapter", () => {
     const core = cores[0]!;
     expect(core.calls.find((call) => call.method === "terminal.attach")?.params).toEqual({ terminal: "t1", cols: 100, rows: 4, history: 4, observe: true });
     expect(core.closed).toEqual([1]);
+    // the chat's box check: herdr-core reports no scroll, so the colors count once their text is the live screen's
     expect(viewportShowsLive(null, null, colors, live, live)).toBe(true);
     expect(claudeInputDraft(live, colors)).toBe(false);
   });
@@ -338,6 +341,7 @@ describe("herdr-core adapter", () => {
     core.notify(channel, "event", { seq: 3, type: "status", terminal: "vps/t2", data: { status: { app: "codex", state: "working" } } });
     core.notify(channel, "event", { seq: 4, type: "labels", terminal: "vps/t2", data: { labels: { "herdr.seen": "0" } } });
     core.notify(channel, "event", { seq: 5, type: "finished", terminal: "vps/t2", data: { reason: "exited", exit_code: 0 } });
+    // the other machine's own Herdr app document, as hc tells it: its machine, no terminal
     core.notify(channel, "event", { seq: 6, type: "doc", machine: "vps", data: { name: "herdr-app", version: 1 } });
     core.notify(channel, "event", { seq: 7, type: "created", terminal: "t4", data: { address: "t4", state: "live", turn: 0 } });
     core.notify(channel, "missed", { seq: 8, terminals: [] });
@@ -374,6 +378,7 @@ describe("herdr-core adapter", () => {
     core.notify(channel, "missed", { seq: 9, terminals: [] });
     await ended.promise;
     expect(frames).toEqual([
+      // herdr-core's `claude-code` reaches the browser as herdr's `claude`, as in the snapshot
       { event: "pane.agent_status_changed", data: { pane_id: "t1", agent_status: "working", agent: "claude" } },
       { event: "pane.agent_status_changed", data: { pane_id: "t1", agent_status: "unknown", agent: "omp" } },
       { event: "pane.exited", data: { type: "pane_exited", pane_id: "t1" } },
@@ -759,6 +764,8 @@ it("asks for a fresh snapshot when a report's kind, message or progress changes,
     });
     const adapter = await startHerdrCoreAdapter(hc, socket);
     cleanups.push(() => { adapter.stop(); hc.close(); rmSync(dir, { recursive: true, force: true }); });
+    // a snapshot asks three calls and hc's hello at once, a ping hello and two calls: all of them
+    // fail, and a rejection nobody hears fails this test, as it ends a running server
     const refused = { code: "connect_failed", message: "hc could not be started" };
     await expect(sessionSnapshot(socket)).rejects.toMatchObject(refused);
     await expect(ping(socket)).rejects.toMatchObject(refused);
@@ -879,7 +886,41 @@ describe("herdr-core adapter, new and closed terminals", () => {
       else process.env["PATH"] = path;
     });
   }
-  async function labeling(start: HcTerminal[]) {
+  /**
+   * A git first on the PATH until the test ends whose `rev-parse` answers only once released, as on a
+   * network folder or a huge repository: each call reads a fifo whose one writer the test holds open.
+   */
+  function gitHeld(dir: string): () => void {
+    const real = Bun.which("git")!;
+    const bin = join(dir, "git-held");
+    mkdirSync(bin);
+    const hold = join(bin, "hold");
+    expect(Bun.spawnSync(["mkfifo", hold]).exitCode).toBe(0);
+    const writer = openSync(hold, constants.O_RDWR);
+    writeFileSync(join(bin, "git"), [
+      "#!/bin/sh",
+      `case " $* " in *" rev-parse "*) [ -p '${hold}' ] && cat '${hold}' > /dev/null 2>&1 ;; esac`,
+      `exec '${real}' "$@"`,
+      "",
+    ].join("\n"), { mode: 0o755 });
+    const path = process.env["PATH"];
+    process.env["PATH"] = `${bin}:${path ?? ""}`;
+    let held = true;
+    // the fifo goes first, so no call opens it after the writer closes
+    const release = () => {
+      if (!held) return;
+      held = false;
+      rmSync(hold);
+      closeSync(writer);
+    };
+    cleanups.push(() => {
+      release();
+      if (path === undefined) delete process.env["PATH"];
+      else process.env["PATH"] = path;
+    });
+    return release;
+  }
+  async function labeling(start: HcTerminal[], extra: Record<string, Handler> = {}) {
     const ready = await living(start, {
       ...NO_DOC,
       "terminal.label": (params) => {
@@ -887,6 +928,7 @@ describe("herdr-core adapter, new and closed terminals", () => {
         found.labels = { ...found.labels, ...(params["labels"] as Record<string, string>) };
         return found;
       },
+      ...extra,
     });
     return ready;
   }
@@ -933,6 +975,7 @@ describe("herdr-core adapter, new and closed terminals", () => {
     expect((await worktreeList("S", socket)).source).toMatchObject({ repo_root: repo, source_checkout_path: repo, source_workspace_id: "S" });
     const created = await worktreeCreate({ workspaceId: "S", branch: "moved", path: join(dir, "old") }, socket);
     expect((await sessionSnapshot(socket)).workspaces.map((workspace) => [workspace.workspace_id, workspace.worktree?.repo_root ?? null])).toEqual([["N", nested], ["S", repo], [created.workspace.workspace_id, repo]]);
+    // a checkout moved away and another put where it was: neither is deleted for the old workspace
     expect(git("-C", repo, "worktree", "move", join(dir, "old"), join(dir, "new")).exitCode).toBe(0);
     await expect(worktreeRemove(created.workspace.workspace_id, true, socket)).rejects.toMatchObject({ code: "worktree_not_found" });
     expect(git("-C", repo, "worktree", "add", "-q", "-b", "other", join(dir, "old")).exitCode).toBe(0);
@@ -965,6 +1008,7 @@ describe("herdr-core adapter, new and closed terminals", () => {
     expect((await worktreeList("L", socket)).source).toMatchObject({ source_checkout_path: linked, source_workspace_id: null });
     await expect(worktreeList("P", socket)).rejects.toMatchObject({ code: "not_git_worktree" });
     expect(existsSync(join(dir, "other"))).toBeFalse();
+    // a repository with no commit yet: git's refusal, which the route turns into repository_without_commits
     expect(git("init", "-q", "-b", "main", join(dir, "empty")).exitCode).toBe(0);
     const empty = await labeling([terminal("t1", { cwd: join(dir, "empty"), labels: { "herdr.space": "E", "herdr.tab": "T" } })]);
     await expect(worktreeCreate({ workspaceId: "E", branch: "first", path: join(dir, "first") }, empty.socket)).rejects.toMatchObject({ code: "worktree_create_failed", message: expect.stringMatching(/invalid reference: HEAD\b/u) });
@@ -991,6 +1035,8 @@ describe("herdr-core adapter, new and closed terminals", () => {
       expect([factsOf("t1"), factsOf("t2"), factsOf("t3")]).toEqual([head, { ...head, checkout_path: linked, is_linked_worktree: true }, null]);
       expect(core.runs).toEqual([]);
     }
+    // what the sidebar draws is what its actions do, as on herdr: the repository's workspace closes over the
+    // repository's other workspaces as a group, the checkout's and the other one on the main checkout
     const grouped = await labeling(start());
     await expect(workspaceClose("S", grouped.socket)).rejects.toMatchObject({ code: "workspace_group_close_required" });
     await workspaceClose("S", grouped.socket, true);
@@ -998,6 +1044,7 @@ describe("herdr-core adapter, new and closed terminals", () => {
     const opening = start();
     await worktreeCreate({ workspaceId: "S", branch: "next", path: join(dir, "next") }, (await labeling(opening)).socket);
     expect(JSON.parse(opening[0]!.labels!["ovis.worktree"]!)).toMatchObject({ checkout_path: repo, is_linked_worktree: false, git_id: expect.any(String) });
+    // a checkout added again at the same path since git was asked is not the one drawn: it stays
     const replacing = await labeling(start());
     await sessionSnapshot(replacing.socket);
     expect(git("-C", repo, "worktree", "remove", linked).exitCode).toBe(0);
@@ -1008,12 +1055,177 @@ describe("herdr-core adapter, new and closed terminals", () => {
     const moving = start();
     const removing = await labeling(moving);
     await sessionSnapshot(removing.socket);
-    moving[1]!.cwd = repo;
+    moving[1]!.foreground = { pid: 12, name: "bash", cwd: repo };
     expect((await sessionSnapshot(removing.socket)).workspaces.find((workspace) => workspace.workspace_id === "W")?.worktree).toMatchObject({ checkout_path: linked, is_linked_worktree: true });
     expect(await worktreeRemove("W", false, removing.socket)).toMatchObject({ type: "worktree_removed", path: linked, forced: false });
     expect(existsSync(linked)).toBeFalse();
     expect(removing.ends).toEqual(["kill t2", "rm t2"]);
   });
+
+  it("keeps a workspace's checkout through a restart of Ovis: git is asked where its first terminal started, not where its shell went (#3890)", async () => {
+    const { dir, repo, git } = repository();
+    const linked = join(dir, "checkouts", "feature-x");
+    expect(git("-C", repo, "worktree", "add", "-q", "-b", "feature/x", linked).exitCode).toBe(0);
+    // a server that first sees the repository's workspace after its shell went into the checkout: a restart, an update
+    const { socket, ends } = await labeling([
+      terminal("t1", { cwd: repo, foreground: { pid: 11, name: "bash", cwd: linked }, labels: { "herdr.space": "S", "herdr.tab": "T" } }),
+      terminal("t2", { cwd: linked, labels: { "herdr.space": "W", "herdr.tab": "U" } }),
+    ]);
+    expect((await sessionSnapshot(socket)).workspaces.map((workspace) => [workspace.workspace_id, workspace.worktree?.checkout_path, workspace.worktree?.is_linked_worktree])).toEqual([["S", repo, false], ["W", linked, true]]);
+    await expect(worktreeRemove("S", true, socket)).rejects.toMatchObject({ code: "not_linked_worktree" });
+    expect(existsSync(linked)).toBeTrue();
+    expect(ends).toEqual([]);
+  });
+
+  it("deletes no checkout another workspace is open on (#3890)", async () => {
+    const { dir, repo, git } = repository();
+    const linked = join(dir, "linked");
+    expect(git("-C", repo, "worktree", "add", "-q", "-b", "linked", linked).exitCode).toBe(0);
+    const { socket, ends } = await labeling([
+      terminal("t1", { cwd: linked, labels: { "herdr.space": "A", "herdr.tab": "T" } }),
+      terminal("t2", { cwd: linked, labels: { "herdr.space": "B", "herdr.tab": "U", "ovis.workspace": "reviewer" } }),
+    ]);
+    expect((await sessionSnapshot(socket)).workspaces.map((workspace) => workspace.worktree?.checkout_path)).toEqual([linked, linked]);
+    await expect(worktreeRemove("A", true, socket)).rejects.toMatchObject({ code: "worktree_in_use", message: expect.stringContaining("reviewer") });
+    expect(existsSync(join(linked, "README.md"))).toBeTrue();
+    expect(ends).toEqual([]);
+    // nor one where another workspace, drawn elsewhere, has a terminal that went into it
+    mkdirSync(join(dir, "plain"));
+    const elsewhere = await labeling([
+      terminal("t1", { cwd: linked, labels: { "herdr.space": "A", "herdr.tab": "T" } }),
+      terminal("t2", { cwd: join(dir, "plain"), labels: { "herdr.space": "P", "herdr.tab": "U", "ovis.workspace": "notes" } }),
+      terminal("t3", { cwd: join(dir, "plain"), foreground: { pid: 13, name: "bash", cwd: join(linked, "src") }, labels: { "herdr.space": "P", "herdr.tab": "U" } }),
+    ]);
+    expect((await sessionSnapshot(elsewhere.socket)).workspaces.map((workspace) => workspace.worktree?.checkout_path ?? null)).toEqual([linked, null]);
+    await expect(worktreeRemove("A", true, elsewhere.socket)).rejects.toMatchObject({ code: "worktree_in_use", message: expect.stringContaining("notes") });
+    expect(existsSync(join(linked, "README.md"))).toBeTrue();
+    expect(elsewhere.ends).toEqual([]);
+    // nor one with a terminal that started there through a link to it
+    symlinkSync(linked, join(dir, "alias"));
+    const linkedTo = await labeling([
+      terminal("t1", { cwd: linked, labels: { "herdr.space": "A", "herdr.tab": "T" } }),
+      terminal("t2", { cwd: join(dir, "plain"), labels: { "herdr.space": "P", "herdr.tab": "U", "ovis.workspace": "aliased" } }),
+      terminal("t3", { cwd: join(dir, "alias", "src"), labels: { "herdr.space": "P", "herdr.tab": "V" } }),
+    ]);
+    mkdirSync(join(linked, "src"));
+    await expect(worktreeRemove("A", true, linkedTo.socket)).rejects.toMatchObject({ code: "worktree_in_use", message: expect.stringContaining("aliased") });
+    expect(existsSync(join(linked, "README.md"))).toBeTrue();
+  });
+
+  it("keeps a workspace's checkout while a tab of it started there, whichever tab is in front, and claims no checkout by where a shell went (#3890)", async () => {
+    const { dir, repo, git } = repository();
+    const [a, b] = [join(dir, "a"), join(dir, "b")];
+    expect(git("-C", repo, "worktree", "add", "-q", "-b", "a", a).exitCode).toBe(0);
+    expect(git("-C", repo, "worktree", "add", "-q", "-b", "b", b).exitCode).toBe(0);
+    mkdirSync(join(dir, "plain"));
+    const terminals = [
+      terminal("t1", { cwd: a, labels: { "herdr.space": "S", "herdr.tab": "T1" } }),
+      terminal("t2", { cwd: b, labels: { "herdr.space": "S", "herdr.tab": "T2" } }),
+      terminal("t3", { cwd: repo, labels: { "herdr.space": "R", "herdr.tab": "U" } }),
+      terminal("t4", { cwd: join(dir, "plain"), foreground: { pid: 14, name: "bash", cwd: b }, labels: { "herdr.space": "P", "herdr.tab": "V" } }),
+    ];
+    // Ovis's layout document, which a tab move writes
+    let kept: { value: unknown; version: number } = { value: null, version: 0 };
+    const { socket } = await labeling(terminals, {
+      "doc.get": (params) => params["name"] === "ovis-layout" ? kept : { value: null, version: 0 },
+      "doc.set": (params) => { kept = { value: params["value"], version: kept.version + 1 }; return { version: kept.version }; },
+    });
+    const checkoutOf = async (id: string) => (await sessionSnapshot(socket)).workspaces.find((workspace) => workspace.workspace_id === id)?.worktree?.checkout_path;
+    expect(await checkoutOf("S")).toBe(a);
+    // another client moves b's tab in front while a confirmation names a
+    await tabMove("T2", 0, socket);
+    const shown = await sessionSnapshot(socket);
+    expect(shown.panes.find((pane) => pane.workspace_id === "S")?.pane_id).toBe("t2");
+    expect(await checkoutOf("S")).toBe(a);
+    // a shell that went into b from outside git does not make its workspace b's
+    expect((await worktreeOpen({ workspaceId: "R", path: b }, socket)).already_open).toBeFalse();
+    expect(await worktreeRemove("S", true, socket)).toMatchObject({ type: "worktree_removed", path: a });
+    expect([existsSync(a), existsSync(join(b, "README.md"))]).toEqual([false, true]);
+  });
+
+  it("keeps the checkout a row was first drawn with from a cached answer while git is asked again (#3890)", async () => {
+    const { dir, repo, git } = repository();
+    const [a, b] = [join(dir, "a"), join(dir, "b")];
+    expect(git("-C", repo, "worktree", "add", "-q", "-b", "a", a).exitCode).toBe(0);
+    expect(git("-C", repo, "worktree", "add", "-q", "-b", "b", b).exitCode).toBe(0);
+    const terminals = [terminal("t1", { cwd: a, labels: { "herdr.space": "X", "herdr.tab": "T0" } })];
+    const find = (params: Record<string, unknown>) => terminals.find((entry) => entry.address === params["terminal"]) ?? (() => { throw new Error("no terminal"); })();
+    let kept: { value: unknown; version: number } = { value: null, version: 0 };
+    // the core's terminals as this test changes them
+    const { socket } = await labeling(terminals, {
+      "terminal.list": () => ({ terminals, hidden_finished: 0 }),
+      "terminal.get": find,
+      "terminal.kill": (params) => Object.assign(find(params), { state: "finished" }),
+      "terminal.rm": (params) => { terminals.splice(terminals.indexOf(find(params)), 1); return { removed: params["terminal"] }; },
+      "doc.get": (params) => params["name"] === "ovis-layout" ? kept : { value: null, version: 0 },
+      "doc.set": (params) => { kept = { value: params["value"], version: kept.version + 1 }; return { version: kept.version }; },
+    });
+    // git answered for a's folder once, for another workspace
+    expect((await sessionSnapshot(socket)).workspaces[0]?.worktree?.checkout_path).toBe(a);
+    terminals.splice(0, 1,
+      terminal("t2", { cwd: a, labels: { "herdr.space": "S", "herdr.tab": "T1" } }),
+      terminal("t3", { cwd: b, labels: { "herdr.space": "S", "herdr.tab": "T2" } }));
+    // past the time that answer is kept, and git slow to answer again: the row is drawn from the cached answer
+    setSystemTime(new Date(Date.now() + 60_000));
+    cleanups.push(() => setSystemTime());
+    const release = gitHeld(dir);
+    expect((await sessionSnapshot(socket)).workspaces.map((workspace) => workspace.worktree?.checkout_path)).toEqual([a]);
+    await tabMove("T2", 0, socket);
+    expect((await sessionSnapshot(socket)).workspaces.map((workspace) => workspace.worktree?.checkout_path)).toEqual([a]);
+    release();
+    expect(await worktreeRemove("S", true, socket)).toMatchObject({ type: "worktree_removed", path: a });
+    expect(existsSync(join(b, "README.md"))).toBeTrue();
+  }, 15_000);
+
+  it("deletes no checkout added again at the path after git was asked again (#3890)", async () => {
+    const { dir, repo, git } = repository();
+    const linked = join(dir, "linked");
+    expect(git("-C", repo, "worktree", "add", "-q", "-b", "first", linked).exitCode).toBe(0);
+    const { socket, cores } = await labeling([
+      terminal("t1", { cwd: repo, labels: { "herdr.space": "S", "herdr.tab": "T" } }),
+      terminal("t2", { cwd: linked, labels: { "herdr.space": "W", "herdr.tab": "U" } }),
+    ], { "events.subscribe": () => ({ channel: cores.at(-1)!.channel(), seq: 1, terminals: [] }) });
+    expect((await sessionSnapshot(socket)).workspaces.map((workspace) => workspace.worktree?.checkout_path)).toEqual([repo, linked]);
+    expect(git("-C", repo, "worktree", "remove", linked).exitCode).toBe(0);
+    expect(git("-C", repo, "worktree", "add", "-q", "-b", "second", linked).exitCode).toBe(0);
+    const started = Promise.withResolvers<void>();
+    const asked = Promise.withResolvers<void>();
+    const subscription = subscribeEvents([{ type: "layout.updated" }], { onEvent: (frame) => { if (frame.event === "layout.updated") asked.resolve(); }, onStarted: () => started.resolve(), onClose() {} }, socket);
+    cleanups.push(() => subscription.close());
+    await started.promise;
+    // past the time git's facts are kept: the next snapshot asks git again, and its new answer is told
+    setSystemTime(new Date(Date.now() + 60_000));
+    cleanups.push(() => setSystemTime());
+    await sessionSnapshot(socket);
+    await asked.promise;
+    await expect(worktreeRemove("W", true, socket)).rejects.toMatchObject({ code: "worktree_not_found" });
+    expect(existsSync(join(linked, "README.md"))).toBeTrue();
+  });
+
+  it("waits on a slow git once per folder, and asks for a fresh snapshot when it answers (#3890)", async () => {
+    const { dir, repo } = repository();
+    const release = gitHeld(dir);
+    const { socket, cores } = await living([terminal("t1", { cwd: repo, labels: { "herdr.space": "S", "herdr.tab": "T" } })], {
+      ...NO_DOC,
+      "events.subscribe": () => ({ channel: cores.at(-1)!.channel(), seq: 1, terminals: [] }),
+    });
+    const facts = async () => (await sessionSnapshot(socket)).workspaces[0]?.worktree ?? null;
+    expect(await facts()).toBeNull();
+    // waited out once: the row is drawn flat at once while git has still not answered
+    for (const _ of [1, 2]) {
+      const began = performance.now();
+      expect(await facts()).toBeNull();
+      expect(performance.now() - began).toBeLessThan(1_000);
+    }
+    const started = Promise.withResolvers<void>();
+    const updated = Promise.withResolvers<void>();
+    const subscription = subscribeEvents([{ type: "layout.updated" }], { onEvent: (frame) => { if (frame.event === "layout.updated") updated.resolve(); }, onStarted: () => started.resolve(), onClose() {} }, socket);
+    cleanups.push(() => subscription.close());
+    await started.promise;
+    release();
+    await updated.promise;
+    expect(await facts()).toMatchObject({ checkout_path: repo, is_linked_worktree: false });
+  }, 15_000);
 
   it("lists, makes and removes a worktree with a git before 2.36, whose worktree list has no -z", async () => {
     const { dir, git } = repository();
@@ -1025,6 +1237,7 @@ describe("herdr-core adapter, new and closed terminals", () => {
     const { socket } = await labeling([terminal("t1", { cwd: repo, labels: { "herdr.space": "S", "herdr.tab": "T" } })]);
 
     const listed = await worktreeList("S", socket);
+    // the stand-in was the git asked, with -z first: a git that has it is never listed by line
     expect(existsSync(join(dir, "git-2.34", "git.rejected"))).toBeTrue();
     expect(listed.source).toMatchObject({ repo_root: repo, repo_name: '앱 "old" git', source_checkout_path: repo, source_workspace_id: "S" });
     expect(listed.worktrees).toEqual([
@@ -1107,6 +1320,7 @@ describe("herdr-core adapter, new and closed terminals", () => {
     expect(labels["herdr.space"]).toMatch(/^ovis-/);
     expect(labels["herdr.tab"]).toMatch(/^ovis-/);
     expect(labels["ovis.workspace"]).toBe("web");
+    // nothing has finished in a terminal a client starts (herdr-app docs/labels.md)
     expect(labels["herdr.seen"]).toBe("0");
     expect(created.workspace).toMatchObject({ workspace_id: labels["herdr.space"], label: "web" });
     expect(created.tab).toMatchObject({ tab_id: labels["herdr.tab"], workspace_id: labels["herdr.space"] });
@@ -1183,6 +1397,7 @@ describe("herdr-core adapter, new and closed terminals", () => {
 });
 
 describe("herdr-core adapter, agents", () => {
+  /** A core whose panes run POSIX shells, whatever this PC is: what runs in them is hc's to say, never a process table's. */
   const posix = (terminals: HcTerminal[], extra: Record<string, Handler> = {}, platform: NodeJS.Platform = "linux") => setup(terminals, extra, undefined, undefined, { platform, processTable: () => { throw new Error("no process table off Windows"); } });
 
   it("starts an agent by typing its kind and quoted arguments into the pane's idle shell, and answers once it is in front", async () => {
@@ -1254,7 +1469,33 @@ describe("herdr-core adapter, agents", () => {
     expect(cores[0]!.typed).toEqual([]);
   });
 
+  // hc 0.1.21 runs a template's `command:` as `sh -c "<line>"`: dash stays in front and the agent is its child (#4052)
+  it.skipIf(process.platform !== "linux" && process.platform !== "darwin")("names the program a template's shell runs below it, and nothing below any other program in front", async () => {
+    const line = "cat; true";
+    const shell = Bun.spawn(["sh", "-c", line], { stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+    try {
+      // cat echoing a line proves the shell's child has become cat: a forked child not yet exec'd is still named sh
+      shell.stdin.write("started\n");
+      await shell.stdin.flush();
+      const output = shell.stdout.getReader();
+      let echoed = "";
+      while (!echoed.includes("started\n")) {
+        const { done, value } = await output.read();
+        if (done) throw new Error(`the template's shell ended before its child echoed, after ${JSON.stringify(echoed)}`);
+        echoed += new TextDecoder().decode(value);
+      }
+      const { socket } = await posix([
+        terminal("t1", { pid: shell.pid, argv: ["sh", "-c", line], foreground: { pid: shell.pid, name: "sh", argv: ["sh", "-c", line] } }),
+        terminal("t2", { pid: shell.pid, argv: ["agent"], foreground: { pid: shell.pid, name: "agent", argv: ["agent"] } }),
+      ]);
+      const info = await paneProcessInfo("t1", socket);
+      expect(info?.foreground_processes?.map(({ name, argv }) => [name, argv])).toEqual([["sh", ["sh", "-c", line]], ["cat", ["cat"]]]);
+      expect((await paneProcessInfo("t2", socket))?.foreground_processes?.map(({ name }) => name)).toEqual(["agent"]);
+    } finally { shell.kill("SIGKILL"); }
+  });
+
   it("types into no pane whose own program is not a shell, even with that program in front of itself", async () => {
+    // a terminal the app started as a program: hc reports it in front of itself, like a shell
     const { socket, cores } = await posix([
       terminal("t1", { pid: 10, argv: ["claude"], foreground: { pid: 10, name: "claude", argv: ["claude"] } }),
       // a template or a line: dash runs it as its child and stays in front under its own pid
@@ -1338,6 +1579,7 @@ describe("herdr-core adapter, agents on Windows", () => {
   // what hc runs for a terminal started with no program (a live record, hc 0.1.17; its hook cut short)
   const HC_SHELL = ["powershell.exe", "-NoExit", "-Command", "$global:__hc_prompt = $function:prompt; function global:prompt { $p = & $global:__hc_prompt; $p }"];
   const row = (pid: number, parent: number, path: string, commandLine = `"${path}"`): ProcessRow => ({ pid, parent, path, commandLine });
+  // the pane's shell, and the console hosts below it, which are no program it runs
   const idle = [row(10, 9, POWERSHELL, `"${POWERSHELL}" -NoExit -Command x`), row(12, 10, "C:\\WINDOWS\\system32\\conhost.exe", "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0xffffffff -ForceV1"), row(15, 10, "C:\\Users\\u\\conpty\\OpenConsole.exe")];
   // named as its file is: Windows takes a program's name in any case
   const claude = row(11, 10, "C:\\Users\\u\\.local\\bin\\Claude.exe", "\"C:\\Users\\u\\.local\\bin\\Claude.exe\" --model x");
@@ -1369,7 +1611,9 @@ describe("herdr-core adapter, agents on Windows", () => {
 
   it("starts an agent in hc's own PowerShell by typing a call, and answers once it runs below the shell", async () => {
     const { socket, typed } = await windows(HC_SHELL, (line) => line ? [...idle, claude] : idle);
+    // one Windows PowerShell 5.1 would split is refused, and nothing is typed for it
     await expect(agentStart({ name: "x", kind: "claude", paneId: "t1", args: ['"fix the bug"'] }, socket)).rejects.toMatchObject({ code: "invalid_params" });
+    // and one cmd would run part of, were the agent a .cmd file
     await expect(agentStart({ name: "x", kind: "codex", paneId: "t1", args: ['fix "a&echo ran&b" now'] }, socket)).rejects.toMatchObject({ code: "invalid_params" });
     expect(typed()).toBe("");
     await agentStart({ name: "claude-1", kind: "claude", paneId: "t1", args: ["--model", "say \"hi\"", ""] }, socket);
@@ -1420,6 +1664,7 @@ describe("herdr-core adapter, agents on Windows", () => {
     const shimmed = row(13, 10, "C:\\Program Files\\nodejs\\node.exe", "\"C:\\Program Files\\nodejs\\node.exe\" C:\\Users\\u\\AppData\\Roaming\\npm/node_modules/@openai/codex/bin/codex.js");
     const throughShim = await windows(HC_SHELL, (line) => line ? [...idle, shimmed] : idle);
     await agentStart({ name: "codex-1", kind: "codex", paneId: "t1" }, throughShim.socket);
+    // an npm shim runs below the shell, and ends with no agent come up
     const shim = row(14, 10, "C:\\WINDOWS\\system32\\cmd.exe", "C:\\WINDOWS\\system32\\cmd.exe /c \"C:\\Users\\u\\AppData\\Roaming\\npm\\amp.cmd\"");
     let looks = 0;
     const failed = await windows(HC_SHELL, (line) => line ? [[...idle, shim], [], idle][Math.min(looks++, 2)]! : idle);
@@ -1485,6 +1730,7 @@ describe("herdr-core adapter, agents on Windows", () => {
 });
 
 describe("herdr-core adapter, Ovis's layout document", () => {
+  /** hc's documents: `doc.set` writes only at the version read (`conflict` otherwise), `conflicts` more writers come first */
   function documents(conflicts = 0, otherWriter?: (docs: Map<string, { value: unknown; version: number }>) => void) {
     const docs = new Map<string, { value: unknown; version: number }>();
     const writes: unknown[] = [];
@@ -1518,6 +1764,7 @@ describe("herdr-core adapter, Ovis's layout document", () => {
         terminals.push(record);
         return record;
       },
+      // `key: ""` takes a label off, as hc does
       "terminal.label": (params) => {
         const index = terminals.findIndex((entry) => entry.address === params["terminal"]);
         const merged = { ...terminals[index]!.labels, ...(params["labels"] as Record<string, string>) };
@@ -1723,6 +1970,156 @@ describe("herdr-core adapter, Ovis's layout document", () => {
     await herdrRpc("pane.rename", { pane_id: "t1", label: null }, socket);
     expect((await paneGet("t1", socket)).label).toBe("shell");
   });
+
+  // What each layout method asks hc today, in order: the behaviour of record for moving the layout
+  // operations out of the adapter. Workspace A holds tab A1 (t1 beside t2) and tab A2 (t3), B holds B1 (t4).
+  describe("the hc calls of each layout method", () => {
+    const known = (zoomed: string | null = null, ratio = 0.5) => ({ schema: 1, workspaces: [
+      { id: "A", tabs: [
+        { id: "A1", zoomed, root: { split: "right", ratio, first: { leaf: "t1" }, second: { leaf: "t2" } } },
+        { id: "A2", zoomed: null, root: { leaf: "t3" } },
+      ] },
+      { id: "B", tabs: [{ id: "B1", zoomed: null, root: { leaf: "t4" } }] },
+    ] });
+    /**
+     * One request on a core holding `layout` at version 1 in `docs`, its handlers changed by `adjust`: its answer (or refusal
+     * code), the store, and the hc calls it made, a document's name after `doc.*`.
+     */
+    const callsOf = async (method: string, params: Record<string, unknown>, layout: unknown = known(), docs = documents(), adjust = (handlers: Record<string, Handler>) => handlers) => {
+      docs.docs.set("ovis-layout", { value: layout, version: 1 });
+      const store = { ...docs, handlers: adjust({ ...docs.handlers, "terminal.kill": () => ({}), "terminal.rm": () => ({}) }) as typeof docs.handlers };
+      const { socket, cores } = await core([
+        terminal("t1", { labels: { "herdr.space": "A", "herdr.tab": "A1", "ovis.pane": "logs" } }), labeled("t2", "A", "A1"), labeled("t3", "A", "A2"), labeled("t4", "B", "B1"),
+      ], store);
+      const from = cores.flatMap((held) => held.calls).length;
+      const answer = await herdrRpc(method, params, socket).catch((error: unknown) => ({ refused: error instanceof HerdrError ? error.code : String(error) }));
+      const steps = cores.flatMap((held) => held.calls).slice(from).map((call) => (call.method.startsWith("doc.") ? `${call.method} ${String(call.params["name"])}` : call.method));
+      return { answer, store, steps };
+    };
+    /** a snapshot: the terminals and both documents at once */
+    const SNAPSHOT = ["terminal.list", "doc.get herdr-app", "doc.get ovis-layout"];
+    /** an edit: Ovis's document first, then the terminals and the app's document, then the write at the version read */
+    const EDIT = ["doc.get ovis-layout", "terminal.list", "doc.get herdr-app", "doc.set ovis-layout"];
+    const EDIT_UNCHANGED = ["doc.get ovis-layout", "terminal.list", "doc.get herdr-app"];
+
+    const edits: [string, Record<string, unknown>, string[]][] = [
+      ["pane.split", { target_pane_id: "t1", direction: "down" }, [...SNAPSHOT, "terminal.get", "doc.get ovis-layout", "terminal.run", ...SNAPSHOT, ...EDIT, ...SNAPSHOT]],
+      ["layout.set_split_ratio", { tab_id: "A1", path: [], ratio: 0.3 }, [...EDIT]],
+      ["pane.resize", { pane_id: "t1", direction: "right", amount: 0.1 }, [...EDIT, ...SNAPSHOT]],
+      ["pane.swap", { pane_id: "t1", direction: "right" }, [...EDIT, ...SNAPSHOT]],
+      ["pane.zoom", { pane_id: "t1" }, [...EDIT, ...SNAPSHOT]],
+      ["pane.move", { pane_id: "t1", destination: { type: "tab", tab_id: "A1", target_pane_id: "t2", split: "down" } }, [...EDIT, ...SNAPSHOT]],
+      ["tab.move", { tab_id: "A2", insert_index: 0 }, [...SNAPSHOT, ...EDIT, ...SNAPSHOT]],
+      ["workspace.move", { workspace_id: "B", insert_index: 0 }, [...SNAPSHOT, ...EDIT]],
+    ];
+    // a name, a move to another workspace and a close are labels and ends: the document follows the terminals
+    const relabels: [string, Record<string, unknown>, string[]][] = [
+      ["pane.move", { pane_id: "t3", destination: { type: "new_tab", workspace_id: "B" } }, [...SNAPSHOT, "terminal.label", ...SNAPSHOT]],
+      ["workspace.rename", { workspace_id: "A", label: "api" }, [...SNAPSHOT, "terminal.label", "terminal.label", "terminal.label"]],
+      ["tab.rename", { tab_id: "A1", label: "main" }, [...SNAPSHOT, "terminal.label", "terminal.label"]],
+      ["pane.rename", { pane_id: "t2", label: "build" }, [...SNAPSHOT, "terminal.label"]],
+      ["pane.close", { pane_id: "t3" }, [...SNAPSHOT, "terminal.kill", "terminal.rm"]],
+      ["tab.close", { tab_id: "A2" }, [...SNAPSHOT, "terminal.kill", "terminal.rm"]],
+      ["workspace.close", { workspace_id: "B" }, [...SNAPSHOT, "terminal.kill", "terminal.rm"]],
+    ];
+    // a new workspace or tab is a shell labeled into place: the document follows it too
+    const shells: [string, Record<string, unknown>, string[]][] = [
+      ["workspace.create", { label: "web" }, ["terminal.run", ...SNAPSHOT]],
+      ["tab.create", { workspace_id: "A" }, [...SNAPSHOT, "terminal.run", ...SNAPSHOT]],
+    ];
+    for (const [method, params, expected] of [...edits, ...relabels, ...shells]) {
+      const destination = (params["destination"] as { type: string } | undefined)?.type;
+      it(`${method}${destination ? ` to ${destination}` : ""} asks hc in today's order`, async () => {
+        const { answer, steps } = await callsOf(method, params);
+        expect(answer).not.toHaveProperty("refused");
+        expect(steps).toEqual(expected);
+      });
+    }
+
+    it("reads Ovis's document before the terminals in every edit it writes", async () => {
+      for (const [method, params] of edits) {
+        const { steps } = await callsOf(method, params);
+        const write = steps.indexOf("doc.set ovis-layout");
+        const read = steps.lastIndexOf("doc.get ovis-layout", write);
+        expect([method, write > -1, read > -1, read < steps.lastIndexOf("terminal.list", write)]).toEqual([method, true, true, true]);
+      }
+    });
+
+    it("makes the whole edit again, Ovis's document first, when one other writer came first", async () => {
+      const { answer, steps, store } = await callsOf("layout.set_split_ratio", { tab_id: "A1", path: [], ratio: 0.3 }, known(), documents(1));
+      expect(answer).toEqual({ type: "ok" });
+      expect(steps).toEqual([...EDIT, ...EDIT]);
+      expect(store.docs.get("ovis-layout")!.version).toBe(3);
+    });
+
+    it("makes the edit once when the write fails for any reason but another writer", async () => {
+      const unavailable = (): never => { throw Object.assign(new Error("busy"), { kind: "unavailable" }); };
+      const { answer, steps } = await callsOf("layout.set_split_ratio", { tab_id: "A1", path: [], ratio: 0.3 }, known(), documents(), (handlers) => ({ ...handlers, "doc.set": unavailable }));
+      expect(answer).toEqual({ refused: "server_unavailable" });
+      expect(steps).toEqual([...EDIT]);
+    });
+
+    // FakeCore answers a call as it arrives, so an answer cannot be held: an edit whose first read fails shows
+    // instead that the terminals are asked only once Ovis's document has been answered
+    it("asks nothing more in an edit whose read of Ovis's document fails", async () => {
+      const { answer, steps } = await callsOf("layout.set_split_ratio", { tab_id: "A1", path: [], ratio: 0.3 }, known(), documents(), (handlers) => ({
+        ...handlers,
+        "doc.get": (params) => {
+          if (params["name"] === "ovis-layout") throw Object.assign(new Error("busy"), { kind: "unavailable" });
+          return handlers["doc.get"]!(params);
+        },
+      }));
+      expect(answer).toEqual({ refused: "server_unavailable" });
+      expect(steps).toEqual(["doc.get ovis-layout"]);
+    });
+
+    it("asks hc nothing for an edit on a core that writes no documents", async () => {
+      const { answer, steps } = await callsOf("pane.zoom", { pane_id: "t1" }, known(), documents(), (handlers) => Object.fromEntries(Object.entries(handlers).filter(([name]) => name !== "doc.set")));
+      expect(answer).toEqual({ refused: "unsupported" });
+      expect(steps).toEqual([]);
+    });
+
+    // each edit that finds nothing to change: its answer, and no write
+    const unchanged: [string, string, Record<string, unknown>, Record<string, unknown>, ReturnType<typeof known>?][] = [
+      ["pane.resize", "a pane with no border", { pane_id: "t3", direction: "right" }, { resize: { changed: false, reason: "unchanged" } }],
+      ["pane.resize", "a divider at its limit", { pane_id: "t1", direction: "left", amount: 0.5 }, { resize: { changed: false, reason: "unchanged" } }, known(null, 0.1)],
+      ["pane.swap", "toward no neighbour", { pane_id: "t1", direction: "left" }, { swap: { changed: false, reason: "no_neighbor", target_pane_id: null } }],
+      ["pane.swap", "with itself", { pane_id: "t1", target_pane_id: "t1" }, { swap: { changed: false, reason: "same_pane", target_pane_id: "t1" } }],
+      ["pane.swap", "with another tab's pane", { pane_id: "t1", target_pane_id: "t3" }, { swap: { changed: false, reason: "cross_tab", target_pane_id: "t3" } }],
+      ["pane.zoom", "of a tab's only pane", { pane_id: "t3" }, { zoom: { changed: false, reason: "single_pane", zoomed: false } }],
+      ["pane.zoom", "off where nothing is zoomed", { pane_id: "t1", mode: "off" }, { zoom: { changed: false, reason: "already_unzoomed", zoomed: false } }],
+      ["pane.zoom", "on where it is zoomed", { pane_id: "t1", mode: "on" }, { zoom: { changed: false, reason: "already_zoomed", zoomed: true } }, known("t1")],
+      ["pane.move", "beside itself", { pane_id: "t1", destination: { type: "tab", tab_id: "A1", target_pane_id: "t1", split: "down" } }, { move_result: { changed: false, reason: "same_pane" } }],
+      ["layout.set_split_ratio", "where no split is", { tab_id: "A2", path: [], ratio: 0.3 }, { refused: "split_not_found" }],
+      // a name as it is: labeled again, never a document
+      ["pane.rename", "to the name it has", { pane_id: "t1", label: "logs" }, { type: "ok" }],
+    ];
+    for (const [method, what, params, answered, layout] of unchanged) {
+      it(`${method} ${what} writes no document`, async () => {
+        const { answer, steps, store } = await callsOf(method, params, layout);
+        expect(answer).toMatchObject(answered);
+        expect(steps.filter((step) => step.startsWith("doc.set"))).toEqual([]);
+        expect(steps.slice(0, 3)).toEqual(method === "pane.rename" ? SNAPSHOT : EDIT_UNCHANGED);
+        expect(store.writes).toEqual([]);
+      });
+    }
+
+    // Today these write the document again even though it comes out the same: pinned as they are.
+    const rewrites: [string, Record<string, unknown>, Record<string, unknown>][] = [
+      ["layout.set_split_ratio", { tab_id: "A1", path: [], ratio: 0.5 }, { type: "ok" }],
+      ["tab.move", { tab_id: "A1", insert_index: 0 }, { type: "tab_list" }],
+      ["workspace.move", { workspace_id: "A", insert_index: 0 }, { type: "ok" }],
+      ["pane.move", { pane_id: "t2", destination: { type: "tab", tab_id: "A1", target_pane_id: "t1", split: "right" } }, { move_result: { changed: true, reason: null } }],
+    ];
+    for (const [method, params, answered] of rewrites) {
+      it(`${method} to where it already is writes the same document again`, async () => {
+        const { answer, steps, store } = await callsOf(method, params);
+        expect(answer).toMatchObject(answered);
+        expect(steps.filter((step) => step.startsWith("doc.set"))).toEqual(["doc.set ovis-layout"]);
+        expect(store.docs.get("ovis-layout")).toEqual({ value: known(), version: 2 });
+      });
+    }
+  });
 });
 
 describe("another machine of the core, as its own PC (#2497)", () => {
@@ -1754,6 +2151,7 @@ describe("another machine of the core, as its own PC (#2497)", () => {
   });
 
   it("reaches no other machine that took its name after a rename", async () => {
+    // lab was renamed, and vps took the name lab: its id is not lab's
     const { socket, cores } = await setup(listed(), { "machine.list": () => ({ machines: [{ name: "lab", id: "vps-id", host: "vps", state: "connected", target: "vps", version: "0.1.17" }] }) }, undefined, "lab");
     const failure = await paneSendText("t1", "x", socket).then(() => null, (error: unknown) => (error instanceof HerdrError ? error.code : String(error)));
     expect(failure).toBe("connect_failed");

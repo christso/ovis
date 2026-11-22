@@ -7,11 +7,14 @@
  * itself admits nobody, and no account membership comes from it.
  */
 import { HTTPS_PORTS, tailscaleBinary } from "./tailscale.ts";
+import { TargetAccountPcError } from "../shared/relay-channel.ts";
 
 const PROBE_MS = 2500;
+/** an address the list found stays addable this long */
 const FOUND_MS = 10 * 60_000;
 const MAX_PEERS = 32;
 const PHONE_OS = new Set(["ios", "android"]);
+/** a health or code answer is a few hundred bytes; anything past this is not one */
 const MAX_BODY_BYTES = 64 * 1024;
 
 export interface TailnetPcsOptions {
@@ -32,6 +35,7 @@ export interface TailnetPc {
 interface PeerJson { DNSName?: string; UserID?: string; Online?: boolean; OS?: string; Tags?: string[]; TailscaleIPs?: string[] }
 interface StatusJson { BackendState?: string; Self?: PeerJson; Peer?: Record<string, PeerJson> }
 
+/** Online, untagged peers of this PC's own login, phones aside, from `tailscale status --json`. */
 export function tailnetPeers(status: string | null): { name: string; dnsName: string; ips: string[] }[] {
   if (status === null) return [];
   let parsed: StatusJson;
@@ -50,6 +54,7 @@ export function tailnetPeers(status: string | null): { name: string; dnsName: st
     });
 }
 
+/** `tailscale status --json` from this PC's own CLI, or null when Tailscale is not here or does not answer in time */
 export const readTailscaleStatus = async (): Promise<string | null> => {
   const binary = tailscaleBinary();
   if (binary === null) return null;
@@ -63,6 +68,7 @@ export const readTailscaleStatus = async (): Promise<string | null> => {
 
 const httpsOrigin = (dnsName: string, port: number) => `https://${dnsName}${port === 443 ? "" : `:${port}`}`;
 
+/** The body as JSON, or null when it is not JSON or runs past MAX_BODY_BYTES; reading stops there. */
 async function boundedJson(response: Response): Promise<unknown> {
   if (response.body === null) return null;
   const reader = response.body.getReader();
@@ -136,10 +142,12 @@ export class TailnetPcs {
         ?? found.find((answer) => !answer.outdated) ?? found[0] ?? null;
     }));
     const listed = pcs.filter((pc) => pc !== null);
+    // a fresh list replaces the last: a PC gone from it is no longer addable
     this.found = new Map(listed.map((pc) => [pc.url, { name: pc.name, dnsName: pc.dnsName, at: Date.now() }]));
     return listed.map(({ name, url, relay, outdated, server_id }) => ({ name, url, relay, outdated, server_id }));
   }
 
+  /** the name a recent list found at this address, or null: no other address is ever asked for a code */
   foundAt(url: unknown): string | null {
     if (typeof url !== "string") return null;
     const held = this.found.get(url);
@@ -161,7 +169,7 @@ export class TailnetPcs {
     if (TailnetPcs.outdated(health)) throw new TailnetPcError("outdated", OUTDATED);
     let response: Response;
     try {
-      response = await fetch(`${url}/api/relay/code`, { method: "POST", headers: { "x-herdr-update": "1" }, signal: AbortSignal.timeout(15_000), redirect: "error" });
+      response = await fetch(`${url}/api/relay/code`, { method: "POST", headers: { "x-herdr-update": "1", "x-ovis-pc-add": "1" }, signal: AbortSignal.timeout(15_000), redirect: "error" });
     } catch {
       throw new TailnetPcError("unreachable", "That PC did not answer. Check that it is on, then try again.");
     }
@@ -170,6 +178,7 @@ export class TailnetPcs {
       // that PC's own words never reach the person. Its health named its relay ID, so it is a current Ovis: a 404 or
       // 405 here comes from something in between, not from its version
       const refusal = body?.error?.code;
+      if (refusal === "pc_add_target_bound") throw new TargetAccountPcError();
       if (refusal === "relay_off") throw new TailnetPcError("relay_off", "Turn the relay on on that PC first, under Add a connection.");
       if (refusal === "relay_offline") throw new TailnetPcError("relay_offline", "That PC's relay cannot be reached right now. Try again in a moment.");
       if (refusal === "code_unavailable") throw new TailnetPcError("code_unavailable", "That PC uses its own relay, which cannot give a code. Add it with its QR code instead.");

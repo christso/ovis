@@ -10,6 +10,7 @@ const RUN: Record<EntryName, () => Promise<unknown>> = {
   askpass: () => import("./ssh-askpass.ts"),
   "herdr-shim": () => import("../scripts/herdr-shim.ts").then((entry) => entry.runHerdrShim()),
   "windows-launch": () => import("./windows-launch.ts"),
+  "browser-mcp": () => import("./browser-mcp.ts").then((entry) => entry.runBrowserMcp()),
 };
 
 const name = process.argv[2];

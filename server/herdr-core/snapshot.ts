@@ -6,11 +6,16 @@ import { clampRatio, type Grouping, type LayoutNode, LAYOUT_AREA, parseOvisLayou
 import { worktreeOfLabels } from "./worktrees.ts";
 import { paneAgent, type ProgramPlatform, reportedAgent, reportedStatus } from "../agent-identity.ts";
 import { catalogPlatform, type CatalogPlatform } from "../../shared/agent-catalog.ts";
+import type { JobProcess } from "../foreground-job.ts";
+import { shownStatusOfWord } from "../../shared/attention.ts";
 
 /**
  * hc has no workspaces, tabs or panes. The Herdr desktop app keeps its own (spaces, tabs and split
  * trees) in the core's `herdr-app` document, and labels each terminal it starts with its space and
  * tab (`herdr.space`, `herdr.tab`).
+ *
+ * A pane's id is its terminal's address (`t7`): it lasts as long as the terminal does, as a herdr
+ * pane id does, and a tab that gets a new terminal in the same block gets a new pane.
  */
 
 export const HERDR_PROTOCOL = 22;
@@ -19,14 +24,11 @@ export const LAYOUT_DOC = "herdr-app";
 /** The labels the Herdr app groups its terminals by (herdr-app src/window.rs): a terminal it has not placed is adopted there. */
 export const SPACE_LABEL = "herdr.space";
 export const TAB_LABEL = "herdr.tab";
+/** The names a person gave a workspace or tab Ovis made: names live in the app's document, which Ovis never writes. */
 export const WORKSPACE_NAME_LABEL = "ovis.workspace";
 export const TAB_NAME_LABEL = "ovis.tab";
 export const PANE_NAME_LABEL = "ovis.pane";
-/**
- * The last turn a person looked at, shared by every Herdr client (herdr-app docs/labels.md): an
- * agent at rest whose turn is past it is done, one at or below it idle.
- */
-export const SEEN_LABEL = "herdr.seen";
+export { SEEN_LABEL, seenTurnOf } from "../../shared/attention.ts";
 
 /**
  * One OSC 7501 report (hc's `Status`): the program's own words. `kind` (permission, question, auth)
@@ -41,11 +43,16 @@ export type HcTerminal = Pick<Terminal, "address" | "cols" | "rows" | "cwd" | "s
   Partial<Pick<Terminal, "argv" | "pid" | "name" | "title" | "labels" | "turn" | "parent" | "records">> &
   { status?: HcStatus | null; foreground?: HcForeground | null };
 
-// hc lists and reports another machine's terminal under that machine's name (`vps/t14`), where this PC's own are bare (`t7`)
+/**
+ * A terminal on another machine the core reaches (`hc machine add vps`): hc lists and reports it
+ * under that machine's name (`vps/t14`), where this PC's own are bare (`t7`). Each such machine is
+ * a PC of its own (machine-scope.ts), so none of their terminals is this PC's: no workspace, tab, pane or event.
+ */
 export function onOtherMachine(address: string): boolean {
   return address.includes("/");
 }
 
+/** The one object guard of server/herdr-core/: hc's records and the app's document come from outside. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -54,18 +61,10 @@ export function agentStatusOf(status: HcStatus | null | undefined): AgentStatus 
   return reportedStatus(status?.state);
 }
 
-export function seenTurnOf(labels: Readonly<Record<string, string>> | undefined): number | null {
-  const value = labels?.[SEEN_LABEL];
-  if (value === undefined || !/^\d{1,15}$/.test(value)) return null;
-  return Number(value);
-}
-
+/** The status a terminal shows (shared/attention.ts `shownStatusOfWord`), from its program's report. */
 export function shownStatusOf(status: HcStatus | null | undefined, turn: number | undefined, labels: Readonly<Record<string, string>> | undefined, firstTurn?: number): AgentStatus {
   const word = agentStatusOf(status);
-  if (word !== "idle" && word !== "done") return word;
-  const seen = seenTurnOf(labels);
-  if (seen !== null) return (turn ?? 0) > seen ? "done" : "idle";
-  return firstTurn !== undefined && (turn ?? 0) > firstTurn ? "done" : word;
+  return shownStatusOfWord(word, turn, labels, firstTurn);
 }
 
 export function agentOfStatus(status: HcStatus | null | undefined): string | null {
@@ -97,6 +96,7 @@ export function agentOf(terminal: Pick<HcTerminal, "status" | "foreground"> & { 
   return paneAgent({ reported: terminal.status?.app, foreground: front?.argv?.length ? front.argv : front?.name ? [front.name] : null, foregroundPid: front?.pid ?? null, launcher: terminal.argv?.length ? { argv: terminal.argv, pid: terminal.pid ?? null } : null }, platform);
 }
 
+/** hc's record of the process in front of a terminal (a record's `foreground`, a `foreground` event's data); null for none or another shape. */
 export function foregroundOf(value: unknown): HcForeground | null {
   if (!isRecord(value) || typeof value["pid"] !== "number" || typeof value["name"] !== "string") return null;
   const argv = value["argv"];
@@ -123,6 +123,7 @@ export type SessionOf = (terminal: HcTerminal) => AgentSessionInfo | null;
 
 const STATUS_RANK: Record<string, number> = { blocked: 4, working: 3, done: 2, idle: 1 };
 
+/** A group's status is its most pressing pane's, as herdr's sidebar rolls it up. */
 function rollUp(statuses: readonly AgentStatus[]): AgentStatus {
   let best: AgentStatus = "unknown";
   for (const status of statuses) if ((STATUS_RANK[status] ?? 0) > (STATUS_RANK[best] ?? 0)) best = status;
@@ -161,7 +162,12 @@ function chain(parts: readonly { node: AppNode; size: Size }[], direction: "righ
   return { split: direction, ratio, first: resolve(parts[0]!.node, cut(ratio)), second: chain(parts.slice(1), direction, cut(1 - ratio)) };
 }
 
-// the app's document `Node` (herdr-app src/layout.rs), never trusted to have a shape: a `column` stacks its children
+/**
+ * A tab's tree in the app's document (never trusted to have a shape: herdr-app src/layout.rs
+ * `Node`) as a tree over the live terminals, which `resolve` lays out top down like Ovis's own: a
+ * `column` stacks its children, anything else sets them side by side: a \`stack\` and a hidden node
+ * too, which Ovis cannot switch or show, so each terminal stays in reach and closes with its tab.
+ */
 function appTree(node: unknown, take: (address: string) => HcTerminal | null, held: HcTerminal[]): AppNode | null {
   if (!isRecord(node)) return null;
   const content = node["content"];
@@ -243,6 +249,8 @@ function groups(terminals: readonly HcTerminal[], layout: unknown): Group[] {
     if (typeof space["folder"] === "string" && space["folder"]) group.folder = space["folder"];
     result.push(group);
   }
+  // a terminal the app has not placed yet, labeled with its space (and tab) the way the app labels
+  // its own (an agent's worker, a terminal Ovis started): in that space, as the app will adopt it
   const rest: HcTerminal[] = [];
   for (const terminal of [...live.values()].filter((candidate) => !placed.has(candidate.address))) {
     const where = terminal.labels?.["where"]?.split(" / ").map((part) => part.trim());
@@ -256,6 +264,8 @@ function groups(terminals: readonly HcTerminal[], layout: unknown): Group[] {
     }
     if (!group.label) group.label = where?.[0] || terminal.labels?.[WORKSPACE_NAME_LABEL] || basename(group.folder ?? terminal.foreground?.cwd ?? terminal.cwd);
     const labeled = terminal.labels?.[TAB_LABEL];
+    // a tab id the app uses in another space would make one tab of two: this terminal gets its own
+    // (an id of its own taken by a space or tab of the app's gets a number after it)
     let tabId = labeled && !(ids.has(labeled) && !group.tabs.some((candidate) => candidate.id === labeled)) ? labeled : `${spaceId}:${terminal.address}`;
     for (let n = 2; tabId !== labeled && ids.has(tabId) && !group.tabs.some((candidate) => candidate.id === tabId); n++) tabId = `${spaceId}:${terminal.address}:${n}`;
     const tab = group.tabs.find((candidate) => candidate.id === tabId);
@@ -412,9 +422,11 @@ function arranged(placed: Group[], ovisDoc: unknown): { groups: Group[]; zoomed:
 }
 
 /**
- * The Herdr app keeps its own focus per window. Each tab is the fixed LAYOUT_AREA cut by its tree,
- * never by its terminals' grids: a viewer sizes a terminal to its pane's cell, and a grid read back
- * as the pane made panes shrink each other (#2812).
+ * Nothing has herdr's focus: the app keeps its own focus per window, and no pane is in front of
+ * anyone the way a herdr TUI's is. Each tab is the fixed LAYOUT_AREA cut top down by its tree (the
+ * app's, or Ovis's own document `ovisDoc` where no Herdr app arranges the core), never by its
+ * terminals' grids: a viewer sizes a terminal to its pane's cell, and a grid read back as the pane
+ * made panes shrink each other (#2812).
  */
 export function buildSnapshot(terminals: readonly HcTerminal[], layout: unknown, version: string, firstTurn?: FirstTurn, ovisDoc?: unknown, sessionOf?: SessionOf, host: CoreHost = coreHost(false)): SessionSnapshot {
   const workspaces: WorkspaceInfo[] = [];
@@ -473,14 +485,31 @@ export function buildSnapshot(terminals: readonly HcTerminal[], layout: unknown,
   };
 }
 
-export function processInfoOf(terminal: HcTerminal): PaneProcessInfo {
+/**
+ * A shell running a command string (`sh -c "codex …"`): how hc runs a template's `command:` line. dash
+ * stays in front under its own pid and runs the program as its child, so hc names only the shell (#4052).
+ */
+export function runsCommandString(foreground: HcForeground | null | undefined): foreground is HcForeground {
+  const [program, flags] = foreground?.argv ?? [];
+  return /(?:^|\/)(?:sh|bash|dash|zsh)$/.test(program ?? "") && /^-[a-z]*c[a-z]*$/.test(flags ?? "");
+}
+
+/**
+ * herdr's `pane.process_info` for a terminal: its shell and what runs in front of it. `job`: the
+ * processes below the one in front, in its job (foreground-job.ts), named after it as herdr names
+ * every process of the job; the adapter reads them only for a shell running a command string.
+ */
+export function processInfoOf(terminal: HcTerminal, job: readonly JobProcess[] | null = null): PaneProcessInfo {
   const foreground = terminal.foreground;
   return {
     pane_id: terminal.address,
     shell_pid: terminal.pid ?? null,
     foreground_process_group_id: foreground?.pid ?? null,
     foreground_processes: foreground
-      ? [{ name: foreground.name, pid: foreground.pid, argv: foreground.argv ?? null, argv0: foreground.argv?.[0] ?? null, cmdline: foreground.argv?.join(" ") ?? null, cwd: foreground.cwd ?? null }]
+      ? [
+        { name: foreground.name, pid: foreground.pid, argv: foreground.argv ?? null, argv0: foreground.argv?.[0] ?? null, cmdline: foreground.argv?.join(" ") ?? null, cwd: foreground.cwd ?? null },
+        ...(job ?? []).map(({ pid, name, argv }) => ({ name, pid, argv, argv0: argv[0] ?? null, cmdline: argv.join(" "), cwd: null })),
+      ]
       : [],
   };
 }
@@ -499,6 +528,13 @@ function printable(text: string): boolean {
  */
 const STABLE_KEYS: Record<string, string> = { enter: "\r", return: "\r", tab: "\t", backspace: "\x7f" };
 
+/**
+ * What a herdr key types, for keys hc's `terminal.keys` is not needed for: one printable
+ * character (`x`, `한`, `A`) as itself, Enter, Tab and Backspace, and Alt or Shift on a character
+ * hc has no key for (`alt+|`, `shift+plus`) as a terminal sends it, ESC before the character for
+ * Alt. null for a key or chord hc encodes in the program's current keyboard modes (`esc`,
+ * `ctrl+c`, `alt+x`, `up`).
+ */
 export function keyBytes(key: string): string | null {
   if (printable(key)) return key;
   const name = key.toLowerCase();
@@ -512,6 +548,7 @@ export function keyBytes(key: string): string | null {
   return `${mods.includes("alt") ? "\x1b" : ""}${character}`;
 }
 
+/** herdr's key name as hc's `terminal.keys` names it: lowercase, and `ctrl+` for herdr's `c-`. */
 export function hcKeyName(key: string): string {
   return key.toLowerCase().replace(/^c-/, "ctrl+");
 }

@@ -13,6 +13,7 @@ import { handlePreferencesRequest, PreferenceStore } from "../server/preferences
 import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
 import { contextMenuKey } from "./context-menu-key.ts";
+import { pressInSettings, sheetRisen } from "./settings-page.ts";
 
 interface RosterPatch { secondPc?: "connected" | "disconnected" | null; longLabel?: { paneId: string; label: string } | null; empty?: boolean; loading?: boolean }
 declare global {
@@ -177,6 +178,8 @@ const row = (page: Page, machineId: string, paneId: string) => page.locator(`.ag
 const status = (page: Page, machineId: string, paneId: string, value: string) => row(page, machineId, paneId).locator(`.sidebar-status[data-status="${value}"]`);
 const muteItem = (page: Page) => page.locator('.row-menu [role="menuitemcheckbox"], .row-sheet-item[aria-pressed]');
 const droplet = (page: Page) => page.locator(".droplet-card");
+// an alert leaves by itself after its hold (DROPLET_HOLD_MS): a Dismiss pressed after a slow capture can find it
+// already leaving, so each step that needs it gone waits for it to go
 let url = "";
 
 async function newContext(browser: Browser, phone: boolean, settings: Record<string, unknown>): Promise<BrowserContext> {
@@ -197,6 +200,8 @@ async function openTab(context: BrowserContext, query = ""): Promise<Page> {
   await page.locator(".conn-live").waitFor({ state: "attached" });
   await row(page, "local", P).waitFor({ state: "attached" });
   await page.waitForFunction(() => window.muteFixture.documents.length > 0);
+  // the demo's own turn on the open pane ends 4.5 s after load (site/demo/transport.ts): every count and
+  // every capture comes after it, so none races that finish
   await page.locator(`.pane-item:has(.pane-select[title^="${OPENED} —"]) [data-status="idle"]`).first().waitFor({ state: "attached", timeout: 10_000 });
   return page;
 }
@@ -205,8 +210,9 @@ const errorsOf = (page: Page): string[] => (page as Page & { fixtureErrors: stri
 const getPreferences = (page: Page): Promise<SharedPreferences> => page.evaluate(async () => (await fetch("/api/preferences")).json() as Promise<SharedPreferences>);
 
 async function openDrawer(page: Page): Promise<void> {
-  const toggle = page.locator('button[aria-controls="workspace-drawer"]');
-  if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.tap();
+  const drawer = page.locator("#workspace-drawer.is-open");
+  if (await drawer.count() === 0) await page.locator('#drawer-toggle[aria-expanded="false"]').tap();
+  await sheetRisen(page, "#workspace-drawer.is-open");
   const agents = page.locator(".agents-sidebar .agent-section-toggle");
   if (await agents.getAttribute("aria-expanded") !== "true") await agents.tap();
 }
@@ -216,7 +222,7 @@ async function openMenu(page: Page, phone: boolean, machineId: string, paneId: s
   if (phone) {
     await openDrawer(page);
     await target.locator(".row-menu-toggle").tap();
-    await page.locator(".row-sheet").waitFor();
+    await sheetRisen(page, ".row-sheet");
   } else {
     await target.locator(".agent-select").click({ button: "right" });
     await page.locator(".row-menu").waitFor();
@@ -268,6 +274,7 @@ export async function runPaneMute(part: "behaviour" | "captures"): Promise<void>
   writeFileSync(join(app, "mute-fixture.js"), `(${installMuteFixture.toString()})();`);
   writeFileSync(index, html.replace(/<script type="module"/, '<script src="./demo-transport.js"></script>\n    <script src="./mute-fixture.js"></script>\n    <script type="module"'));
 
+  // the preferences stream stays open across the whole run: a heartbeat every 15 s, as the server's stream has, keeps it inside the idle limit
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 60, async fetch(request) {
     const path = new URL(request.url).pathname;
     if (path === "/fixture/preferences") {
@@ -316,6 +323,7 @@ export async function runPaneMute(part: "behaviour" | "captures"): Promise<void>
       const key = paneStorageId("local", P);
       const checks: string[] = [];
 
+      // the behaviour sections stay together and in this order: the finish and barrier counters run on from one to the next
       if (part === "behaviour") {
         openStore("pre-feature");
         {
@@ -354,6 +362,7 @@ export async function runPaneMute(part: "behaviour" | "captures"): Promise<void>
         const context = await newContext(browser, false, {});
         const a = await openTab(context);
         const b = await openTab(context);
+        // a key was pressed on the page: its chimes may play from here (lib/alertSound.ts unlocks on a gesture)
         await a.keyboard.press("Shift");
         await toggleMute(a, false, "local", P);
         const muted = await storeHolds("tab A's mute", (document) => document.muted_panes?.includes(key) === true);
@@ -467,6 +476,7 @@ export async function runPaneMute(part: "behaviour" | "captures"): Promise<void>
         }
         fixture.old = false;
 
+        // ---- a watching device: the state, not the switch ----
         openStore("fresh");
         fixture.store.set({ settings: {}, muted_panes: [key] });
         fixture.watch = true;
@@ -571,14 +581,15 @@ export async function runPaneMute(part: "behaviour" | "captures"): Promise<void>
             fixture.error = true;
             await toggleMute(page, phone, "local", panes.cli);
             await page.keyboard.press("ControlOrMeta+Shift+Comma");
-            await page.locator(".settings-dialog").waitFor();
-            const alerts = page.locator(".settings-dialog").getByRole("tab", { name: "Alerts", exact: true });
-            if (await alerts.count() > 0) await (phone ? alerts.tap() : alerts.click());
+            await sheetRisen(page);
+            const settings = page.locator(".settings-dialog");
+            await pressInSettings(settings.getByRole("tab", { name: "Alerts", exact: true }));
+            await settings.getByRole("tabpanel", { name: "Alerts", exact: true }).waitFor();
             await page.locator(".settings-save-error").waitFor({ timeout: 10_000 });
             await capture(page, theme, language, "save-error");
             fixture.error = false;
-            await page.keyboard.press("Escape");
-            await page.locator(".settings-dialog").waitFor({ state: "detached" });
+            await pressInSettings(settings.getByRole("button", { name: "Close settings", exact: true }));
+            await settings.waitFor({ state: "detached" });
             fixture.watch = true;
             const watching = await openTab(context, "&mute-fixture=watch");
             await openMenu(watching, phone, "local", P);

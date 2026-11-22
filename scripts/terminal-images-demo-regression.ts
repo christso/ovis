@@ -1,4 +1,7 @@
 /**
+ * The image addon keeps a picture's id in its cells and a new addon
+ * numbers from 1 again: one loaded anew drew its first picture into the cells an old picture 1 had
+ * left.
  * Demo fixtures only: no herdr, hc or user state.
  */
 import assert from "node:assert/strict";
@@ -12,6 +15,7 @@ import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
 import { openSettingsFolds } from "./settings-page.ts";
 import { shownRows } from "./shown-rows.ts";
+import { serveDemo } from "./demo-server.ts";
 
 interface ImagesFixture { print(data: string): void }
 interface ImagesConfig { core?: boolean; first?: string }
@@ -158,17 +162,7 @@ try {
   const index = join(app, "index.html");
   writeFileSync(index, readFileSync(index, "utf8").replace(/<script type="module"/, () => `<script src="./demo-transport.js"></script>\n<script>(${installImagesFixture.toString()})()</script>\n<script type="module"`));
   const prefix = "/herdr-web-ui/demo/app/";
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
-    const path = new URL(request.url).pathname;
-    if (!path.startsWith(prefix)) return new Response("not found", { status: 404 });
-    let file: string;
-    try { file = decodeURIComponent(path.slice(prefix.length)); }
-    catch { return new Response("bad path", { status: 400 }); }
-    if (!file || file.endsWith("/")) file += "index.html";
-    if (file.split("/").includes("..") || file.includes("\\")) return new Response("bad path", { status: 400 });
-    const body = Bun.file(join(app, file));
-    return await body.exists() ? new Response(body) : new Response("not found", { status: 404 });
-  } });
+  const server = serveDemo(app, { prefix });
   try {
     const browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
     try {
@@ -210,6 +204,7 @@ try {
       assert.notEqual(held, undefined, "the demo build's probe answers");
       assert.equal(held, null, `on again: the top left cell holds no picture (${JSON.stringify(held)})`);
 
+      // imgcat's multipart form and chafa's TIFF without a size, which the addon takes neither of by itself (#3147)
       await print(page, `\x1b[H\x1b[2J${multipart([0, 255, 0])}`, "IMGCAT-PRINTED");
       assert.deepEqual(await pixel(page, 4, 4), [0, 255, 0], "imgcat's multipart picture is drawn");
       await print(page, `\x1b[H\x1b[2J${chafaTiff([255, 0, 255])}`, "CHAFA-PRINTED");

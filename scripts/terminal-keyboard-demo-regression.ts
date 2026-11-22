@@ -1,4 +1,6 @@
 /**
+ * A composition in either field refuses
+ * the tap and keeps its word; a sibling pane's field is never touched; an observer has no control,
  * and a held, ended or offline pane a disabled one. Chromium's synthetic viewport geometry stands
  * in for a keyboard here and proves nothing about a native one: that is checked by hand on an iOS
  * Simulator against `--serve-ios`, which only serves the built demo on loopback until SIGINT.
@@ -14,9 +16,14 @@ import { buildDemoApp } from "./demo-build.ts";
 import { chromePath } from "./chrome-path.ts";
 import { appFaces } from "./app-faces.ts";
 import { shownRow, shownRows } from "./shown-rows.ts";
+import { serveDemo } from "./demo-server.ts";
 
 const SETTINGS_KEY = "ovis:settings";
 const PREFIX = "/herdr-web-ui/demo/app/";
+/**
+ * Fake time run past the last change: PaneTerminal fits a changed host RESIZE_SETTLE_MS (120 ms) after
+ * its ResizeObserver saw it, so a fit, resize or deferred focus the toggle caused has run by then
+ */
 const FLUSH_MS = 1_000;
 const FORBIDDEN = new Set(["input", "keys", "resize", "take-over", "submit", "secret"]);
 const PHONE = { width: 390, height: 844 };
@@ -74,17 +81,7 @@ const RECORDER = `<script>(() => {
 })();</script>`;
 
 function serve(): ReturnType<typeof Bun.serve> {
-  return Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
-    const path = new URL(request.url).pathname;
-    if (!path.startsWith(PREFIX)) return new Response("not found", { status: 404 });
-    let file: string;
-    try { file = decodeURIComponent(path.slice(PREFIX.length)); }
-    catch { return new Response("bad path", { status: 400 }); }
-    if (!file || file.endsWith("/")) file += "index.html";
-    if (file.split("/").includes("..") || file.includes("\\")) return new Response("bad path", { status: 400 });
-    const body = Bun.file(join(app, file));
-    return (await body.exists()) ? new Response(body) : new Response("not found", { status: 404 });
-  } });
+  return serveDemo(app, { prefix: PREFIX });
 }
 
 const settled = (page: Page): Promise<void> => page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
@@ -105,6 +102,7 @@ async function phone(browser: Browser, settings: Settings, viewport = PHONE): Pr
   return context;
 }
 
+/** `clock`: the scenario pages take Playwright's clock (it runs on its own until `flushTimers` pauses it) */
 async function open(context: BrowserContext, clock = false): Promise<{ page: Page; errors: string[] }> {
   const page = await context.newPage();
   page.setDefaultTimeout(10_000);
@@ -313,6 +311,8 @@ async function currentModeKeyboard(browser: Browser): Promise<Record<string, unk
     // refocus inside the tap, the new input session a phone raises for
     const gesture = await control(page);
     assert.deepEqual([gesture.active, gesture.keyboard], ["terminal-input-text", false], "the gesture model: the field keeps its focus with the keyboard measured down");
+    // the already focused branch must do more than nothing: the line loses and takes the focus again
+    // inside the tap — the blur-and-refocus that is a phone's new input session
     await page.evaluate(() => {
       const line = document.querySelector<HTMLTextAreaElement>(".pane-frame:not(.is-hidden) .terminal-input-text")!;
       const counts = { focusin: 0, focusout: 0 };
@@ -420,9 +420,12 @@ async function keyboardOnRequest(browser: Browser): Promise<Record<string, unkno
         await raise(page);
         await flushTimers(page);
         assert.deepEqual(await fieldState(page, field), { inputmode: null, focused: true }, `${label}: with the keyboard up the field keeps it`);
+        // the back gesture: the keyboard goes, the field keeps the focus, and the hold comes back
         await lower(page);
         await flushTimers(page);
         assert.deepEqual(await fieldState(page, field), { inputmode: held, focused: true }, `${label}: the keyboard put away by the system holds the field again`);
+        // a keyboard the measurement is blind to (a floating keyboard, a zoomed page): Show's request
+        // outlives the control's settle window, which falls back to the measured "down"
         await blur(page);
         await tapAndInputmode(page, field);
         await flushTimers(page);
@@ -578,6 +581,9 @@ async function composingOrUnavailableTarget(browser: Browser): Promise<Record<st
     await key.tap();
     await lower(page);
 
+    // direct typing: a commit still on its way (the tick after compositionend) refuses the tap too.
+    // The keyboard is measured up first, so the tap would be a Hide that blurs the grid: only the
+    // refusal keeps the focus, and with it the commit xterm is about to read.
     await switchMode(page, "direct");
     await flushTimers(page);
     await key.tap();
@@ -652,6 +658,7 @@ async function composingOrUnavailableTarget(browser: Browser): Promise<Record<st
     assert.deepEqual(errors, []);
     await page.close();
 
+    // no field the control may show the keyboard for: an observer has no control, a held, offline or ended pane a disabled one
     ({ page, errors } = await open(context, true));
     await ready(page);
     key = keyOf(page);
@@ -714,6 +721,8 @@ async function focusReports(browser: Browser): Promise<Record<string, unknown>> 
       .filter((frame) => types.includes(frame.type)).map((frame) => `${frame.type}:${JSON.stringify(frame.text ?? "")}`), { from, types: [...FORBIDDEN] });
     const frameCount = (): Promise<number> => page.evaluate(() => (window as unknown as QaWindow).sentFrames.length);
     const nothingFocused = (): Promise<boolean> => page.evaluate(() => document.activeElement === null || document.activeElement === document.body);
+    // input-ready precedes fixture playback, whose last frame can outlast flushTimers. Let the clock
+    // run until that frame is drawn before adding output its cursor moves could overwrite.
     await page.locator(shownRows(".pane-frame:not(.is-hidden)"), { hasText: "0 fail" }).waitFor();
     await flushTimers(page);
     await blur(page);
