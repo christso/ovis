@@ -59,6 +59,21 @@ export async function captureCodexDelivery(path: string): Promise<CodexDeliveryA
 
 type Attempt<T> = { pane: string; text: string; anchor: CodexDeliveryAnchor | null; at: number; value: T };
 type NativeMessage = { key: string; start: number; at: number; text: string };
+type UserEvent = {
+  type?: unknown; kind?: unknown; message?: unknown; thread_id?: unknown;
+  item?: { type?: unknown; id?: unknown; content?: unknown };
+};
+
+function nativeUserMessage(payload: UserEvent | null | undefined, session: string): { text: string; id?: string } | null {
+  if (payload?.type === "user_message" && (!payload.kind || payload.kind === "plain") && typeof payload.message === "string") {
+    return { text: payload.message };
+  }
+  const item = payload?.item;
+  if (payload?.type !== "item_completed" || payload.thread_id !== session || item?.type !== "UserMessage"
+    || typeof item.id !== "string" || !item.id || !Array.isArray(item.content) || item.content.length === 0
+    || !item.content.every((part) => part?.type === "text" && typeof part.text === "string")) return null;
+  return { text: item.content.map((part) => part.text).join(""), id: item.id };
+}
 
 /**
  * Receipt evidence only: every known Codex Chat send, including successful ordinary sends,
@@ -109,7 +124,7 @@ export class CodexDeliveries<T> {
       const anchors = attempts.flatMap((item) => item.anchor === null ? [] : [item.anchor]);
       if (anchors.length === 0) return [];
       const first = Math.min(...anchors.map((anchor) => anchor.size));
-      if (before.size < first || before.size - first > MAX_BYTES) { this.invalidate(pane); return []; }
+      if (session === null || before.size < first || before.size - first > MAX_BYTES) { this.invalidate(pane); return []; }
       for (const anchor of anchors) {
         if (anchor.path !== path || anchor.file !== fileId(before) || anchor.session !== session || before.size < anchor.size
           || anchor.tail !== await tailOf(fd, anchor.size)) { this.invalidate(pane); return []; }
@@ -121,11 +136,15 @@ export class CodexDeliveries<T> {
         if (++lines > MAX_RECORDS) { this.invalidate(pane); return []; }
         const start = first + offset, entry = JSON.parse(bytes.subarray(offset, end).toString("utf8"));
         offset = end + 1;
-        const payload = entry.payload;
-        // response_item/user is a model-context copy, not another accepted TUI message.
-        if (entry.type !== "event_msg" || payload?.type !== "user_message" || payload.kind && payload.kind !== "plain" || typeof payload.message !== "string") continue;
+        // A response_item carries model context. Delivery requires a native user event.
+        if (entry.type !== "event_msg") continue;
+        const message = nativeUserMessage(entry.payload, session);
+        if (message === null) continue;
         const at = Date.parse(entry.timestamp);
-        if (Number.isFinite(at)) records.push({ key: `${fileId(before)}:${session}:${start}`, start, at, text: textOf(payload.message) });
+        if (Number.isFinite(at)) records.push({
+          key: message.id === undefined ? `${fileId(before)}:${session}:offset:${start}` : `${fileId(before)}:${session}:item:${message.id}`,
+          start, at, text: textOf(message.text),
+        });
       }
       const after = await fd.stat(), named = await stat(path);
       if (fileId(before) !== fileId(named) || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) return [];

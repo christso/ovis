@@ -34,6 +34,23 @@ describe("Codex's native delivery records", () => {
     expect(await f.tracker.reconcile("p", f.path)).toEqual(["ours"]);
   });
 
+  it("confirms a completed user item from the bound Codex thread, after its model-context copy", async () => {
+    const f = fixture();
+    const completed = (thread_id: string, at: number) => JSON.stringify({
+      type: "event_msg", timestamp: new Date(at).toISOString(),
+      payload: { type: "item_completed", thread_id, turn_id: "active-turn",
+        item: { type: "UserMessage", id: "accepted-user-item", content: [{ type: "text", text: "same", text_elements: [] }] } },
+    }) + "\n";
+    f.tracker.add("p", "same", await captureCodexDelivery(f.path), 1000, "ours");
+    f.append(JSON.stringify({ type: "response_item", timestamp: new Date(2000).toISOString(),
+      payload: { type: "message", role: "user", content: [{ type: "input_text", text: "same" }] } }) + "\n");
+    f.append(completed("another-thread", 2100) + completed("native-session", 900));
+    expect(await f.tracker.reconcile("p", f.path)).toEqual([]);
+    f.append(completed("native-session", 2200));
+    expect(await f.tracker.reconcile("p", f.path)).toEqual(["ours"]);
+    expect(await f.tracker.reconcile("p", f.path)).toEqual([]);
+  });
+
   it("does not reuse one native message for overlapping sends, including a successful ordinary send", async () => {
     const f = fixture(), anchor = await captureCodexDelivery(f.path);
     f.tracker.add("p", "same", anchor, 1000, "successful ordinary send");
