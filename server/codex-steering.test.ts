@@ -111,6 +111,39 @@ describe("explicit Codex Send now", () => {
     }
   });
 
+  it("interrupts a native pending message while Codex shows a background terminal", async () => {
+    const background = { ...working, screen: frame().replace(
+      "• Working (2s • esc to interrupt)",
+      "• Working (2s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close",
+    ) };
+    const f = fixture([background]);
+    await interruptCodexSteering(true, "send this now", working, f.io);
+    expect(f.effects).toEqual(["restart gate", "Escape"]);
+  });
+
+  const liveStatus = "Working (5s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close";
+  const liveComposer = "› Ask Codex to do anything\n  GPT-6.2-Sol default · /workspace\n  ← for agents · ? for shortcuts";
+  const live = (history: string, composer = liveComposer): CodexSteeringContext => ({
+    agent: "codex", working: true, screen: `\n${history}\n\n${liveStatus}\n\n${composer}\n`,
+  });
+
+  it("confirms a message Codex put in the active turn before drawing a steering panel", async () => {
+    const submitted = live("› earlier input", liveComposer.replace("Ask Codex to do anything", "send this now"));
+    const f = fixture([live("› earlier input\n\n› send this now")]);
+    await interruptCodexSteering(true, "send this now", submitted, f.io);
+    expect(f.effects).toEqual([]);
+    expect(f.reads()).toBe(1);
+  });
+
+  it("does not confirm the draft or an unchanged earlier occurrence of the same message", async () => {
+    const submitted = live("› send this now", liveComposer.replace("Ask Codex to do anything", "send this now"));
+    for (const current of [submitted, live("› send this now"), live("› send this now\n\n  › send this now")]) {
+      const f = fixture([current]);
+      await expect(interruptCodexSteering(true, "send this now", submitted, f.io)).rejects.toThrow("not confirmed");
+      expect(f.effects).toEqual([]);
+    }
+  });
+
   for (const [name, explicit, context] of [
     ["ordinary Send racing with work", false, working],
     ["idle Codex", true, { ...working, working: false }],
