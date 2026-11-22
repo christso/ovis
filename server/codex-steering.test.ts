@@ -111,14 +111,18 @@ describe("explicit Codex Send now", () => {
     }
   });
 
-  it("does not widen the Escape check to a background-terminal status", async () => {
+  it("interrupts only a matching native panel under Codex’s background-terminal status", async () => {
     const background = { ...working, screen: frame().replace(
       "• Working (2s • esc to interrupt)",
-      "• Working (2s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close",
+      "Working (2s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close",
     ) };
     const f = fixture([background]);
-    await expect(interruptCodexSteering(true, "send this now", working, f.io)).rejects.toThrow("not confirmed");
-    expect(f.effects).toEqual([]);
+    await interruptCodexSteering(true, "send this now", working, f.io);
+    expect(f.effects).toEqual(["restart gate", "Escape"]);
+
+    const unrelated = fixture([{ ...background, screen: background.screen.replace("↳ send this now", "↳ something else") }]);
+    await expect(interruptCodexSteering(true, "send this now", working, unrelated.io)).rejects.toThrow("not confirmed");
+    expect(unrelated.effects).toEqual([]);
   });
 
   const liveStatus = "Working (5s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close";

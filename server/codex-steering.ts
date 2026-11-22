@@ -11,7 +11,9 @@ interface SteeringIO {
 }
 
 const EMPTY_COMPOSER = /^[›»](?:\s+Ask Codex to do anything)?$/;
-const LIVE_WORKING = /^(?:[•◦]\s*)?Working\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\)(?:\s+·\s+\d+ background terminals? running\s+·\s+\/ps to view\s+·\s+\/stop to close)?$/;
+const WORKING = /^[•◦]\s*(?:Working|Reconnecting(?:\.{3}|…)?(?: waiting for network)?)\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\)$/;
+const BACKGROUND_WORKING = /^(?:[•◦]\s*)?Working\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\) · \d+ background terminals? running · \/ps to view · \/stop to close$/;
+const workingStatus = (line: string) => WORKING.test(line) || BACKGROUND_WORKING.test(line);
 const STEERING_HINT = "Messages to be submitted after next tool call (press esc to interrupt and send immediately)";
 const compact = (text: string) => text.replace(/\s/g, "");
 function lastLine<T>(lines: T[], matches: (line: T) => boolean): number {
@@ -38,7 +40,7 @@ export function codexSteeringPending(screen: string, text: string): boolean {
   if (composer < 0) return false;
   const footer = lines.slice(composer + 1);
   if (footer.length > 4 || footer.some((line) => !FOOTER.test(line))) return false;
-  const status = lastLine(lines.slice(0, composer), (line) => /^[•◦]\s*(?:Working|Reconnecting(?:\.{3}|…)?(?: waiting for network)?)\s*\((?:\d+[hms]\s*)+•\s*esc to interrupt\)$/.test(line));
+  const status = lastLine(lines.slice(0, composer), workingStatus);
   if (status < 0) return false;
   const panel = rows.slice(status + 1, composer);
   const isEntry = (row: { text: string }) => /^↳\s*\S/.test(row.text);
@@ -64,7 +66,7 @@ function acceptedUserRows(screen: string, text: string, allowDraft = false): num
   const lines = stripVTControlCharacters(screen).split(/\r?\n/).map((line) => line.trimEnd());
   const composer = lastLine(lines, (line) => /^[›»](?:\s|$)/.test(line));
   if (composer < 0 || (!allowDraft && !EMPTY_COMPOSER.test(lines[composer]!))) return null;
-  const status = lastLine(lines.slice(0, composer), (line) => LIVE_WORKING.test(line.trim()));
+  const status = lastLine(lines.slice(0, composer), (line) => workingStatus(line.trim()));
   const footer = lines.slice(composer + 1).filter((line) => line.trim());
   if (status < 0 || footer.length === 0 || footer.length > 4 || footer.some((line) => !FOOTER.test(line.trim()))) return null;
   return lines.slice(0, status).filter((line, index) =>
