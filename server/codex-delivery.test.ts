@@ -123,18 +123,19 @@ describe("Codex's native delivery records", () => {
     const f = fixture(), anchor = await captureCodexDelivery(f.path);
     for (let i = 0; i < 257; i++) f.tracker.add("p", `text ${i}`, anchor, 1000, `attempt ${i}`);
     f.tracker.add("p", "same", anchor, 1000, "later");
-    f.append(user("same"));
+    f.append(user("same", 2000, "later"));
     expect(await f.tracker.reconcile("p", f.path)).toEqual([]);
   });
 
   it("scopes records to the pane and preserves meaningful internal whitespace", async () => {
     const f = fixture();
     f.tracker.add("p", "a b\r\nnext ", await captureCodexDelivery(f.path), 1000, "ours");
-    f.append(user("ab\nnext", 2000, "other"));
+    f.append(user("ab\nnext"));
     expect(await f.tracker.reconcile("other-pane", f.path)).toEqual([]);
     expect(await f.tracker.reconcile("p", f.path)).toEqual([]);
-    f.append(user("a b\nnext", 2000, "ours"));
-    expect(await f.tracker.reconcile("p", f.path)).toEqual(["ours"]);
+    f.tracker.add("p", "a b\r\nnext ", await captureCodexDelivery(f.path), 2100, "next");
+    f.append(user("a b\nnext", 2200, "next"));
+    expect(await f.tracker.reconcile("p", f.path)).toEqual(["next"]);
   });
 
   it("leaves oversized transcript growth and unsupported native formats unconfirmed", async () => {

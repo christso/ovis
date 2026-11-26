@@ -1071,30 +1071,28 @@ describe("connection-owned pending input", () => {
   it("reconciles a late Codex completed user item through the production conversation watcher", async () => {
     let clientId: string | undefined;
     const steer = spyOn(CodexServers.prototype, "steerTarget").mockImplementation(() => ({
-      threadId: "receipt-session", send: async (_text, id, beforeWrite) => { await beforeWrite(); clientId = id; return "unknown"; },
+      threadId: "receipt-session", send: async (_text, id, beforeWrite, writing) => { await beforeWrite(); writing(); clientId = id; return "unknown"; },
     }));
     try {
-    const transcript = join(root, "codex-native-receipt.jsonl");
-    writeFileSync(transcript, JSON.stringify({ type: "session_meta", timestamp: new Date().toISOString(), payload: { id: "receipt-session", cwd: root } }) + "\n");
-    const f = await setup("codex-native-receipt", "codex", "• Working (2s • esc to interrupt)\n› Ask Codex to do anything\n");
-    fakeCodexTranscripts.set(f.pane, transcript);
-    f.socket.send({ type: "conversation-watch", pane_id: f.pane, enabled: true });
-    await f.socket.wait((frame) => frame.type === "conversation-changed" && frame.pane_id === f.pane && !frame.signature.startsWith("unavailable:"));
-    const row = await f.queue(1, "the native transcript confirms this message");
-    const follower = await f.queue(2, "later held message");
-    f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: row.id, action: "steer" });
-    expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "submit_changed" });
-    const before = f.bytes();
-    const timestamp = new Date().toISOString();
-    const payload = {
-      type: "item_completed", thread_id: "receipt-session", turn_id: "active-turn",
-      item: { type: "UserMessage", id: "accepted-user-item", client_id: clientId, content: [{ type: "text", text: row.text, text_elements: [] }] },
-    };
-    appendFileSync(transcript, JSON.stringify({ type: "event_msg", timestamp, payload }) + "\n");
-    const confirmed = await f.removed(row.id, "consumed");
-    expect(confirmed.messages).toMatchObject([{ id: follower.id, state: "held" }]);
-    expect(confirmed.messages.some((message: PendingMessage) => message.id === row.id)).toBe(false);
-    expect(f.bytes()).toBe(before);
+      const transcript = join(root, "codex-native-receipt.jsonl");
+      writeFileSync(transcript, JSON.stringify({ type: "session_meta", timestamp: new Date().toISOString(), payload: { id: "receipt-session", cwd: root } }) + "\n");
+      const f = await setup("codex-native-receipt", "codex", "• Working (2s • esc to interrupt)\n› Ask Codex to do anything\n");
+      fakeCodexTranscripts.set(f.pane, transcript);
+      f.socket.send({ type: "conversation-watch", pane_id: f.pane, enabled: true });
+      await f.socket.wait((frame) => frame.type === "conversation-changed" && frame.pane_id === f.pane && !frame.signature.startsWith("unavailable:"));
+      const row = await f.queue(1, "the native transcript confirms this message");
+      const follower = await f.queue(2, "later held message");
+      f.socket.send({ type: "pending-action", id: 10, pane_id: f.pane, pending_id: row.id, action: "steer" });
+      expect(await f.socket.action(10)).toMatchObject({ ok: false, code: "submit_changed" });
+      const payload = {
+        type: "item_completed", thread_id: "receipt-session", turn_id: "active-turn",
+        item: { type: "UserMessage", id: "accepted-user-item", client_id: clientId, content: [{ type: "text", text: row.text, text_elements: [] }] },
+      };
+      appendFileSync(transcript, JSON.stringify({ type: "event_msg", timestamp: new Date().toISOString(), payload }) + "\n");
+      const confirmed = await f.removed(row.id, "consumed");
+      expect(confirmed.messages).toMatchObject([{ id: follower.id, state: "held" }]);
+      expect(confirmed.messages.some((message: PendingMessage) => message.id === row.id)).toBe(false);
+      expect(f.bytes()).toBe("");
     } finally { steer.mockRestore(); }
   }, 30_000);
 

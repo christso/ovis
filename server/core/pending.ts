@@ -849,6 +849,7 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
             if (!current.working || current.collapsed || codexDisagrees(current.pane, target.threadId))
               throw new HerdrError(TARGET_CHANGED.code, TARGET_CHANGED.message);
             await noMaskedPrompt(paneId, lease.sighting.facts().cols, identity);
+          }, () => {
             authorizePending(owner, paneId, lease);
             if (row.withdrawn?.() || Date.now() - arrivedAt > (options.submitDeadlineMs ?? SUBMIT_DEADLINE_MS))
               throw new HerdrError("submit_timeout", "The message expired before delivery");
@@ -860,8 +861,13 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
             if (anchor?.session === target.threadId) codexTyped.add(paneId, text, anchor, at, { identity: context.identity, item: nativeItem }, clientId);
             throw new HerdrError("submit_changed", "Immediate delivery was not confirmed. Check the terminal before sending again.");
           }
-          // No RPC write. A changed turn must not be steered with a delayed terminal paste.
-          throw new HerdrError("pending_wait", "The Codex turn could not be verified; the message is still held");
+          if (reply === "changed") {
+            pending.holdPane(paneId, TARGET_CHANGED);
+            throw new HerdrError(TARGET_CHANGED.code, TARGET_CHANGED.message);
+          }
+          // No steer went. Start the terminal path from its first guard, without trying the RPC again.
+          return await dispatchPendingText(owner, paneId, text, lease, identity, automatic, arrivedAt, committing,
+            interruptWorkingCodex, requestId, agentOnly, queued, row);
         }
       }
       if (Date.now() - arrivedAt > (options.submitDeadlineMs ?? SUBMIT_DEADLINE_MS)) throw new HerdrError("submit_timeout", "The pending message waited too long; nothing was typed");

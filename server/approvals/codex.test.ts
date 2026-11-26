@@ -581,6 +581,29 @@ describe("Ovis on the pane's Codex server", () => {
   const request = (codex: ReturnType<typeof codexServer>, method: string) => codex.next((message) => message["method"] === method);
   const idle = (codex: ReturnType<typeof codexServer>) => codex.send({ method: "thread/status/changed", params: { threadId: "t1", status: { type: "idle" } } });
 
+  it.each(["other thread loaded during pane checks", "parent with a loaded subagent"])("checks the steer target at the write: %s", async (scenario) => {
+    const loaded = ["t1"];
+    const { codex, servers, program } = launched("0.171.0", loaded);
+    await running(codex);
+    codex.send({ method: "turn/started", params: { threadId: "t1", turn: { id: "turn" } } });
+    if (scenario === "parent with a loaded subagent") {
+      codex.send({ method: "thread/started", params: { thread: { id: "child", parentThreadId: "t1" } } });
+      loaded.push("child");
+    }
+    await read(codex);
+    const target = servers.steerTarget("w1:p1", ["codex", "--remote", `unix://${join(dirname(program), "codex.sock")}`])!;
+    const result = target.send("message", crypto.randomUUID(), async () => {
+      if (scenario === "other thread loaded during pane checks") loaded.push("t2");
+    }, () => {});
+    const outcome = await Promise.race([result, request(codex, "turn/steer")]);
+    if (scenario === "other thread loaded during pane checks") expect(outcome).toBe("changed");
+    else {
+      expect(outcome).toMatchObject({ method: "turn/steer" });
+      codex.send({ id: (outcome as Message).id, result: { turnId: "turn" } });
+      expect(await result).toBe("accepted");
+    }
+  });
+
   it.each(["matching reply", "wrong turn", "lost reply"])("attributes a Send now to its own turn/steer request: %s", async (reply) => {
     const { codex, servers, program } = launched("0.171.0", ["t1"]);
     await running(codex);
@@ -589,7 +612,7 @@ describe("Ovis on the pane's Codex server", () => {
     expect(servers.steerTarget("w1:p1", ["codex"])).toBeNull();
     const target = servers.steerTarget("w1:p1", ["codex", "--remote", `unix://${join(dirname(program), "codex.sock")}`])!;
     const id = crypto.randomUUID();
-    const result = target.send("repeat", id, async () => {});
+    const result = target.send("repeat", id, async () => {}, () => {});
     const steer = await request(codex, "turn/steer");
     expect(steer.params).toEqual({ threadId: "t1", expectedTurnId: "turn", clientUserMessageId: id, input: [{ type: "text", text: "repeat", text_elements: [] }] });
     codex.send({ id: -1, result: { turnId: "turn" } });

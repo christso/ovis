@@ -3,7 +3,8 @@ import { agySteeringPending, codexSteeringPending, interruptCodexSteering, type 
 
 const hint = "Messages to be submitted after next tool call (press esc to interrupt and send immediately)";
 const frame = (header = hint, composer = "› Ask Codex to do anything") => `› earlier input\n• Working (2s • esc to interrupt)\n• ${header}\n  ↳ send this now\n${composer}\n  gpt-6.1 default · /workspace\n`;
-const working: CodexSteeringContext = { agent: "codex", working: true, screen: frame() };
+const working: CodexSteeringContext = { agent: "codex", working: true, screen: "• Working (2s • esc to interrupt)\n› send this now\n" };
+const pending = { ...working, screen: frame() };
 
 describe("Codex's live steering buffer", () => {
   it("recognizes the native pending-steering panel beside an empty composer", () => {
@@ -81,7 +82,7 @@ describe("Codex's live steering buffer", () => {
   });
 });
 
-function fixture(contexts: CodexSteeringContext[] = [working]) {
+function fixture(contexts: CodexSteeringContext[] = [pending]) {
   let now = 0; let reads = 0;
   const effects: string[] = [];
   const io = {
@@ -105,20 +106,20 @@ describe("explicit Codex Send now", () => {
     for (const composer of ["»", "» Ask Codex to do anything"]) {
       const ultra = { ...working, screen: frame(hint, composer).replace("default ·", "ultra ·") };
       const f = fixture([ultra]);
-      await interruptCodexSteering(true, "send this now", ultra, f.io);
+      await interruptCodexSteering(true, "send this now", working, f.io);
       expect(f.effects).toEqual(["restart gate", "Escape"]);
       expect(f.reads()).toBe(1);
     }
   });
 
-  it("interrupts only a matching native panel under Codex’s background-terminal status", async () => {
+  it("does not infer delivery from a panel under the background-terminal status", async () => {
     const background = { ...working, screen: frame().replace(
       "• Working (2s • esc to interrupt)",
       "Working (2s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close",
     ) };
     const f = fixture([background]);
-    await interruptCodexSteering(true, "send this now", working, f.io);
-    expect(f.effects).toEqual(["restart gate", "Escape"]);
+    await expect(interruptCodexSteering(true, "send this now", working, f.io)).rejects.toThrow("not confirmed");
+    expect(f.effects).toEqual([]);
 
     const unrelated = fixture([{ ...background, screen: background.screen.replace("↳ send this now", "↳ something else") }]);
     await expect(interruptCodexSteering(true, "send this now", working, unrelated.io)).rejects.toThrow("not confirmed");
@@ -126,6 +127,13 @@ describe("explicit Codex Send now", () => {
   });
 
   const liveStatus = "Working (5s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close";
+  it.each([liveStatus, "• Working (2s • esc to interrupt)"])("never interrupts an older identical entry under %s", async (status) => {
+    const queued = { ...working, screen: frame().replace("• Working (2s • esc to interrupt)", status) };
+    const submitted = { ...queued, screen: queued.screen.replace("› Ask Codex to do anything", "› send this now") };
+    const f = fixture([queued]);
+    await expect(interruptCodexSteering(true, "send this now", submitted, f.io)).rejects.toThrow("not confirmed");
+    expect(f.effects).toEqual([]);
+  });
   const liveComposer = "› Ask Codex to do anything\n  GPT-6.2-Sol default · /workspace\n  ← for agents · ? for shortcuts";
   const live = (history: string, composer = liveComposer): CodexSteeringContext => ({
     agent: "codex", working: true, screen: `\n${history}\n\n${liveStatus}\n\n${composer}\n`,
@@ -172,7 +180,7 @@ describe("explicit Codex Send now", () => {
   });
 
   it("waits for the native panel instead of appending Escape blindly", async () => {
-    const f = fixture([{ ...working, screen: "• Working (2s • esc to interrupt)\n› send this now\n" }, working]);
+    const f = fixture([working, pending]);
     await interruptCodexSteering(true, "send this now", working, f.io);
     expect(f.reads()).toBe(2); expect(f.elapsed()).toBeGreaterThan(0);
     expect(f.effects).toEqual(["restart gate", "Escape"]);

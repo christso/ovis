@@ -34,7 +34,7 @@ afterAll(() => {
   mock.module("../codex-steering.ts", () => ({ ...steering, interruptCodexSteering: original.interrupt }));
 });
 const ready: SightingFacts = { attached: true, origin: true, sameAttachment: true, samePty: true, sameClaim: true, claimed: true, member: true, ready: true, held: false, currentHeld: false, mirror: false, cols: 80 };
-function fixture(managed = true, acknowledged = false) {
+function fixture(managed = true, acknowledged = false, turnEnded = false) {
   const root = mkdtempSync(join(tmpdir(), "ovis-codex-reconcile-")); roots.push(root); path = join(root, "rollout.jsonl");
   writeFileSync(path, JSON.stringify({ type: "session_meta", payload: { id: "native-session" } }) + "\n");
   const frames: ServerMessage[] = [], clients = new Set<Client>();
@@ -47,8 +47,11 @@ function fixture(managed = true, acknowledged = false) {
   const serialize = <T>(_pane: string, task: () => T | Promise<T>): Promise<T> => { const next = lane.catch(() => {}).then(task); lane = next; return next; };
   let clientId: string | undefined;
   const delivery = createPendingDelivery({ options: { submitDelayMs: 0, codexServers: { steerTarget: () => !managed ? null : ({
-    threadId: "native-session", send: async (text, id, beforeWrite) => {
-      await beforeWrite(); writes.push(`steer: ${text}`); clientId = id;
+    threadId: "native-session", send: async (text, id, beforeWrite, writing) => {
+      await beforeWrite();
+      if (turnEnded) return "unsent";
+      writing();
+      writes.push(`steer: ${text}`); clientId = id;
       return acknowledged ? "accepted" : "unknown";
     },
   }) } }, clients, attachments: new Map(), serialize, lastTyped: new Map(),
@@ -82,6 +85,12 @@ function fixture(managed = true, acknowledged = false) {
 }
 
 describe("a Codex send whose interruption check timed out", () => {
+  it("does not report a phantom write when Codex's turn ends during the final checks", async () => {
+    const f = fixture(true, false, true), row = await f.queue(1, "send this now");
+    await f.steer(row.id);
+    // Only the guarded terminal fallback can have written; the RPC's preparation wrote nothing.
+    expect(writes).toEqual(["\u001b[200~send this now\u001b[201~", "Enter"]);
+  });
   it("confirms a message Codex put in the active turn from its steer reply without terminal input", async () => {
     const f = fixture(true, true), row = await f.queue(1, "send this now");
     await f.steer(row.id);
