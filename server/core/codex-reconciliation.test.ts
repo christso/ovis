@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, it, mock } from "bun:test";
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServerMessage, SessionSnapshot } from "../../shared/protocol.ts";
@@ -34,7 +34,7 @@ afterAll(() => {
   mock.module("../codex-steering.ts", () => ({ ...steering, interruptCodexSteering: original.interrupt }));
 });
 const ready: SightingFacts = { attached: true, origin: true, sameAttachment: true, samePty: true, sameClaim: true, claimed: true, member: true, ready: true, held: false, currentHeld: false, mirror: false, cols: 80 };
-function fixture(managed = true, acknowledged = false, turnEnded = false) {
+function fixture(managed = true, acknowledged = false, turnEnded = false, stateDir?: string) {
   const root = mkdtempSync(join(tmpdir(), "ovis-codex-reconcile-")); roots.push(root); path = join(root, "rollout.jsonl");
   writeFileSync(path, JSON.stringify({ type: "session_meta", payload: { id: "native-session" } }) + "\n");
   const frames: ServerMessage[] = [], clients = new Set<Client>();
@@ -46,7 +46,7 @@ function fixture(managed = true, acknowledged = false, turnEnded = false) {
   let refuseTypedDraft = false;
   const serialize = <T>(_pane: string, task: () => T | Promise<T>): Promise<T> => { const next = lane.catch(() => {}).then(task); lane = next; return next; };
   let clientId: string | undefined;
-  const delivery = createPendingDelivery({ options: { submitDelayMs: 0, codexServers: { steerTarget: () => !managed ? null : ({
+  const delivery = createPendingDelivery({ options: { stateDir: stateDir ?? root, submitDelayMs: 0, codexServers: { steerTarget: () => !managed ? null : ({
     threadId: "native-session", send: async (text, id, beforeWrite, writing) => {
       await beforeWrite();
       if (turnEnded) return "unsent";
@@ -79,12 +79,43 @@ function fixture(managed = true, acknowledged = false, turnEnded = false) {
     await delivery.pendingFrames["pending-action"](owner, { type: "pending-action", id: 10, pane_id: "p", pending_id: id, action: "steer" });
     await serialize("p", () => {});
   };
-  return { delivery, owner, clients, frames, queue, append, steer,
+  return { delivery, owner, clients, frames, queue, append, steer, stateDir: stateDir ?? root,
     setAgent: (value: typeof agent) => { agent = value; },
     refuseTypedDraft: (value: boolean) => { refuseTypedDraft = value; }, barrier: () => serialize("p", () => {}) };
 }
 
 describe("a Codex send whose interruption check timed out", () => {
+  it("does not write a transcript-consumed ID again on a fresh bridge", async () => {
+    const first = fixture(), row = await first.queue(1, "my pending text");
+    await first.steer(row.id);
+    first.append(row.text);
+    first.delivery.attached(first.owner, "p");
+    await first.barrier();
+    const removals = first.frames.flatMap(frame => frame.type === "pending-messages" ? frame.removed ?? [] : []);
+    const beforeRestart = first.delivery.pending.list(first.owner, "p").map(r => r.state);
+    first.delivery.closeConnection(first.owner);
+    const fresh = fixture(true, false, false, first.stateDir);
+    await fresh.delivery.pendingFrames.submit(fresh.owner, { type: "submit", id: 2, pane_id: "p", resend_id: row.id,
+      resend_generation: 0, text: row.text, payload: `\u001b[200~${row.text}\u001b[201~` });
+    const reply = fresh.frames.find(frame => frame.type === "submit-result" && frame.id === 2);
+    expect({ beforeRestart, removals, reply, writes }).toMatchObject({
+      beforeRestart: [], removals: [{ id: row.id, outcome: "consumed" }], reply: { ok: true }, writes: ["steer: my pending text"],
+    });
+    expect(reply).not.toHaveProperty("typed_now");
+  });
+  it("keeps the warning if the receipt cannot be saved and does not resend from unreadable state", async () => {
+    const f = fixture(), row = await f.queue(1, "repeat");
+    await f.steer(row.id);
+    mkdirSync(join(f.stateDir, "codex-consumed.sqlite"));
+    f.append(row.text);
+    await f.delivery.reconcileCodexDeliveries("p");
+    expect(f.delivery.pending.list(f.owner, "p")).toMatchObject([{ id: row.id, state: "uncertain" }]);
+    const fresh = fixture(true, false, false, f.stateDir);
+    await fresh.delivery.pendingFrames.submit(fresh.owner, { type: "submit", id: 2, pane_id: "p", resend_id: row.id,
+      resend_generation: 0, text: row.text, payload: `\u001b[200~${row.text}\u001b[201~` });
+    expect(fresh.frames).toContainEqual(expect.objectContaining({ type: "submit-result", id: 2, ok: false, code: "pending_uncertain" }));
+    expect(writes).toEqual(["steer: repeat"]);
+  });
   it("does not report a phantom write when Codex's turn ends during the final checks", async () => {
     const f = fixture(true, false, true), row = await f.queue(1, "send this now");
     await f.steer(row.id);

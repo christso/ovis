@@ -323,8 +323,8 @@ export class PendingInputs<Owner, Lease> {
   }
 
   /** Native transcript evidence settles only this uncertain ID; held followers stay held. */
-  confirmRecorded(item: PendingRecord<Owner, Lease>): boolean {
-    if (this.records.get(item.message.id) !== item || item.inFlight || item.message.state !== "uncertain") return false;
+  confirmRecorded(item: PendingRecord<Owner, Lease>, remember: () => boolean): boolean {
+    if (this.records.get(item.message.id) !== item || item.inFlight || item.message.state !== "uncertain" || !remember()) return false;
     this.finish(item, "consumed");
     return true;
   }

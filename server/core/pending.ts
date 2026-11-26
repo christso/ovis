@@ -42,6 +42,7 @@ import { capturePiDeliveryAnchorRetrying, matchPiDeliveries, PiReceiptCapacity, 
 import { isPiProcess, piTranscriptPath, piUnwrittenHeaderId } from "../pi.ts";
 import { PendingRequestBook } from "../pending-requests.ts";
 import { captureCodexDelivery, CodexDeliveries, type CodexDeliveryAnchor } from "../codex-delivery.ts";
+import { codexConsumedReplay, rememberCodexConsumed } from "../codex-consumed.ts";
 import { codexOpenRollout, paneCodexHomePlaced } from "../codex.ts";
 import { RECEIPT_RESUME_ID } from "../../shared/receipt-resume.ts";
 import { interruptCodexSteering } from "../codex-steering.ts";
@@ -141,7 +142,7 @@ const FIRST_MESSAGE_RECEIPTS = 8;
 
 export function createPendingDelivery({ options, clients, attachments, sight, serialize, lastTyped, typedInto = () => 0, submitText, authorizeSocket, clientSnapshot, omo, queueHeld = () => false, SUBMIT_DEADLINE_MS, SUBMIT_DELAY_MS, TYPED_SETTLE_MS }: {
   options: { acp?: Pick<AcpChildren, "forPane"> | null; pendingStartTimeoutMs?: number; piReceiptLimit?: number; submitDeadlineMs?: number; submitDelayMs?: number; ompReportPollMs?: number; ompStartupMs?: number; openCodeStateDir?: string; codexHome?: string;
-    codexServers?: Pick<CodexServers, "steerTarget">; herdrFailure?: HerdrFailureView };
+    codexServers?: Pick<CodexServers, "steerTarget">; stateDir?: string; herdrFailure?: HerdrFailureView };
   clients: Set<Client>;
   attachments: ReadonlyMap<string, AttachmentView>;
   sight: (client: Client, paneId: string) => TerminalSighting;
@@ -245,7 +246,8 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
             codexTyped.invalidate(paneId);
             return false;
           });
-          for (const value of receipts) if (value.item) pending.confirmRecorded(value.item);
+          const dir = options.stateDir;
+          for (const { item } of receipts) if (item && dir) pending.confirmRecorded(item, () => rememberCodexConsumed(dir, item.message.id, paneId, item.message.text));
           return;
         } catch {
           if (attempt === 2) return;
@@ -1698,6 +1700,13 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
           // Every check and claim on the receipts runs in the pane's serialized turn, by the original ID: two
           // resends of one copy (any generations) see each other's claim, so the text is typed once.
           const answer = await serialize(pane, async () => {
+            if (options.stateDir) {
+              let replay: ReturnType<typeof codexConsumedReplay>;
+              try { replay = codexConsumedReplay(options.stateDir, id, pane, framed.text); }
+              catch { return { ok: false, code: "pending_uncertain", message: "The saved delivery record could not be read. Check the terminal before sending again." }; }
+              if (replay === "same") return { ok: true };
+              if (replay === "different") return { ok: false, code: "invalid_submit_id", message: "This resend id already belongs to another message" };
+            }
             if (completed.some((entry) => entry.id === id && entry.outcome === "sending")) return { ok: false, code: "pending_busy", message: "This message is already being sent" };
             if (completed.some((entry) => entry.id === id && (entry.outcome === "sent" || entry.outcome === "consumed") && entry.paneId === pane && (entry.hash === undefined || entry.hash === hash))) return { ok: true };
             if (completed.some((entry) => entry.id === id && entry.outcome === "uncertain" && entry.paneId === pane)) return { ok: false, code: "pending_uncertain", message: "Check the terminal before sending this message again" };
