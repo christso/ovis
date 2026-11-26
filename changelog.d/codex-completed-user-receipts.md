@@ -1,3 +1,3 @@
 ### Fixed
-- Clear the queued copy when Codex accepts a Send now message into its active turn, including
-  when its transcript confirms delivery after the terminal check times out.
+- Clear a Send now copy when an Ovis-managed Codex server acknowledges that request or records
+  its message ID. A matching line from another terminal no longer counts as confirmation.

@@ -17,6 +17,8 @@
  * pane after, so another session or process of the same kind gets none.
  */
 import type { AcpChildren } from "../acp/children.ts";
+import type { CodexServers } from "../approvals/codex.ts";
+import { codexDisagrees } from "../command-data-send.ts";
 import { AGENT_PICKER_MESSAGE, closeBackslash, closeMention, type createSubmitText, freeAgentInput, freeClaudeBox, freeHermesInput, InputDraftError, modelSwitchText, OMP_REPORT_POLL_MS, OMP_STARTUP_MS, ompStartingUntil, pendingFault, pendingIdentity, pendingText, refusedFirstWrite, submitFraming, untilOmpReported } from "./composer.ts";
 import { grokEcho, grokQueue, sendGrokQueuedNow } from "./grok-queue.ts";
 import { type Client, connectionOf, send } from "./connections.ts";
@@ -139,7 +141,7 @@ const FIRST_MESSAGE_RECEIPTS = 8;
 
 export function createPendingDelivery({ options, clients, attachments, sight, serialize, lastTyped, typedInto = () => 0, submitText, authorizeSocket, clientSnapshot, omo, queueHeld = () => false, SUBMIT_DEADLINE_MS, SUBMIT_DELAY_MS, TYPED_SETTLE_MS }: {
   options: { acp?: Pick<AcpChildren, "forPane"> | null; pendingStartTimeoutMs?: number; piReceiptLimit?: number; submitDeadlineMs?: number; submitDelayMs?: number; ompReportPollMs?: number; ompStartupMs?: number; openCodeStateDir?: string; codexHome?: string;
-    herdrFailure?: HerdrFailureView };
+    codexServers?: Pick<CodexServers, "steerTarget">; herdrFailure?: HerdrFailureView };
   clients: Set<Client>;
   attachments: ReadonlyMap<string, AttachmentView>;
   sight: (client: Client, paneId: string) => TerminalSighting;
@@ -835,6 +837,33 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
       let attached: string[] = [];
       let prompt: PromptPiece[] = [{ pasted: closeMention(sent) }];
       watch = startOpenCodeWatch(context.pane, command, options.openCodeStateDir);
+      if (interruptWorkingCodex && nativeItem && context.working && context.agentInFront && context.identity.agent === "codex"
+        && !context.collapsed && !command && !/(?:^|\s)[!/@$]\S*/u.test(text) && sent === text && closeMention(sent) === text) {
+        const argv = context.processes?.foreground_processes?.find((p) => p.pid === context.identity.processPid)?.argv ?? [];
+        const target = options.codexServers?.steerTarget(paneId, argv);
+        if (target && !codexDisagrees(context.pane, target.threadId)) {
+          const anchor = await prepareCodexReceipt(paneId, context.identity);
+          const clientId = crypto.randomUUID(), at = Date.now();
+          const reply = await target.send(text, clientId, async () => {
+            const current = await pendingContext(owner, paneId, lease, identity, false, true);
+            if (!current.working || current.collapsed || codexDisagrees(current.pane, target.threadId))
+              throw new HerdrError(TARGET_CHANGED.code, TARGET_CHANGED.message);
+            await noMaskedPrompt(paneId, lease.sighting.facts().cols, identity);
+            authorizePending(owner, paneId, lease);
+            if (row.withdrawn?.() || Date.now() - arrivedAt > (options.submitDeadlineMs ?? SUBMIT_DEADLINE_MS))
+              throw new HerdrError("submit_timeout", "The message expired before delivery");
+            committing(true, false, pending.mark(paneId));
+            wrote = true;
+          });
+          if (reply === "accepted") { noteSubmitted(paneId, text, command, at); return { ok: true }; }
+          if (reply === "unknown") {
+            if (anchor?.session === target.threadId) codexTyped.add(paneId, text, anchor, at, { identity: context.identity, item: nativeItem }, clientId);
+            throw new HerdrError("submit_changed", "Immediate delivery was not confirmed. Check the terminal before sending again.");
+          }
+          // No RPC write. A changed turn must not be steered with a delayed terminal paste.
+          throw new HerdrError("pending_wait", "The Codex turn could not be verified; the message is still held");
+        }
+      }
       if (Date.now() - arrivedAt > (options.submitDeadlineMs ?? SUBMIT_DEADLINE_MS)) throw new HerdrError("submit_timeout", "The pending message waited too long; nothing was typed");
       await stillInFront(paneId, context.identity.processPid, identity, agentOnly);
       await noMaskedPrompt(paneId, lease.sighting.facts().cols, identity);
@@ -910,10 +939,7 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
       // Status is deliberately not evidence: Pi can report idle/done while its TUI is staging an automatic-compaction input.
       const beforeCapturePid = beforeEnter.identity.processPid;
       const piAnchor = piTracked ? await preparePiReceipt(paneId, beforeEnter.identity).catch(() => null) : undefined;
-      const codexAnchor = await prepareCodexReceipt(paneId, beforeEnter.identity);
-      // A failed Codex lookup can still observe a process replacement. Revalidate even when
-      // no receipt anchor was captured, so its reads never follow the final input guard.
-      if (piAnchor !== undefined || beforeEnter.identity.agent === "codex") {
+      if (piAnchor !== undefined) {
         enterMark = pending.mark(paneId);
         beforeEnter = await pendingContext(owner, paneId, lease, identity, true, agentOnly).catch(enterRefused);
         if (automatic && (beforeEnter.working || queueHeld(paneId, false))) enterRefused(new HerdrError("pending_wait", "The agent started another turn before this queued message could be committed"));
@@ -936,10 +962,6 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
       // Claude Code queues what Enter commits during a turn; Ctrl+Enter sends it now (#737). herdr
       // encodes the key as the pane asked, and as a plain CR for a program that asked for nothing.
       const sentAt = Date.now();
-      const nativeReceipt: { identity: PendingIdentity; item?: PendingItem } = { identity: { ...beforeEnter.identity } };
-      // A write may arrive even if its RPC reply is lost. Reserve before the await, but only an
-      // acknowledged Enter makes this attempt eligible for automatic native confirmation.
-      if (beforeEnter.identity.agent === "codex") codexTyped.add(paneId, closeMention(sent), codexAnchor, sentAt, nativeReceipt);
       // the connection to herdr is awaited, and a task may fire meanwhile: the hold is read once more once connected,
       // right before the key's own write. A key refused there was not sent, and its paste is not confirmed. Not seen: a
       // task whose fire Claude has not written by then (the entry reaches the transcript some tens of milliseconds
@@ -971,7 +993,6 @@ export function createPendingDelivery({ options, clients, attachments, sight, se
           },
         });
       }
-      nativeReceipt.item = nativeItem;
       if (endsOmpStart) forgetOmpStart(paneId);
       // This proves only that Ovis committed Enter to Pi, not that Pi accepted, queued or recorded
       // the message. Keep a non-resendable receipt until the bound JSONL active branch appends it.

@@ -57,59 +57,36 @@ export async function captureCodexDelivery(path: string): Promise<CodexDeliveryA
   finally { await fd?.close().catch(() => {}); }
 }
 
-type Attempt<T> = { pane: string; text: string; anchor: CodexDeliveryAnchor | null; at: number; value: T };
-type NativeMessage = { key: string; start: number; at: number; text: string };
+type Attempt<T> = { pane: string; text: string; anchor: CodexDeliveryAnchor; at: number; value: T; clientId: string };
+type NativeMessage = { clientId: string; start: number; at: number; text: string };
 type UserEvent = {
   type?: unknown; thread_id?: unknown;
-  item?: { type?: unknown; id?: unknown; content?: unknown };
+  item?: { type?: unknown; id?: unknown; client_id?: unknown; content?: unknown };
 };
 
-function nativeUserMessage(payload: UserEvent | null | undefined, session: string): { text: string; id: string } | null {
+function nativeUserMessage(payload: UserEvent | null | undefined, session: string): { text: string; clientId: string } | null {
   const item = payload?.item;
   if (payload?.type !== "item_completed" || payload.thread_id !== session || item?.type !== "UserMessage"
-    || typeof item.id !== "string" || !item.id || !Array.isArray(item.content) || item.content.length === 0
+    || typeof item.id !== "string" || !item.id || typeof item.client_id !== "string" || !item.client_id || !Array.isArray(item.content) || item.content.length === 0
     || !item.content.every((part) => part?.type === "text" && typeof part.text === "string")) return null;
-  return { text: item.content.map((part) => part.text).join(""), id: item.id };
+  return { text: item.content.map((part) => part.text).join(""), clientId: item.client_id };
 }
 
 /**
- * Receipt evidence only: every known Codex Chat send, including successful ordinary sends,
- * reserves its native echo. A native event can settle one attempt, never two identical sends.
+ * Only turn/steer supplies our clientUserMessageId; a TUI Enter has no such receipt.
  */
 export class CodexDeliveries<T> {
   private attempts = new Set<Attempt<T>>();
-  private consumed = new Map<string, Set<string>>();
-  private blocked = new Map<string, string>();
-  private exhausted = false;
-  private source(anchor: CodexDeliveryAnchor): string { return JSON.stringify([anchor.path, anchor.file, anchor.session]); }
   invalidate(pane: string): void {
-    const anchor = [...this.attempts].find((item) => item.pane === pane && item.anchor !== null)?.anchor;
-    if ([...this.attempts].some((item) => item.pane === pane)) this.blocked.set(pane, anchor ? this.source(anchor) : "unbound");
-    if (this.blocked.size >= MAX_ATTEMPTS) this.exhausted = true;
-    this.forget(pane);
+    for (const item of this.attempts) if (item.pane === pane) this.attempts.delete(item);
   }
 
-  add(pane: string, text: string, anchor: CodexDeliveryAnchor | null, at: number, value: T): void {
-    if (this.exhausted || /^\s*[/!]/u.test(text)) return;
-    const source = anchor === null ? "unbound" : this.source(anchor);
-    const blocked = this.blocked.get(pane);
-    if (blocked === "unbound" || blocked === source || anchor === null && blocked !== undefined) return;
-    this.blocked.delete(pane);
-    // Never forget an unobserved ordinary send and then give its delayed echo to another send.
-    if (this.attempts.size >= MAX_ATTEMPTS) {
-      const oldest = this.attempts.values().next().value!;
-      this.invalidate(oldest.pane);
-      if (oldest.pane === pane || this.exhausted) return;
-    }
-    this.attempts.add({ pane, text: textOf(text), anchor, at, value });
+  add(pane: string, text: string, anchor: CodexDeliveryAnchor | null, at: number, value: T, clientId: string): void {
+    if (!anchor || !clientId || this.attempts.size >= MAX_ATTEMPTS) return;
+    this.attempts.add({ pane, text: textOf(text), anchor, at, value, clientId });
   }
 
   values(pane: string): T[] { return [...this.attempts].filter((item) => item.pane === pane).map((item) => item.value); }
-
-  forget(pane: string): void {
-    for (const item of this.attempts) if (item.pane === pane) this.attempts.delete(item);
-    this.consumed.delete(pane);
-  }
 
   async reconcile(pane: string, path: string, verifyProcess?: () => Promise<boolean>): Promise<T[]> {
     const attempts = [...this.attempts].filter((item) => item.pane === pane);
@@ -118,8 +95,7 @@ export class CodexDeliveries<T> {
     try {
       fd = await open(path, "r");
       const before = await fd.stat(), session = await sessionOf(fd, before.size);
-      const anchors = attempts.flatMap((item) => item.anchor === null ? [] : [item.anchor]);
-      if (anchors.length === 0) return [];
+      const anchors = attempts.map((item) => item.anchor);
       const first = Math.min(...anchors.map((anchor) => anchor.size));
       if (session === null || before.size < first || before.size - first > MAX_BYTES) { this.invalidate(pane); return []; }
       for (const anchor of anchors) {
@@ -139,31 +115,20 @@ export class CodexDeliveries<T> {
         if (message === null) continue;
         const at = Date.parse(entry.timestamp);
         if (Number.isFinite(at)) records.push({
-          key: `${fileId(before)}:${session}:${message.id}`,
+          clientId: message.clientId,
           start, at, text: textOf(message.text),
         });
       }
       const after = await fd.stat(), named = await stat(path);
       if (fileId(before) !== fileId(named) || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) return [];
       for (const anchor of anchors) if (anchor.tail !== await tailOf(fd, anchor.size)) { this.invalidate(pane); return []; }
-      const consumed = this.consumed.get(pane) ?? new Set<string>();
-      const candidates = attempts.filter((item) => this.attempts.has(item)).map((item) => ({ item, records: records.filter((record) => !consumed.has(record.key)
-        && record.start >= (item.anchor?.size ?? first) && record.at >= item.at && record.text === item.text) }));
-      const counts = new Map<string, number>();
-      for (const candidate of candidates) for (const record of candidate.records) counts.set(record.key, (counts.get(record.key) ?? 0) + 1);
-      const matching = candidates.filter(({ records }) => records.length === 1 && counts.get(records[0]!.key) === 1);
+      const matching = attempts.filter((item) => {
+        const same = records.filter((record) => record.clientId === item.clientId && record.start >= item.anchor.size && record.at >= item.at);
+        return same.length === 1 && same[0]!.text === item.text;
+      });
       if (matching.length === 0 || (verifyProcess && !await verifyProcess())) return [];
-      this.consumed.set(pane, consumed);
       const confirmed: T[] = [];
-      for (const candidate of matching) {
-        if (!this.attempts.has(candidate.item)) continue;
-        consumed.add(candidate.records[0]!.key);
-        this.attempts.delete(candidate.item);
-        // An unbound earlier send reserves its possible echo but cannot settle a warning.
-        if (candidate.item.anchor !== null) confirmed.push(candidate.item.value);
-      }
-      if (consumed.size >= MAX_RECORDS) this.invalidate(pane);
-      else if (![...this.attempts].some((item) => item.pane === pane)) this.forget(pane);
+      for (const item of matching) if (this.attempts.delete(item)) confirmed.push(item.value);
       return confirmed;
     } catch (error) {
       if (error instanceof SyntaxError) return [];

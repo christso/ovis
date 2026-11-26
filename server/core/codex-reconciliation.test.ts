@@ -22,7 +22,7 @@ mock.module("../codex.ts", () => ({ ...codex, paneCodexHomePlaced: async (...arg
 mock.module("../herdr/client.ts", () => ({ ...herdr,
   paneProcessInfo: async () => { if (++infoReads === failInfoAt) throw new Error("transient placement lookup failure"); if (failedIdentityReads > 0) { failedIdentityReads--; throw new Error("transient native identity read failure"); } return { shell_pid: 1, foreground_processes: [{ pid, name: "codex", argv: ["codex"] }] }; },
   paneRead: async () => ({ text: "• Working (2s • esc to interrupt)\n› Ask Codex to do anything\n  gpt-6.1 default · /test\n" }),
-  paneSendText: async (_pane: string, text: string) => { writes.push(text); },
+  paneSendText: async (_pane: string, text: string, _socket: unknown, guard: () => boolean) => { if (guard()) writes.push(text); },
   paneSendKeys: async (_pane: string, keys: string[]) => { writes.push(keys.join(" ")); if (loseEnterReply) throw new Error("Enter was written but its reply was lost"); },
 }));
 mock.module("../codex-steering.ts", () => ({ ...steering, interruptCodexSteering: async () => { throw new Error("interruption check timed out after Enter"); } }));
@@ -34,18 +34,24 @@ afterAll(() => {
   mock.module("../codex-steering.ts", () => ({ ...steering, interruptCodexSteering: original.interrupt }));
 });
 const ready: SightingFacts = { attached: true, origin: true, sameAttachment: true, samePty: true, sameClaim: true, claimed: true, member: true, ready: true, held: false, currentHeld: false, mirror: false, cols: 80 };
-function fixture() {
+function fixture(managed = true, acknowledged = false) {
   const root = mkdtempSync(join(tmpdir(), "ovis-codex-reconcile-")); roots.push(root); path = join(root, "rollout.jsonl");
   writeFileSync(path, JSON.stringify({ type: "session_meta", payload: { id: "native-session" } }) + "\n");
   const frames: ServerMessage[] = [], clients = new Set<Client>();
   const owner = { data: connectionData({ deviceId: "device", readOnly: false }), readyState: WebSocket.OPEN,
     getBufferedAmount: () => 0, send: (data: string) => { frames.push(JSON.parse(data)); return 1; } } as Client;
-  owner.data.attached.set("p", { keepSize: false, receiptResumeId: "browser" }); clients.add(owner);
+  owner.data.attached.set("p", { keepSize: false, receiptResumeId: "a".repeat(32) }); clients.add(owner);
   let lane = Promise.resolve<unknown>(undefined);
   let agent: "codex" | null = "codex";
   let refuseTypedDraft = false;
   const serialize = <T>(_pane: string, task: () => T | Promise<T>): Promise<T> => { const next = lane.catch(() => {}).then(task); lane = next; return next; };
-  const delivery = createPendingDelivery({ options: { submitDelayMs: 0 }, clients, attachments: new Map(), serialize, lastTyped: new Map(),
+  let clientId: string | undefined;
+  const delivery = createPendingDelivery({ options: { submitDelayMs: 0, codexServers: { steerTarget: () => !managed ? null : ({
+    threadId: "native-session", send: async (text, id, beforeWrite) => {
+      await beforeWrite(); writes.push(`steer: ${text}`); clientId = id;
+      return acknowledged ? "accepted" : "unknown";
+    },
+  }) } }, clients, attachments: new Map(), serialize, lastTyped: new Map(),
     sight: (): TerminalSighting => ({ origin: null, pty: null, claim: null, facts: () => ready, write: () => {} }),
     submitText: async () => {
       if (refuseTypedDraft) throw new herdr.HerdrError("input_draft", "The terminal already has a draft");
@@ -61,10 +67,10 @@ function fixture() {
     return frame.pending;
   };
   let nextItem = 0;
-  const append = (text: string) => appendFileSync(path, JSON.stringify({
+  const append = (text: string, sourceId = clientId) => appendFileSync(path, JSON.stringify({
     type: "event_msg", timestamp: new Date().toISOString(),
     payload: { type: "item_completed", thread_id: "native-session",
-      item: { type: "UserMessage", id: `item-${++nextItem}`, content: [{ type: "text", text }] } },
+      item: { type: "UserMessage", id: `item-${++nextItem}`, client_id: sourceId, content: [{ type: "text", text }] } },
   }) + "\n");
   const steer = async (id: string) => {
     await delivery.pendingFrames["pending-action"](owner, { type: "pending-action", id: 10, pane_id: "p", pending_id: id, action: "steer" });
@@ -76,13 +82,19 @@ function fixture() {
 }
 
 describe("a Codex send whose interruption check timed out", () => {
+  it("confirms a message Codex put in the active turn from its steer reply without terminal input", async () => {
+    const f = fixture(true, true), row = await f.queue(1, "send this now");
+    await f.steer(row.id);
+    expect(f.delivery.pending.list(f.owner, "p")).toEqual([]);
+    expect(writes).toEqual(["steer: send this now"]);
+  });
   it("keeps the Chat copy when an earlier terminal submission is recorded late", async () => {
     const f = fixture();
     // Another terminal attached directly to herdr does not pass through Ovis's input lane.
     const terminalSubmission = "repeat";
     const row = await f.queue(1, terminalSubmission);
     await f.steer(row.id);
-    f.append(terminalSubmission);
+    f.append(terminalSubmission, "earlier-terminal-id");
     await f.delivery.reconcileCodexDeliveries("p");
     expect(f.delivery.pending.list(f.owner, "p")).toMatchObject([{ id: row.id, state: "uncertain" }]);
   });
@@ -104,7 +116,7 @@ describe("a Codex send whose interruption check timed out", () => {
     f.append(row.text); await f.delivery.reconcileCodexDeliveries("p");
     const resumed: ServerMessage[] = [];
     const next = { ...f.owner, data: connectionData({ deviceId: "device", readOnly: false }), send: (value: string) => { resumed.push(JSON.parse(value)); return 1; } } as Client;
-    next.data.attached.set("p", { keepSize: false, receiptResumeId: "browser" }); f.clients.add(next);
+    next.data.attached.set("p", { keepSize: false, receiptResumeId: "a".repeat(32) }); f.clients.add(next);
     f.delivery.attached(next, "p"); await f.barrier();
     expect(resumed.flatMap((frame) => frame.type === "pending-messages" ? frame.removed ?? [] : [])).toContainEqual({ id: row.id, outcome: "consumed", resumed: true });
   });
@@ -113,7 +125,7 @@ describe("a Codex send whose interruption check timed out", () => {
     const f = fixture();
     await f.delivery.pendingFrames.submit(f.owner, { type: "submit", id: 1, pane_id: "p", text: "repeat", payload: "repeat" });
     const row = await f.queue(2, "repeat"); await f.steer(row.id);
-    f.append("repeat"); await f.delivery.reconcileCodexDeliveries("p");
+    f.append("repeat", "ordinary-send-id"); await f.delivery.reconcileCodexDeliveries("p");
     expect(f.delivery.pending.list(f.owner, "p")).toMatchObject([{ id: row.id, state: "uncertain" }]);
   });
 
@@ -132,7 +144,7 @@ describe("a Codex send whose interruption check timed out", () => {
   });
 
   it("reserves an Enter whose acknowledgement was lost before another held identical send", async () => {
-    const f = fixture(), first = await f.queue(1, "repeat"), second = await f.queue(2, "repeat");
+    const f = fixture(false), first = await f.queue(1, "repeat"), second = await f.queue(2, "repeat");
     loseEnterReply = true; await f.steer(first.id); loseEnterReply = false;
     await f.steer(second.id);
     f.append("repeat"); await f.delivery.reconcileCodexDeliveries("p");
@@ -142,7 +154,7 @@ describe("a Codex send whose interruption check timed out", () => {
   it("does not give a terminal-line submission's native record to an uncertain Chat send", async () => {
     const f = fixture(), row = await f.queue(1, "repeat"); await f.steer(row.id);
     await f.delivery.pendingFrames.submit(f.owner, { type: "submit", id: 3, pane_id: "p", text: "repeat", payload: "repeat", typed: true });
-    f.append("repeat"); await f.delivery.reconcileCodexDeliveries("p");
+    f.append("repeat", "terminal-line-id"); await f.delivery.reconcileCodexDeliveries("p");
     expect(f.delivery.pending.list(f.owner, "p")).toMatchObject([{ id: row.id, state: "uncertain" }]);
   });
 

@@ -7,16 +7,22 @@ import { captureCodexDelivery, CodexDeliveries } from "./codex-delivery.ts";
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const header = (id = "native-session") => JSON.stringify({ type: "session_meta", payload: { id } }) + "\n";
-const user = (text: string, at = 2000) => JSON.stringify({
+const user = (text: string, at = 2000, clientId = "ours") => JSON.stringify({
   type: "event_msg", timestamp: new Date(at).toISOString(),
   payload: { type: "item_completed", thread_id: "native-session",
-    item: { type: "UserMessage", id: `item-${at}-${text}`, content: [{ type: "text", text }] } },
+    item: { type: "UserMessage", id: `item-${at}-${text}`, client_id: clientId, content: [{ type: "text", text }] } },
 }) + "\n";
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "ovis-codex-delivery-")); roots.push(root);
   const path = join(root, "rollout.jsonl");
   writeFileSync(path, header() + user("same", 100));
-  return { path, tracker: new CodexDeliveries<string>(), append: (text: string) => appendFileSync(path, text) };
+  const deliveries = new CodexDeliveries<string>();
+  const tracker = {
+    add: (pane: string, text: string, anchor: Awaited<ReturnType<typeof captureCodexDelivery>>, at: number, id: string) =>
+      deliveries.add(pane, text, anchor, at, id, id),
+    reconcile: deliveries.reconcile.bind(deliveries), invalidate: deliveries.invalidate.bind(deliveries),
+  };
+  return { path, tracker, append: (text: string) => appendFileSync(path, text) };
 }
 
 describe("Codex's native delivery records", () => {
@@ -43,7 +49,7 @@ describe("Codex's native delivery records", () => {
     const completed = (thread_id: string, at: number) => JSON.stringify({
       type: "event_msg", timestamp: new Date(at).toISOString(),
       payload: { type: "item_completed", thread_id, turn_id: "active-turn",
-        item: { type: "UserMessage", id: "accepted-user-item", content: [{ type: "text", text: "same", text_elements: [] }] } },
+        item: { type: "UserMessage", id: "accepted-user-item", client_id: "ours", content: [{ type: "text", text: "same", text_elements: [] }] } },
     }) + "\n";
     f.tracker.add("p", "same", await captureCodexDelivery(f.path), 1000, "ours");
     f.append(JSON.stringify({ type: "response_item", timestamp: new Date(2000).toISOString(),
@@ -78,11 +84,11 @@ describe("Codex's native delivery records", () => {
   it("consumes sequential identical sends separately when their native records precede the next anchor", async () => {
     const f = fixture();
     f.tracker.add("p", "same", await captureCodexDelivery(f.path), 1000, "first");
-    f.append(user("same"));
+    f.append(user("same", 2000, "first"));
     expect(await f.tracker.reconcile("p", f.path)).toEqual(["first"]);
     f.tracker.add("p", "same", await captureCodexDelivery(f.path), 3000, "second");
     expect(await f.tracker.reconcile("p", f.path)).toEqual([]);
-    f.append(user("same", 4000));
+    f.append(user("same", 4000, "second"));
     expect(await f.tracker.reconcile("p", f.path)).toEqual(["second"]);
   });
 
@@ -124,10 +130,10 @@ describe("Codex's native delivery records", () => {
   it("scopes records to the pane and preserves meaningful internal whitespace", async () => {
     const f = fixture();
     f.tracker.add("p", "a b\r\nnext ", await captureCodexDelivery(f.path), 1000, "ours");
-    f.append(user("ab\nnext"));
+    f.append(user("ab\nnext", 2000, "other"));
     expect(await f.tracker.reconcile("other-pane", f.path)).toEqual([]);
     expect(await f.tracker.reconcile("p", f.path)).toEqual([]);
-    f.append(user("a b\nnext"));
+    f.append(user("a b\nnext", 2000, "ours"));
     expect(await f.tracker.reconcile("p", f.path)).toEqual(["ours"]);
   });
 

@@ -131,12 +131,11 @@ describe("explicit Codex Send now", () => {
     agent: "codex", working: true, screen: `\n${history}\n\n${liveStatus}\n\n${composer}\n`,
   });
 
-  it("confirms a message Codex put in the active turn before drawing a steering panel", async () => {
+  it("cannot confirm an active-turn message from terminal scrollback alone", async () => {
     const submitted = live("› earlier input", liveComposer.replace("Ask Codex to do anything", "send this now"));
     const f = fixture([live("› earlier input\n\n› send this now")]);
-    await interruptCodexSteering(true, "send this now", submitted, f.io);
+    await expect(interruptCodexSteering(true, "send this now", submitted, f.io)).rejects.toThrow("not confirmed");
     expect(f.effects).toEqual([]);
-    expect(f.reads()).toBe(1);
   });
 
   it("does not credit an earlier terminal submission drawn after Chat pressed Enter", async () => {

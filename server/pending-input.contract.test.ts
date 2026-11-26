@@ -15,6 +15,7 @@ import * as claudeStore from "./claude-store.ts";
 import * as agentLaunchModule from "./agent-launch.ts";
 import * as piModule from "./pi.ts";
 import * as codexModule from "./codex.ts";
+import { CodexServers } from "./approvals/codex.ts";
 import { MachineManager } from "./machines.ts";
 import { DeviceStore } from "./devices.ts";
 import { DEVICE_COOKIE } from "./auth.ts";
@@ -1068,6 +1069,11 @@ describe("connection-owned pending input", () => {
     expect(f.bytes().split("held cross tab").length - 1).toBe(1);
   }, 30_000);
   it("reconciles a late Codex completed user item through the production conversation watcher", async () => {
+    let clientId: string | undefined;
+    const steer = spyOn(CodexServers.prototype, "steerTarget").mockImplementation(() => ({
+      threadId: "receipt-session", send: async (_text, id, beforeWrite) => { await beforeWrite(); clientId = id; return "unknown"; },
+    }));
+    try {
     const transcript = join(root, "codex-native-receipt.jsonl");
     writeFileSync(transcript, JSON.stringify({ type: "session_meta", timestamp: new Date().toISOString(), payload: { id: "receipt-session", cwd: root } }) + "\n");
     const f = await setup("codex-native-receipt", "codex", "• Working (2s • esc to interrupt)\n› Ask Codex to do anything\n");
@@ -1082,16 +1088,17 @@ describe("connection-owned pending input", () => {
     const timestamp = new Date().toISOString();
     const payload = {
       type: "item_completed", thread_id: "receipt-session", turn_id: "active-turn",
-      item: { type: "UserMessage", id: "accepted-user-item", content: [{ type: "text", text: row.text, text_elements: [] }] },
+      item: { type: "UserMessage", id: "accepted-user-item", client_id: clientId, content: [{ type: "text", text: row.text, text_elements: [] }] },
     };
     appendFileSync(transcript, JSON.stringify({ type: "event_msg", timestamp, payload }) + "\n");
     const confirmed = await f.removed(row.id, "consumed");
     expect(confirmed.messages).toMatchObject([{ id: follower.id, state: "held" }]);
     expect(confirmed.messages.some((message: PendingMessage) => message.id === row.id)).toBe(false);
     expect(f.bytes()).toBe(before);
+    } finally { steer.mockRestore(); }
   }, 30_000);
 
-  it("clears an explicit Codex Send now accepted without a visible steering panel", async () => {
+  it("keeps an explicit terminal Send now uncertain without a send-specific acknowledgement", async () => {
     const status = "Working (5s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close";
     const composer = "› Ask Codex to do anything\n  GPT-6.2-Sol default · /workspace\n  ← for agents · ? for shortcuts";
     const before = `› earlier input\n\n${status}\n\n${composer}\n`;
@@ -1102,7 +1109,7 @@ describe("connection-owned pending input", () => {
     await f.showScreen(before.replace(status, `› ${message.text}\n\n${status}`));
     const result = await f.socket.action(10);
     expect(f.bytes()).toBe(`${paste(message.text)}\r`);
-    expect(result).toMatchObject({ ok: true });
+    expect(result).toMatchObject({ ok: false, code: "submit_changed" });
   }, 30_000);
 
   it("interrupts an explicit Codex Send now only after its native steering panel appears", async () => {

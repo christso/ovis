@@ -388,7 +388,7 @@ describe("Ovis on the pane's Codex server", () => {
     const codex = codexServer(program, version, loaded);
     const held = () => new Promise<void>((resolve) => waiting.push(resolve));
     const settled = () => new Promise<void>((resolve) => settling.push(resolve));
-    return { hub, servers, codex, held, settled };
+    return { hub, servers, codex, held, settled, program };
   }
 
   /** Codex runs thread `id`: Ovis subscribes to it. */
@@ -580,6 +580,23 @@ describe("Ovis on the pane's Codex server", () => {
 
   const request = (codex: ReturnType<typeof codexServer>, method: string) => codex.next((message) => message["method"] === method);
   const idle = (codex: ReturnType<typeof codexServer>) => codex.send({ method: "thread/status/changed", params: { threadId: "t1", status: { type: "idle" } } });
+
+  it.each(["matching reply", "wrong turn", "lost reply"])("attributes a Send now to its own turn/steer request: %s", async (reply) => {
+    const { codex, servers, program } = launched("0.171.0", ["t1"]);
+    await running(codex);
+    codex.send({ method: "turn/started", params: { threadId: "t1", turn: { id: "turn" } } });
+    await read(codex);
+    expect(servers.steerTarget("w1:p1", ["codex"])).toBeNull();
+    const target = servers.steerTarget("w1:p1", ["codex", "--remote", `unix://${join(dirname(program), "codex.sock")}`])!;
+    const id = crypto.randomUUID();
+    const result = target.send("repeat", id, async () => {});
+    const steer = await request(codex, "turn/steer");
+    expect(steer.params).toEqual({ threadId: "t1", expectedTurnId: "turn", clientUserMessageId: id, input: [{ type: "text", text: "repeat", text_elements: [] }] });
+    codex.send({ id: -1, result: { turnId: "turn" } });
+    if (reply === "lost reply") codex.drop();
+    else codex.send({ id: steer.id, result: { turnId: reply === "matching reply" ? "turn" : "other" } });
+    expect(await result).toBe(reply === "matching reply" ? "accepted" : "unknown");
+  });
 
   it("runs a bare /plan as the TUI does: Plan mode with Plan's own effort and the thread's model as it is then", async () => {
     const { codex } = launched("0.171.0", ["t1"]);
