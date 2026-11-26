@@ -139,6 +139,14 @@ describe("explicit Codex Send now", () => {
     expect(f.reads()).toBe(1);
   });
 
+  it("does not credit an earlier terminal submission drawn after Chat pressed Enter", async () => {
+    const terminalQueue = "• Messages to be submitted at end of turn\n  ↳ repeat\n";
+    const submitted = live("› earlier input", terminalQueue + liveComposer.replace("Ask Codex to do anything", "repeat"));
+    const f = fixture([live("› earlier input\n\n› repeat", terminalQueue + liveComposer)]);
+    await expect(interruptCodexSteering(true, "repeat", submitted, f.io)).rejects.toThrow("not confirmed");
+    expect(f.effects).toEqual([]);
+  });
+
   it("does not confirm the draft or an unchanged earlier occurrence of the same message", async () => {
     const submitted = live("› send this now", liveComposer.replace("Ask Codex to do anything", "send this now"));
     const otherDraft = liveComposer.replace("Ask Codex to do anything", "another draft");

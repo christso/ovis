@@ -76,6 +76,16 @@ function fixture() {
 }
 
 describe("a Codex send whose interruption check timed out", () => {
+  it("keeps the Chat copy when an earlier terminal submission is recorded late", async () => {
+    const f = fixture();
+    // Another terminal attached directly to herdr does not pass through Ovis's input lane.
+    const terminalSubmission = "repeat";
+    const row = await f.queue(1, terminalSubmission);
+    await f.steer(row.id);
+    f.append(terminalSubmission);
+    await f.delivery.reconcileCodexDeliveries("p");
+    expect(f.delivery.pending.list(f.owner, "p")).toMatchObject([{ id: row.id, state: "uncertain" }]);
+  });
   it("clears the exact warning after its native message appears, leaving held followers and input untouched", async () => {
     const f = fixture(), row = await f.queue(1, "new message"), follower = await f.queue(2, "later");
     await f.steer(row.id);
